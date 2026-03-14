@@ -56,7 +56,7 @@ export function removeNestedValue(obj: Record<string, unknown>, path: string): b
 
   delete current[lastKey]
 
-  // Clean up empty parent objects
+  // Clean up empty parent objects - parent can be cleaned up if childs are empty
   for (let i = parents.length - 1; i >= 0; i--) {
     const { obj: parentObj, key } = parents[i]
     const child = parentObj[key] as Record<string, unknown>
@@ -153,28 +153,4 @@ export function validateTranslationValue(value: unknown): string | null {
   }
 
   return null
-}
-
-/**
- * Get statistics about a translation value's complexity.
- */
-export function getTranslationStats(value: string): {
-  placeholders: string[]
-  linkedRefs: string[]
-  hasPluralPipe: boolean
-  hasHtml: boolean
-} {
-  // Extract {placeholder} tokens
-  const placeholders = [...value.matchAll(/\{([^}]+)\}/g)].map(m => m[1])
-
-  // Extract @:linked.ref references
-  const linkedRefs = [...value.matchAll(/@:(?:\{'[^']+'\}|[\w.]+)/g)].map(m => m[0])
-
-  // Check for plural pipe separator
-  const hasPluralPipe = / \| /.test(value)
-
-  // Check for HTML tags
-  const hasHtml = /<\/?[a-zA-Z]/.test(value)
-
-  return { placeholders, linkedRefs, hasPluralPipe, hasHtml }
 }
