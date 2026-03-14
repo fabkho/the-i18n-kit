@@ -1,0 +1,19 @@
+{
+  "common": {
+    "actions": {
+      "cancel": "Abbrechen",
+      "delete": "Löschen",
+      "save": "Speichern"
+    },
+    "messages": {
+      "loading": "Laden...",
+      "noData": "Keine Daten vorhanden",
+      "success": "Erfolgreich gespeichert"
+    },
+    "navigation": {
+      "back": "Zurück",
+      "home": "Startseite",
+      "settings": "Einstellungen"
+    }
+  }
+}
