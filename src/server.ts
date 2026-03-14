@@ -2,7 +2,7 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { z } from 'zod'
 import { detectI18nConfig, clearConfigCache, getCachedConfig } from './config/detector.js'
 import type { I18nConfig, ProjectConfig } from './config/types.js'
-import { readLocaleFile, readLocaleFileWithMeta } from './io/json-reader.js'
+import { readLocaleFile } from './io/json-reader.js'
 import { writeLocaleFile, mutateLocaleFile } from './io/json-writer.js'
 import {
   getNestedValue,

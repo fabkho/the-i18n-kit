@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { FileIOError } from '../utils/errors.js'
+import { FileIOError } from '../utils/errors'
 
 /** Cache of parsed locale files: path → { data, mtime } */
 const fileCache = new Map<string, { data: Record<string, unknown>; mtime: number }>()
