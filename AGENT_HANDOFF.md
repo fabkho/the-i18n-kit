@@ -122,7 +122,7 @@ Both prompts include project config context (glossary, layer rules, examples) wh
 
 ### Phase 5 — remaining items
 - [x] `.i18n-mcp.json` JSON schema for IDE autocompletion
-- [ ] README with setup instructions
+- [x] README with setup instructions
 - [ ] Team documentation and onboarding guide
 
 ### Backlog (see PLAN.md Section 18)
