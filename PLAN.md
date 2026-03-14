@@ -929,13 +929,31 @@ The MCP spec has a [SEP for nested task execution](https://modelcontextprotocol.
 
 - **`move_translations`** — Move keys between layers (e.g., promote app-specific key to `common.*`)
 - **Dry-run mode** — ✅ Implemented for `remove_translations`, `rename_translation_key`, and `translate_missing` via `dryRun: true` parameter
-- **File watching** — Notify the agent when locale files change on disk (via MCP `notifications/resources/updated`)
 - **Translation memory** — Cache previous translations to ensure consistency when the same phrase appears in multiple places
 - **Pluralization support** — Handle vue-i18n plural forms (`{ count } item | { count } items`)
-- **Key usage analysis** — Scan Vue/TS source files to find unused translation keys. Two sub-features:
-  - **Hardcoded string detection** — Find user-facing strings in Vue/TS files not wrapped in `$t()` / `t()` / `useI18n()`. Inspired by better-i18n's `scan` command. Could support `--staged` for pre-commit hooks.
-  - **Orphan key detection** — Find keys that exist in translation files but are never referenced in code. The inverse of `get_missing_translations`. Helps clean up dead translations.
-- **`.i18n-mcp.json` JSON Schema** — Publish a JSON Schema so IDEs provide autocompletion and validation when editing the config file
+- **`.i18n-mcp.json` JSON Schema** — ✅ Published at `schema.json`, referenced from playground config
 - **Glossary validation** — Tool that checks existing translations against the glossary and reports inconsistencies (e.g., "fr-FR uses 'Réservation' but glossary says 'Booking' should be used")
 - **Auto-generate `.i18n-mcp.json`** — Tool that analyzes existing translations and proposes a glossary, layer rules, and examples based on patterns found
 - **Flat JSON support** — vue-i18n supports `flatJson: true` in its config, which uses dot-separated keys in a flat object instead of nested JSON (e.g., `{ "common.actions.save": "Save" }` instead of `{ "common": { "actions": { "save": "Save" } } }`). Detect this from the i18n config and support reading/writing flat JSON files alongside nested ones.
+
+### Code Analysis (inspired by dalisys/i18n-mcp and better-i18n CLI)
+
+These features require scanning Vue/TS source files. They share a core `code-scanner.ts` module that walks the source tree, parses `$t()` / `t()` / `useI18n()` calls, and builds a set of used translation keys. Scoped to Vue/Nuxt only (no React/Svelte/Angular).
+
+- **`scan_code_usage`** (new tool) — Scan Vue/TS source files and return all translation key references found in code. The foundation for orphan detection and hardcoded string detection. Input: `srcDir` (optional, defaults to project root), `layer` (optional), `includePatterns`, `excludePatterns`. Output: list of `{ key, file, line, pattern }` entries.
+  - Core scanner: walk `.vue`, `.ts`, `.js` files, match `$t('key')`, `t('key')`, `i18n.t('key')`, `useI18n()` destructured `t()`, `:placeholder="$t('key')"` in Vue templates. Skip `node_modules`, `dist`, `.nuxt`, `.output`.
+  - Handle SFC `<template>` and `<script>` blocks separately.
+  - Flag dynamic keys (template literals, concatenation, computed) as `dynamic: true` rather than silently skipping.
+  - Regex-based initially — AST parsing (via vue-compiler-sfc) as a future upgrade if false positives become a problem.
+
+- **`find_orphan_keys`** (new tool) — Find keys that exist in translation JSON files but are never referenced in code. Combines `getLeafKeys()` from locale files with `scan_code_usage` results. Input: `layer`, `srcDir`, `locale` (optional, defaults to reference locale). Output: list of orphan keys per layer, with `dryRun` support to preview before `remove_translations`.
+  - **Dynamic key shielding:** When `scan_code_usage` finds dynamic patterns like `` t(`common.actions.${action.value}`) `` or `t('common.actions.' + action.value)`, it extracts the static prefix (`common.actions.`). During orphan detection, any key under a dynamic prefix is excluded from the orphan list and reported separately as `shieldedKeys` with the prefix and source location. This prevents false positives from eslint-style static analysis — keys used only via dynamic concatenation won't be flagged as unused.
+  - Output shape: `{ orphanKeys: [...], dynamicPrefixes: [{ prefix, file, line, pattern }], shieldedKeys: [...], summary }`.
+
+- **`find_hardcoded_strings`** (new tool) — Find user-facing strings in Vue/TS files not wrapped in `$t()` / `t()`. Scans `<template>` blocks for text content between tags, attribute values on `title`, `label`, `placeholder`, `alt`, `aria-label`, and `<script>` blocks for string literals in UI-facing positions. Returns `{ text, file, line, confidence, suggestedKey }`. High false-positive rate expected — confidence scoring helps the agent filter (capitalize + multi-word + punctuation = high confidence; single word + camelCase + contains numbers = low confidence).
+
+- **`cleanup_unused_translations`** (new tool) — Combines `find_orphan_keys` + `remove_translations` into a single workflow. Scans code, identifies orphan keys, and removes them. Always runs in `dryRun` mode first, requires explicit `confirm: true` to actually delete. Returns summary with keys removed per locale, files written.
+
+### File Watching
+
+- **File watching** — Notify the agent when locale files change on disk (via MCP `notifications/resources/updated`). Low priority: MCP host support for server-initiated notifications is still inconsistent (as of July 2025). The current mtime-based cache already handles external changes on the next read. Revisit when host support matures. Do NOT use chokidar — avoid the extra dependency. Use `fs.watch` if implemented.
