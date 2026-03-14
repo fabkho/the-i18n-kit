@@ -1,7 +1,7 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { detectI18nConfig, clearConfigCache, getCachedConfig } from './config/detector.js'
-import type { I18nConfig } from './config/types.js'
+import type { I18nConfig, ProjectConfig } from './config/types.js'
 import { readLocaleFile, readLocaleFileWithMeta } from './io/json-reader.js'
 import { writeLocaleFile, mutateLocaleFile } from './io/json-writer.js'
 import {
@@ -15,6 +15,107 @@ import {
 import { log } from './utils/logger.js'
 import { join } from 'node:path'
 import { readdir } from 'node:fs/promises'
+
+// ─── Sampling prompt helpers ──────────────────────────────────────
+
+/**
+ * Build a system prompt for translation sampling from project config.
+ */
+function buildTranslationSystemPrompt(
+  projectConfig: ProjectConfig | undefined,
+  targetLocaleCode: string,
+): string {
+  const parts: string[] = []
+
+  // 1. Translation prompt from project config
+  if (projectConfig?.translationPrompt) {
+    parts.push(projectConfig.translationPrompt)
+  }
+
+  // 2. Glossary
+  if (projectConfig?.glossary && Object.keys(projectConfig.glossary).length > 0) {
+    const glossaryLines = Object.entries(projectConfig.glossary)
+      .map(([term, definition]) => `- ${term} → ${definition}`)
+      .join('\n')
+    parts.push(`GLOSSARY — use these terms consistently:\n${glossaryLines}`)
+  }
+
+  // 3. Locale-specific notes
+  if (projectConfig?.localeNotes?.[targetLocaleCode]) {
+    parts.push(`TARGET LOCALE NOTE (${targetLocaleCode}): ${projectConfig.localeNotes[targetLocaleCode]}`)
+  }
+
+  // 4. Examples
+  if (projectConfig?.examples && projectConfig.examples.length > 0) {
+    const exampleLines = projectConfig.examples
+      .map((ex) => {
+        const pairs = Object.entries(ex)
+          .filter(([k]) => k !== 'key' && k !== 'note')
+          .map(([locale, val]) => `${locale}: "${val}"`)
+          .join(', ')
+        const note = ex.note ? ` (${ex.note})` : ''
+        return `- ${ex.key}: ${pairs}${note}`
+      })
+      .join('\n')
+    parts.push(`STYLE EXAMPLES:\n${exampleLines}`)
+  }
+
+  if (parts.length === 0) {
+    return 'You are a professional translator for software UI strings. Preserve all {placeholder} parameters and @:linked.message references. Be concise — UI space is limited.'
+  }
+
+  return parts.join('\n\n')
+}
+
+/**
+ * Build the user message for a translation sampling request.
+ */
+function buildTranslationUserMessage(
+  referenceLocaleCode: string,
+  targetLocaleCode: string,
+  keysAndValues: Record<string, string>,
+): string {
+  return [
+    `Translate the following i18n key-value pairs from ${referenceLocaleCode} to ${targetLocaleCode}.`,
+    'Preserve all {placeholder} parameters and @:linked.message references.',
+    'Return ONLY a JSON object mapping keys to translated values. No markdown, no explanation, no code fences.',
+    '',
+    JSON.stringify(keysAndValues, null, 2),
+  ].join('\n')
+}
+
+/**
+ * Build a fallback context object when sampling is not available.
+ * Returns everything the agent needs to translate inline.
+ */
+function buildFallbackContext(
+  projectConfig: ProjectConfig | undefined,
+  referenceLocaleCode: string,
+  targetLocaleCode: string,
+  keysAndValues: Record<string, string>,
+): Record<string, unknown> {
+  const context: Record<string, unknown> = {
+    instruction: `Translate these keys from ${referenceLocaleCode} to ${targetLocaleCode}, then call add_translations to write them.`,
+    referenceLocale: referenceLocaleCode,
+    targetLocale: targetLocaleCode,
+    keysToTranslate: keysAndValues,
+  }
+
+  if (projectConfig?.translationPrompt) {
+    context.translationPrompt = projectConfig.translationPrompt
+  }
+  if (projectConfig?.glossary && Object.keys(projectConfig.glossary).length > 0) {
+    context.glossary = projectConfig.glossary
+  }
+  if (projectConfig?.localeNotes?.[targetLocaleCode]) {
+    context.localeNote = projectConfig.localeNotes[targetLocaleCode]
+  }
+  if (projectConfig?.examples && projectConfig.examples.length > 0) {
+    context.examples = projectConfig.examples
+  }
+
+  return context
+}
 
 /**
  * Create and configure the MCP server with all tools.
@@ -933,6 +1034,247 @@ export function createServer(): McpServer {
     },
   )
 
+  // ─── Tool: translate_missing ───────────────────────────────────
+
+  server.registerTool(
+    'translate_missing',
+    {
+      title: 'Translate Missing',
+      description:
+        'Find keys missing in target locales and translate them. Uses the host LLM via MCP sampling if available, otherwise returns context for the agent to translate inline. Uses project config (glossary, translation prompt, locale notes, examples) if available.',
+      annotations: {
+        title: 'Translate Missing Translations',
+        readOnlyHint: false,
+      },
+      inputSchema: {
+        layer: z.string().describe('Layer name to translate (e.g., "root", "app-admin")'),
+        referenceLocale: z.string().optional().describe('Reference locale code. Defaults to the project default locale.'),
+        targetLocales: z.array(z.string()).optional().describe('Locale codes to translate into. Defaults to all locales except the reference.'),
+        keys: z.array(z.string()).optional().describe('Specific keys to translate. If omitted, translates all missing keys.'),
+        batchSize: z.number().optional().describe('Max keys per sampling request. Default: 50.'),
+        dryRun: z.boolean().optional().describe('If true, return what would be translated without writing. Default: false.'),
+        projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
+      },
+    },
+    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, projectDir }) => {
+      try {
+        const dir = projectDir ?? process.cwd()
+        const config = await detectI18nConfig(dir)
+        const isDryRun = dryRun ?? false
+        const maxBatch = batchSize ?? 50
+
+        // Validate layer
+        const localeDir = config.localeDirs.find(d => d.layer === layer)
+        if (!localeDir) {
+          throw new Error(`Layer not found: ${layer}. Available: ${config.localeDirs.map(d => d.layer).join(', ')}`)
+        }
+        if (localeDir.aliasOf) {
+          throw new Error(`Layer '${layer}' is an alias of '${localeDir.aliasOf}'. Modify the source layer instead.`)
+        }
+
+        // Determine reference locale
+        const refCode = referenceLocale ?? config.defaultLocale
+        const refLocale = findLocale(config, refCode)
+        if (!refLocale) {
+          throw new Error(`Reference locale not found: ${refCode}. Available: ${config.locales.map(l => l.code).join(', ')}`)
+        }
+
+        // Read reference locale file
+        const refFilePath = resolveLocaleFilePath(config, layer, refLocale.file)
+        if (!refFilePath) {
+          throw new Error(`No locale file found for reference locale '${refCode}' in layer '${layer}'.`)
+        }
+        const refData = await readLocaleFile(refFilePath)
+        const allRefKeys = getLeafKeys(refData)
+
+        // Determine target locales
+        const targets = targetLocales
+          ? targetLocales.map((code) => {
+              const loc = findLocale(config, code)
+              if (!loc) {
+                throw new Error(`Target locale not found: ${code}. Available: ${config.locales.map(l => l.code).join(', ')}`)
+              }
+              return loc
+            })
+          : config.locales.filter(l => l.code !== refLocale.code)
+
+        // Check sampling support
+        const clientCapabilities = server.server.getClientCapabilities()
+        const samplingSupported = !!clientCapabilities?.sampling
+
+        const results: Record<string, { translated: string[]; failed: string[]; samplingUsed: boolean }> = {}
+        const fallbackContexts: Record<string, Record<string, unknown>> = {}
+
+        for (const target of targets) {
+          const targetFilePath = resolveLocaleFilePath(config, layer, target.file)
+          let targetData: Record<string, unknown> = {}
+
+          if (targetFilePath) {
+            try {
+              targetData = await readLocaleFile(targetFilePath)
+            } catch {
+              // File doesn't exist yet — all keys are missing
+            }
+          }
+
+          const targetKeys = getLeafKeys(targetData)
+          const targetKeySet = new Set(targetKeys)
+
+          // Determine which keys need translation
+          let missingKeys: string[]
+          if (keys) {
+            // Only translate specified keys that are actually missing
+            missingKeys = keys.filter(k => !targetKeySet.has(k) && allRefKeys.includes(k))
+          } else {
+            missingKeys = allRefKeys.filter(k => !targetKeySet.has(k))
+          }
+
+          if (missingKeys.length === 0) {
+            results[target.code] = { translated: [], failed: [], samplingUsed: false }
+            continue
+          }
+
+          // Build key-value pairs from reference
+          const keysAndValues: Record<string, string> = {}
+          for (const key of missingKeys) {
+            const value = getNestedValue(refData, key)
+            if (typeof value === 'string') {
+              keysAndValues[key] = value
+            }
+          }
+
+          if (isDryRun) {
+            results[target.code] = {
+              translated: Object.keys(keysAndValues),
+              failed: [],
+              samplingUsed: samplingSupported,
+            }
+            continue
+          }
+
+          if (samplingSupported) {
+            // Use MCP sampling to translate
+            const translated: string[] = []
+            const failed: string[] = []
+            const keyEntries = Object.entries(keysAndValues)
+
+            // Process in batches
+            for (let i = 0; i < keyEntries.length; i += maxBatch) {
+              const batch = Object.fromEntries(keyEntries.slice(i, i + maxBatch))
+
+              try {
+                const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, target.language || target.code)
+                const userMessage = buildTranslationUserMessage(
+                  refLocale.language || refLocale.code,
+                  target.language || target.code,
+                  batch,
+                )
+
+                const samplingResult = await server.server.createMessage({
+                  messages: [
+                    {
+                      role: 'user',
+                      content: { type: 'text', text: userMessage },
+                    },
+                  ],
+                  systemPrompt,
+                  maxTokens: 4096,
+                  includeContext: 'none',
+                })
+
+                // Parse the response
+                const responseText = samplingResult.content.type === 'text'
+                  ? samplingResult.content.text
+                  : ''
+
+                // Try to extract JSON from the response (handle potential markdown fencing)
+                let cleanJson = responseText.trim()
+                if (cleanJson.startsWith('```')) {
+                  cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+                }
+
+                const translations = JSON.parse(cleanJson) as Record<string, string>
+
+                // Write translations to file
+                if (targetFilePath) {
+                  await mutateLocaleFile(targetFilePath, (data) => {
+                    for (const [key, value] of Object.entries(translations)) {
+                      if (typeof value === 'string') {
+                        setNestedValue(data, key, value)
+                        translated.push(key)
+                      }
+                    }
+                  })
+                }
+              } catch (error) {
+                log.warn(`Sampling failed for batch in ${target.code}: ${error instanceof Error ? error.message : String(error)}`)
+                failed.push(...Object.keys(batch))
+              }
+            }
+
+            results[target.code] = { translated, failed, samplingUsed: true }
+          } else {
+            // Fallback: return context for agent to translate inline
+            fallbackContexts[target.code] = buildFallbackContext(
+              config.projectConfig,
+              refLocale.language || refLocale.code,
+              target.language || target.code,
+              keysAndValues,
+            )
+            results[target.code] = {
+              translated: [],
+              failed: Object.keys(keysAndValues),
+              samplingUsed: false,
+            }
+          }
+        }
+
+        const totalTranslated = Object.values(results).reduce((sum, r) => sum + r.translated.length, 0)
+        const totalFailed = Object.values(results).reduce((sum, r) => sum + r.failed.length, 0)
+
+        const output: Record<string, unknown> = {
+          results,
+          summary: {
+            samplingSupported,
+            totalTranslated,
+            totalFailed,
+            layer,
+            referenceLocale: refLocale.code,
+            targetLocales: targets.map(t => t.code),
+            dryRun: isDryRun,
+          },
+        }
+
+        if (Object.keys(fallbackContexts).length > 0) {
+          output.fallbackContexts = fallbackContexts
+          output.summary = {
+            ...(output.summary as Record<string, unknown>),
+            message: 'Sampling not supported by this host. Use the fallbackContexts to translate inline, then call add_translations to write the results.',
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(output, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error translating missing keys: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    },
+  )
+
   // ─── Resources ────────────────────────────────────────────────
 
   server.registerResource(
@@ -985,6 +1327,143 @@ export function createServer(): McpServer {
             uri: uri.href,
             mimeType: 'application/json',
             text: JSON.stringify(data, null, 2),
+          },
+        ],
+      }
+    },
+  )
+
+  // ─── Prompts ──────────────────────────────────────────────────
+
+  server.registerPrompt(
+    'add-feature-translations',
+    {
+      title: 'Add Feature Translations',
+      description: 'Guided workflow for adding i18n translations when building a new feature.',
+      argsSchema: {
+        layer: z.string().optional().describe('Target layer (e.g., "root", "app-admin"). If omitted, uses layerRules from project config.'),
+        namespace: z.string().optional().describe('Key namespace for the feature (e.g., "admin.users", "common.actions")'),
+        projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
+      },
+    },
+    async ({ layer, namespace, projectDir }) => {
+      const dir = projectDir ?? process.cwd()
+      let projectConfigSection = ''
+
+      try {
+        const config = await detectI18nConfig(dir)
+        const pc = config.projectConfig
+
+        if (pc?.context) {
+          projectConfigSection += `\nPROJECT CONTEXT: ${pc.context}\n`
+        }
+        if (pc?.layerRules && pc.layerRules.length > 0) {
+          projectConfigSection += '\nLAYER RULES:\n'
+          for (const rule of pc.layerRules) {
+            projectConfigSection += `- ${rule.layer}: ${rule.description} (when: ${rule.when})\n`
+          }
+        }
+        if (pc?.glossary && Object.keys(pc.glossary).length > 0) {
+          projectConfigSection += '\nGLOSSARY:\n'
+          for (const [term, definition] of Object.entries(pc.glossary)) {
+            projectConfigSection += `- ${term} → ${definition}\n`
+          }
+        }
+        if (pc?.translationPrompt) {
+          projectConfigSection += `\nTRANSLATION STYLE: ${pc.translationPrompt}\n`
+        }
+        if (pc?.examples && pc.examples.length > 0) {
+          projectConfigSection += '\nEXAMPLES:\n'
+          for (const ex of pc.examples) {
+            const pairs = Object.entries(ex)
+              .filter(([k]) => k !== 'key' && k !== 'note')
+              .map(([locale, val]) => `${locale}: "${val}"`)
+              .join(', ')
+            projectConfigSection += `- ${ex.key}: ${pairs}${ex.note ? ` (${ex.note})` : ''}\n`
+          }
+        }
+      } catch {
+        // Config detection failed — still provide the prompt without project context
+      }
+
+      const layerHint = layer ? `Target layer: ${layer}` : 'Determine the target layer using the layer rules below, or ask the user.'
+      const nsHint = namespace ? `Feature namespace: ${namespace}` : 'Determine the key namespace based on the feature.'
+
+      const promptText = `You are adding i18n translations for a new feature.
+${layerHint}
+${nsHint}
+${projectConfigSection}
+Follow these steps:
+
+1. Call \`detect_i18n_config\` to understand the project setup (locales, layers, default locale).
+2. Call \`search_translations\` to check for existing similar keys — avoid duplicates.
+3. Call \`add_translations\` to add keys for ALL locales in a single call.
+   - Provide translations for every locale defined in the project.
+   - Follow the glossary and style examples if provided above.
+   - Preserve all {placeholders} and @:linked.references.
+4. If you only provided translations for some locales, call \`translate_missing\` to fill in the rest.
+5. Summarize what was added.`
+
+      return {
+        messages: [
+          {
+            role: 'user' as const,
+            content: { type: 'text' as const, text: promptText },
+          },
+        ],
+      }
+    },
+  )
+
+  server.registerPrompt(
+    'fix-missing-translations',
+    {
+      title: 'Fix Missing Translations',
+      description: 'Find and fix all missing translations across the project.',
+      argsSchema: {
+        layer: z.string().optional().describe('Specific layer to fix. If omitted, fixes all layers.'),
+        projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
+      },
+    },
+    async ({ layer, projectDir }) => {
+      const dir = projectDir ?? process.cwd()
+      let projectConfigSection = ''
+
+      try {
+        const config = await detectI18nConfig(dir)
+        const pc = config.projectConfig
+
+        if (pc?.translationPrompt) {
+          projectConfigSection += `\nTRANSLATION STYLE: ${pc.translationPrompt}\n`
+        }
+        if (pc?.glossary && Object.keys(pc.glossary).length > 0) {
+          projectConfigSection += '\nGLOSSARY:\n'
+          for (const [term, definition] of Object.entries(pc.glossary)) {
+            projectConfigSection += `- ${term} → ${definition}\n`
+          }
+        }
+      } catch {
+        // Config detection failed — still provide the prompt without project context
+      }
+
+      const layerHint = layer ? `Focus on layer: ${layer}` : 'Check all layers.'
+
+      const promptText = `Find and fix all missing translations in the project.
+${layerHint}
+${projectConfigSection}
+Follow these steps:
+
+1. Call \`detect_i18n_config\` to load the project config and understand the locale setup.
+2. Call \`get_missing_translations\` to find all gaps across ${layer ? `the "${layer}" layer` : 'all layers'}.
+3. For each locale with missing keys, call \`translate_missing\` to auto-fill gaps using the reference locale.
+   - If auto-translation is not available, translate the keys yourself using the glossary and style guidelines above, then call \`add_translations\`.
+4. Report a summary of what was translated, organized by layer and locale.`
+
+      return {
+        messages: [
+          {
+            role: 'user' as const,
+            content: { type: 'text' as const, text: promptText },
           },
         ],
       }
