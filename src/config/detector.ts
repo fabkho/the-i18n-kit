@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { resolve, basename, relative } from 'node:path'
-import { loadKit } from './nuxt-loader.js'
-import type { I18nConfig, LocaleDefinition, LocaleDir } from './types.js'
-import { loadProjectConfig } from './project-config.js'
-import { log } from '../utils/logger.js'
-import { ConfigError } from '../utils/errors.js'
+import { loadKit } from './nuxt-loader'
+import type { I18nConfig, LocaleDefinition, LocaleDir } from './types'
+import { loadProjectConfig } from './project-config'
+import { log } from '../utils/logger'
+import { ConfigError } from '../utils/errors'
 
 /** Cached config instance */
 let cachedConfig: I18nConfig | null = null

@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, beforeAll, afterAll } from 'vitest'
 import { resolve, join } from 'node:path'
 import { cp, rm, mkdir } from 'node:fs/promises'
 import { detectI18nConfig, clearConfigCache } from '../../src/config/detector.js'
+import type { I18nConfig } from '../../src/config/types.js'
 import { readLocaleFile } from '../../src/io/json-reader.js'
 import { mutateLocaleFile } from '../../src/io/json-writer.js'
 import {
@@ -32,10 +33,6 @@ async function copyLocaleFiles() {
   await cp(playgroundRootLocales, tmpRootLocales, { recursive: true })
   await cp(playgroundAdminLocales, tmpAdminLocales, { recursive: true })
 }
-
-afterEach(() => {
-  clearConfigCache()
-})
 
 // ─── Prompt assembly helpers (tested via buildTranslationSystemPrompt logic) ──
 
@@ -77,8 +74,17 @@ describe('translation system prompt assembly', () => {
 // ─── translate_missing: identifying missing keys ─────────────────
 
 describe('translate_missing: missing key identification', () => {
+  let config: I18nConfig
+
+  beforeAll(async () => {
+    config = await detectI18nConfig(appAdminDir)
+  }, 30_000)
+
+  afterAll(() => {
+    clearConfigCache()
+  })
+
   it('identifies missing keys in es-ES for app-admin layer', async () => {
-    const config = await detectI18nConfig(appAdminDir)
     const rootLayer = config.localeDirs.find(d => d.layer === 'root')!
 
     const refFile = join(rootLayer.path, 'de-DE.json')
@@ -95,10 +101,9 @@ describe('translate_missing: missing key identification', () => {
     expect(missing).toContain('admin.users.create')
     expect(missing).toContain('admin.users.edit')
     expect(missing).toHaveLength(3)
-  }, 30_000)
+  })
 
   it('no missing keys for en-US in app-admin layer', async () => {
-    const config = await detectI18nConfig(appAdminDir)
     const rootLayer = config.localeDirs.find(d => d.layer === 'root')!
 
     const refFile = join(rootLayer.path, 'de-DE.json')
@@ -112,10 +117,9 @@ describe('translate_missing: missing key identification', () => {
     const missing = refKeys.filter(k => !targetKeys.has(k))
 
     expect(missing).toHaveLength(0)
-  }, 30_000)
+  })
 
   it('collects reference values for missing keys', async () => {
-    const config = await detectI18nConfig(appAdminDir)
     const rootLayer = config.localeDirs.find(d => d.layer === 'root')!
 
     const refFile = join(rootLayer.path, 'de-DE.json')
@@ -141,10 +145,9 @@ describe('translate_missing: missing key identification', () => {
     expect(keysAndValues['admin.users.list']).toBe('Benutzerliste')
     expect(keysAndValues['admin.users.create']).toBe('Benutzer erstellen')
     expect(keysAndValues['admin.users.edit']).toBe('Benutzer bearbeiten')
-  }, 30_000)
+  })
 
   it('filters specific keys when provided', async () => {
-    const config = await detectI18nConfig(appAdminDir)
     const rootLayer = config.localeDirs.find(d => d.layer === 'root')!
 
     const refFile = join(rootLayer.path, 'de-DE.json')
@@ -164,10 +167,9 @@ describe('translate_missing: missing key identification', () => {
     expect(missing).toContain('admin.users.list')
     expect(missing).toContain('admin.users.create')
     expect(missing).not.toContain('admin.users.edit')
-  }, 30_000)
+  })
 
   it('ignores requested keys that do not exist in reference', async () => {
-    const config = await detectI18nConfig(appAdminDir)
     const rootLayer = config.localeDirs.find(d => d.layer === 'root')!
 
     const refFile = join(rootLayer.path, 'de-DE.json')
@@ -185,7 +187,7 @@ describe('translate_missing: missing key identification', () => {
     expect(missing).toHaveLength(1)
     expect(missing).toContain('admin.users.list')
     expect(missing).not.toContain('nonexistent.key')
-  }, 30_000)
+  })
 })
 
 // ─── translate_missing: writing translated results ───────────────
@@ -479,8 +481,17 @@ describe('sampling response JSON parsing', () => {
 // ─── Prompt content structure ────────────────────────────────────
 
 describe('add-feature-translations prompt structure', () => {
-  it('prompt would include project context when available', async () => {
-    const config = await detectI18nConfig(playgroundDir)
+  let config: I18nConfig
+
+  beforeAll(async () => {
+    config = await detectI18nConfig(playgroundDir)
+  }, 30_000)
+
+  afterAll(() => {
+    clearConfigCache()
+  })
+
+  it('prompt would include project context when available', () => {
     const pc = config.projectConfig
 
     expect(pc).toBeDefined()
@@ -509,7 +520,7 @@ describe('add-feature-translations prompt structure', () => {
     expect(combined).toContain('GLOSSARY')
     expect(combined).toContain('Buchung')
     expect(combined).toContain('Booking')
-  }, 30_000)
+  })
 
   it('prompt workflow mentions all required tool calls', () => {
     const promptText = `Follow these steps:
@@ -527,8 +538,17 @@ describe('add-feature-translations prompt structure', () => {
 })
 
 describe('fix-missing-translations prompt structure', () => {
-  it('prompt would include glossary and translation style', async () => {
-    const config = await detectI18nConfig(playgroundDir)
+  let config: I18nConfig
+
+  beforeAll(async () => {
+    config = await detectI18nConfig(playgroundDir)
+  }, 30_000)
+
+  afterAll(() => {
+    clearConfigCache()
+  })
+
+  it('prompt would include glossary and translation style', () => {
     const pc = config.projectConfig
 
     expect(pc).toBeDefined()
@@ -548,7 +568,7 @@ describe('fix-missing-translations prompt structure', () => {
     expect(combined).toContain('TRANSLATION STYLE')
     expect(combined).toContain('GLOSSARY')
     expect(combined).toContain('Buchung')
-  }, 30_000)
+  })
 
   it('prompt workflow mentions required tool calls', () => {
     const promptText = `Follow these steps:
