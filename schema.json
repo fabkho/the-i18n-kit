@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/anny-co/nuxt-i18n-mcp/main/schema.json",
+  "title": "nuxt-i18n-mcp project configuration",
+  "description": "Configuration file for the nuxt-i18n-mcp MCP server. Place as .i18n-mcp.json at your Nuxt project root (next to nuxt.config.ts). All fields are optional — the server passes them to the AI agent as context for translation workflows.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Path or URL to the JSON schema for IDE autocompletion."
+    },
+    "context": {
+      "type": "string",
+      "description": "Free-form project background for the agent — business domain, user base, brand voice, anything that helps the agent understand the project."
+    },
+    "layerRules": {
+      "type": "array",
+      "description": "Rules that help the agent decide which Nuxt layer a new translation key belongs to. The agent interprets the natural-language 'when' field.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "layer",
+          "description",
+          "when"
+        ],
+        "properties": {
+          "layer": {
+            "type": "string",
+            "description": "Layer name as it appears in the Nuxt config (e.g., 'root', 'app-admin', 'app-shop')."
+          },
+          "description": {
+            "type": "string",
+            "description": "What this layer contains — key namespaces, domain scope, etc."
+          },
+          "when": {
+            "type": "string",
+            "description": "Natural-language rule describing when a key should go in this layer."
+          }
+        }
+      }
+    },
+    "glossary": {
+      "type": "object",
+      "description": "Term dictionary for consistent translations. Keys are source terms, values describe the required translation or usage note.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "translationPrompt": {
+      "type": "string",
+      "description": "System prompt prepended to all translation requests (both MCP sampling and agent-inline fallback). Sets tone, style, and constraints."
+    },
+    "localeNotes": {
+      "type": "object",
+      "description": "Per-locale context included in translation prompts. Keys are locale codes (e.g., 'de-DE', 'en-US', 'de-DE-formal'), values describe register, regional conventions, or other locale-specific guidance.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "examples": {
+      "type": "array",
+      "description": "Few-shot translation examples that demonstrate the project's style. The agent uses these as reference when generating translations.",
+      "items": {
+        "type": "object",
+        "description": "A single translation example. Must have a 'key' property. All other properties are locale codes (e.g., 'de-DE', 'en-US') mapped to their translated value, or 'note' with a style comment.",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The dot-path translation key (e.g., 'common.actions.save')."
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional style or context note about this example."
+          }
+        },
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

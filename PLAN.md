@@ -742,7 +742,7 @@ No API keys. No env vars. The server auto-detects everything from the project's 
 - [x] Handle edge cases: `validateTranslationValue()` + `getTranslationStats()` for `@:` linked messages, `{param}` placeholders, HTML, pluralization pipes
 - [x] BabelEdit compatibility (sorted keys, consistent formatting, valid JSON)
 - [x] Auto-detect indentation style per file (tabs vs spaces, 2-space vs 4-space) and preserve it
-- [ ] `.i18n-mcp.json` JSON schema for IDE autocompletion
+- [x] `.i18n-mcp.json` JSON schema for IDE autocompletion
 - [ ] README with setup instructions
 - [ ] Team documentation and onboarding guide
 

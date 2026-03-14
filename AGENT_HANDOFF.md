@@ -121,7 +121,7 @@ Both prompts include project config context (glossary, layer rules, examples) wh
 ## What's Left (Phase 5 remaining + backlog)
 
 ### Phase 5 — remaining items
-- [ ] `.i18n-mcp.json` JSON schema for IDE autocompletion
+- [x] `.i18n-mcp.json` JSON schema for IDE autocompletion
 - [ ] README with setup instructions
 - [ ] Team documentation and onboarding guide
 

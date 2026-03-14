@@ -1,4 +1,5 @@
 {
+  "$schema": "../schema.json",
   "context": "This is the anny playground project. It demonstrates a Nuxt app with i18n support, featuring a root layer with shared translations and an app-admin layer with admin-specific translations.",
   "layerRules": [
     {
