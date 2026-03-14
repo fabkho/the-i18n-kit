@@ -18,6 +18,97 @@ import { ToolError } from './utils/errors.js'
 import { join } from 'node:path'
 import { readdir } from 'node:fs/promises'
 
+// ─── Shared helpers ───────────────────────────────────────────────
+
+/**
+ * Format a caught error into an MCP tool error response.
+ */
+function toolErrorResponse(context: string, error: unknown) {
+  return {
+    content: [
+      {
+        type: 'text' as const,
+        text: error instanceof ToolError
+          ? `[${error.code}] ${error.message}`
+          : `Error ${context}: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    ],
+    isError: true,
+  }
+}
+
+/**
+ * Shared logic for add_translations and update_translations.
+ * - mode 'add': fails if key already exists
+ * - mode 'update': fails if key does not exist
+ */
+async function applyTranslations(
+  config: I18nConfig,
+  layer: string,
+  translations: Record<string, Record<string, string>>,
+  mode: 'add' | 'update',
+  findLocale: (config: I18nConfig, ref: string) => ReturnType<typeof findLocaleImpl>,
+  resolveLocaleFilePath: (config: I18nConfig, layer: string, file: string) => string | null,
+): Promise<{ applied: string[]; skipped: string[]; warnings: string[]; filesWritten: number }> {
+  const applied: string[] = []
+  const skipped: string[] = []
+  const warnings: string[] = []
+  const filesWritten = new Set<string>()
+
+  // Group translations by locale file
+  const byFile = new Map<string, Array<{ key: string; value: string }>>()
+
+  for (const [key, localeValues] of Object.entries(translations)) {
+    for (const [localeRef, value] of Object.entries(localeValues)) {
+      if (mode === 'add') {
+        const warning = validateTranslationValue(value)
+        if (warning) {
+          warnings.push(`${key} (${localeRef}): ${warning}`)
+        }
+      }
+      const locale = findLocale(config, localeRef)
+      if (!locale) {
+        log.warn(`Locale not found: ${localeRef}, skipping`)
+        continue
+      }
+      const filePath = resolveLocaleFilePath(config, layer, locale.file)
+      if (!filePath) {
+        log.warn(`No locale dir found for layer '${layer}', skipping`)
+        continue
+      }
+      if (!byFile.has(filePath)) {
+        byFile.set(filePath, [])
+      }
+      byFile.get(filePath)!.push({ key, value })
+    }
+  }
+
+  // Apply changes per file
+  for (const [filePath, entries] of byFile) {
+    await mutateLocaleFile(filePath, (data) => {
+      for (const { key, value } of entries) {
+        const exists = hasNestedKey(data, key)
+        if (mode === 'add' && exists) {
+          skipped.push(key)
+        } else if (mode === 'update' && !exists) {
+          skipped.push(key)
+        } else {
+          setNestedValue(data, key, value)
+          applied.push(key)
+        }
+      }
+    })
+    filesWritten.add(filePath)
+  }
+
+  return {
+    applied: [...new Set(applied)],
+    skipped: [...new Set(skipped)],
+    warnings,
+    filesWritten: filesWritten.size,
+  }
+}
+
 // ─── Sampling prompt helpers ──────────────────────────────────────
 
 /**
@@ -119,6 +210,14 @@ function buildFallbackContext(
   return context
 }
 
+// ─── Find locale helper (module-level for type reuse) ────────────
+
+function findLocaleImpl(config: I18nConfig, localeRef: string) {
+  return config.locales.find(
+    l => l.code === localeRef || l.file === localeRef || l.language === localeRef,
+  )
+}
+
 /**
  * Create and configure the MCP server with all tools.
  */
@@ -142,9 +241,7 @@ export function createServer(): McpServer {
 
   // Helper: find locale definition by locale code or file name
   function findLocale(config: I18nConfig, localeRef: string) {
-    return config.locales.find(
-      l => l.code === localeRef || l.file === localeRef || l.language === localeRef,
-    )
+    return findLocaleImpl(config, localeRef)
   }
 
   // ─── Tool: detect_i18n_config ──────────────────────────────────
@@ -175,17 +272,7 @@ export function createServer(): McpServer {
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error detecting i18n config: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('detecting i18n config', error)
       }
     },
   )
@@ -256,17 +343,7 @@ export function createServer(): McpServer {
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error listing locale dirs: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('listing locale dirs', error)
       }
     },
   )
@@ -336,17 +413,7 @@ export function createServer(): McpServer {
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error getting translations: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('getting translations', error)
       }
     },
   )
@@ -381,56 +448,14 @@ export function createServer(): McpServer {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
 
-        const added: string[] = []
-        const skipped: string[] = []
-        const warnings: string[] = []
-        const filesWritten = new Set<string>()
-
-        // Group translations by locale file
-        const byFile = new Map<string, Array<{ key: string; value: string }>>()
-
-        for (const [key, localeValues] of Object.entries(translations)) {
-          for (const [localeRef, value] of Object.entries(localeValues)) {
-            const warning = validateTranslationValue(value)
-            if (warning) {
-              warnings.push(`${key} (${localeRef}): ${warning}`)
-            }
-            const locale = findLocale(config, localeRef)
-            if (!locale) {
-              log.warn(`Locale not found: ${localeRef}, skipping`)
-              continue
-            }
-            const filePath = resolveLocaleFilePath(config, layer, locale.file)
-            if (!filePath) {
-              log.warn(`No locale dir found for layer '${layer}', skipping`)
-              continue
-            }
-            if (!byFile.has(filePath)) {
-              byFile.set(filePath, [])
-            }
-            byFile.get(filePath)!.push({ key, value })
-          }
-        }
-
-        // Apply changes per file
-        for (const [filePath, entries] of byFile) {
-          await mutateLocaleFile(filePath, (data) => {
-            for (const { key, value } of entries) {
-              if (hasNestedKey(data, key)) {
-                skipped.push(key)
-              } else {
-                setNestedValue(data, key, value)
-                added.push(key)
-              }
-            }
-          })
-          filesWritten.add(filePath)
-        }
+        const { applied, skipped, warnings, filesWritten } = await applyTranslations(
+          config, layer, translations, 'add', findLocale, resolveLocaleFilePath,
+        )
 
         const summary: Record<string, unknown> = {
-          added: [...new Set(added)],
-          skipped: [...new Set(skipped)],
-          filesWritten: filesWritten.size,
+          added: applied,
+          skipped,
+          filesWritten,
         }
         if (warnings.length > 0) {
           summary.warnings = warnings
@@ -445,17 +470,7 @@ export function createServer(): McpServer {
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error adding translations: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('adding translations', error)
       }
     },
   )
@@ -490,73 +505,24 @@ export function createServer(): McpServer {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
 
-        const updated: string[] = []
-        const skipped: string[] = []
-        const filesWritten = new Set<string>()
-
-        // Group translations by locale file
-        const byFile = new Map<string, Array<{ key: string; value: string }>>()
-
-        for (const [key, localeValues] of Object.entries(translations)) {
-          for (const [localeRef, value] of Object.entries(localeValues)) {
-            const locale = findLocale(config, localeRef)
-            if (!locale) {
-              log.warn(`Locale not found: ${localeRef}, skipping`)
-              continue
-            }
-            const filePath = resolveLocaleFilePath(config, layer, locale.file)
-            if (!filePath) {
-              log.warn(`No locale dir found for layer '${layer}', skipping`)
-              continue
-            }
-            if (!byFile.has(filePath)) {
-              byFile.set(filePath, [])
-            }
-            byFile.get(filePath)!.push({ key, value })
-          }
-        }
-
-        // Apply changes per file
-        for (const [filePath, entries] of byFile) {
-          await mutateLocaleFile(filePath, (data) => {
-            for (const { key, value } of entries) {
-              if (!hasNestedKey(data, key)) {
-                skipped.push(key)
-              } else {
-                setNestedValue(data, key, value)
-                updated.push(key)
-              }
-            }
-          })
-          filesWritten.add(filePath)
-        }
-
-        const summary = {
-          updated: [...new Set(updated)],
-          skipped: [...new Set(skipped)],
-          filesWritten: filesWritten.size,
-        }
+        const { applied, skipped, filesWritten } = await applyTranslations(
+          config, layer, translations, 'update', findLocale, resolveLocaleFilePath,
+        )
 
         return {
           content: [
             {
               type: 'text' as const,
-              text: JSON.stringify(summary, null, 2),
+              text: JSON.stringify({
+                updated: applied,
+                skipped,
+                filesWritten,
+              }, null, 2),
             },
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error updating translations: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('updating translations', error)
       }
     },
   )
@@ -675,17 +641,7 @@ export function createServer(): McpServer {
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error finding missing translations: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('finding missing translations', error)
       }
     },
   )
@@ -786,17 +742,7 @@ export function createServer(): McpServer {
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error searching translations: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('searching translations', error)
       }
     },
   )
@@ -908,17 +854,7 @@ export function createServer(): McpServer {
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error removing translations: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('removing translations', error)
       }
     },
   )
@@ -1053,17 +989,7 @@ export function createServer(): McpServer {
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error renaming translation key: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('renaming translation key', error)
       }
     },
   )
@@ -1192,6 +1118,9 @@ export function createServer(): McpServer {
             const failed: string[] = []
             const keyEntries = Object.entries(keysAndValues)
 
+            // Accumulate all translations across batches, write once at the end
+            const allTranslations: Record<string, string> = {}
+
             // Process in batches
             for (let i = 0; i < keyEntries.length; i += maxBatch) {
               const batch = Object.fromEntries(keyEntries.slice(i, i + maxBatch))
@@ -1229,21 +1158,25 @@ export function createServer(): McpServer {
 
                 const translations = JSON.parse(cleanJson) as Record<string, string>
 
-                // Write translations to file
-                if (targetFilePath) {
-                  await mutateLocaleFile(targetFilePath, (data) => {
-                    for (const [key, value] of Object.entries(translations)) {
-                      if (typeof value === 'string') {
-                        setNestedValue(data, key, value)
-                        translated.push(key)
-                      }
-                    }
-                  })
+                for (const [key, value] of Object.entries(translations)) {
+                  if (typeof value === 'string') {
+                    allTranslations[key] = value
+                    translated.push(key)
+                  }
                 }
               } catch (error) {
                 log.warn(`Sampling failed for batch in ${target.code}: ${error instanceof Error ? error.message : String(error)}`)
                 failed.push(...Object.keys(batch))
               }
+            }
+
+            // Single write per locale file after all batches
+            if (targetFilePath && Object.keys(allTranslations).length > 0) {
+              await mutateLocaleFile(targetFilePath, (data) => {
+                for (const [key, value] of Object.entries(allTranslations)) {
+                  setNestedValue(data, key, value)
+                }
+              })
             }
 
             results[target.code] = { translated, failed, samplingUsed: true }
@@ -1296,17 +1229,7 @@ export function createServer(): McpServer {
           ],
         }
       } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: error instanceof ToolError
-                ? `[${error.code}] ${error.message}`
-                : `Error translating missing keys: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        }
+        return toolErrorResponse('translating missing keys', error)
       }
     },
   )
