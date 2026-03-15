@@ -1495,6 +1495,193 @@ export function createServer(): McpServer {
     },
   )
 
+  // ─── cleanup_unused_translations ──────────────────────────────
+
+  server.registerTool(
+    'cleanup_unused_translations',
+    {
+      title: 'Cleanup Unused Translations',
+      description:
+        'Find translation keys not referenced in source code and remove them. Combines find_orphan_keys + remove_translations in one step. Always does a dry run first unless dryRun is explicitly set to false.',
+      inputSchema: {
+        layer: z.string().optional().describe('Layer name to clean up. If omitted, cleans all layers.'),
+        locale: z.string().optional().describe('Locale code to read keys from for orphan detection. Defaults to the project default locale.'),
+        scanDirs: z.array(z.string()).optional().describe('Directories to scan for source code (absolute paths). Defaults to all layer root directories.'),
+        excludeDirs: z.array(z.string()).optional().describe('Additional directory names to skip when scanning (e.g., ["storybook", "__tests__"]).'),
+        dryRun: z.boolean().optional().describe('If true (default), only report what would be removed. Set to false to actually delete the keys.'),
+        projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
+      },
+    },
+    async ({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir }) => {
+      try {
+        const dir = projectDir ?? process.cwd()
+        const config = await detectI18nConfig(dir)
+        const isDryRun = dryRun ?? true
+
+        // Determine which locale to read keys from
+        const localeCode = locale ?? config.defaultLocale
+        const localeDef = findLocale(config, localeCode)
+        if (!localeDef) {
+          throw new ToolError(
+            `Locale not found: "${localeCode}". Available: ${config.locales.map(l => l.code).join(', ')}`,
+            'LOCALE_NOT_FOUND',
+          )
+        }
+
+        // Determine layers to check
+        const layersToCheck = layer
+          ? config.localeDirs.filter(d => d.layer === layer)
+          : config.localeDirs.filter(d => !d.aliasOf)
+
+        if (layersToCheck.length === 0) {
+          if (layer) {
+            throw new ToolError(
+              `Layer not found: "${layer}". Available: ${config.localeDirs.map(d => d.layer).join(', ')}`,
+              'LAYER_NOT_FOUND',
+            )
+          }
+          throw new ToolError('No locale directories found.', 'LAYER_NOT_FOUND')
+        }
+
+        // Collect translation keys per layer
+        const keysByLayer = new Map<string, string[]>()
+        for (const localeDir of layersToCheck) {
+          const filePath = resolveLocaleFilePath(config, localeDir.layer, localeDef.file)
+          if (!filePath) continue
+
+          let data: Record<string, unknown>
+          try {
+            data = await readLocaleFile(filePath)
+          } catch {
+            continue
+          }
+
+          keysByLayer.set(localeDir.layer, getLeafKeys(data))
+        }
+
+        const totalKeys = [...keysByLayer.values()].reduce((sum, keys) => sum + keys.length, 0)
+        if (totalKeys === 0) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({ orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }, null, 2),
+            }],
+          }
+        }
+
+        // Scan source files for key usage
+        const dirsToScan = scanDirs ?? [...new Set(layersToCheck.map(d => d.layerRootDir))]
+        const combinedUniqueKeys = new Set<string>()
+        let totalFilesScanned = 0
+        const allDynamicKeys: Array<{ expression: string; file: string; line: number }> = []
+
+        for (const scanDir of dirsToScan) {
+          const result = await scanSourceFiles(scanDir, excludeDirs)
+          totalFilesScanned += result.filesScanned
+          for (const key of result.uniqueKeys) combinedUniqueKeys.add(key)
+          allDynamicKeys.push(...result.dynamicKeys.map(dk => ({
+            expression: dk.expression,
+            file: toRelativePath(dk.file, dir),
+            line: dk.line,
+          })))
+        }
+
+        // Find orphan keys per layer
+        const orphansByLayer: Record<string, string[]> = {}
+        let orphanCount = 0
+        for (const [layerName, keys] of keysByLayer) {
+          const orphans = keys.filter(k => !combinedUniqueKeys.has(k)).sort()
+          if (orphans.length > 0) {
+            orphansByLayer[layerName] = orphans
+            orphanCount += orphans.length
+          }
+        }
+
+        if (orphanCount === 0) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: JSON.stringify({
+                orphanKeys: {},
+                summary: { totalKeys, orphanCount: 0, filesScanned: totalFilesScanned, message: 'No orphan keys found. All translation keys are referenced in code.' },
+              }, null, 2),
+            }],
+          }
+        }
+
+        // Dry run — just report
+        if (isDryRun) {
+          const output: Record<string, unknown> = {
+            orphanKeys: orphansByLayer,
+            summary: {
+              dryRun: true,
+              totalKeys,
+              orphanCount,
+              usedCount: totalKeys - orphanCount,
+              filesScanned: totalFilesScanned,
+              message: `Found ${orphanCount} orphan key(s). Call again with dryRun: false to remove them.`,
+            },
+          }
+          if (allDynamicKeys.length > 0) {
+            output.dynamicKeyWarning = `${allDynamicKeys.length} dynamic key reference(s) found. Some "orphan" keys may be used via dynamic keys. Review before removing.`
+            output.dynamicKeys = allDynamicKeys
+          }
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
+          }
+        }
+
+        // Actually remove orphan keys from all locale files in each layer
+        const removedByLayer: Record<string, string[]> = {}
+        let totalFilesWritten = 0
+
+        for (const [layerName, orphans] of Object.entries(orphansByLayer)) {
+          const localeDir = config.localeDirs.find(d => d.layer === layerName)!
+          if (localeDir.aliasOf) continue
+
+          const removedKeys: string[] = []
+
+          for (const localeDef2 of config.locales) {
+            const filePath = resolveLocaleFilePath(config, layerName, localeDef2.file)
+            if (!filePath) continue
+
+            try {
+              await mutateLocaleFile(filePath, (fileData) => {
+                for (const key of orphans) {
+                  removeNestedValue(fileData, key)
+                }
+              })
+              totalFilesWritten++
+            } catch {
+              continue
+            }
+          }
+
+          removedByLayer[layerName] = orphans
+        }
+
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              removed: removedByLayer,
+              summary: {
+                dryRun: false,
+                totalKeys,
+                removedCount: orphanCount,
+                remainingCount: totalKeys - orphanCount,
+                filesWritten: totalFilesWritten,
+                filesScanned: totalFilesScanned,
+              },
+            }, null, 2),
+          }],
+        }
+      } catch (error) {
+        return toolErrorResponse('cleaning up unused translations', error)
+      }
+    },
+  )
+
   // ─── Resources ────────────────────────────────────────────────
 
   server.registerResource(
