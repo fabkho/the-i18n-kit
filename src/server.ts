@@ -1396,6 +1396,105 @@ export function createServer(): McpServer {
     },
   )
 
+  // ─── scan_code_usage ──────────────────────────────────────────
+
+  server.registerTool(
+    'scan_code_usage',
+    {
+      title: 'Scan Code for Translation Key Usage',
+      description:
+        'Scan Vue/TS source files to find where translation keys are referenced. Shows file paths and line numbers for each key. Useful for understanding where a key is used before renaming or removing it.',
+      inputSchema: {
+        keys: z.array(z.string()).optional().describe('Specific dot-path keys to search for. If omitted, returns all key usages found in code.'),
+        scanDirs: z.array(z.string()).optional().describe('Directories to scan (absolute paths). Defaults to all layer root directories.'),
+        excludeDirs: z.array(z.string()).optional().describe('Additional directory names to skip (e.g., ["storybook", "__tests__"]).'),
+        projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
+      },
+    },
+    async ({ keys, scanDirs, excludeDirs, projectDir }) => {
+      try {
+        const dir = projectDir ?? process.cwd()
+        const config = await detectI18nConfig(dir)
+
+        // Determine directories to scan
+        const layersToScan = config.localeDirs.filter(d => !d.aliasOf)
+        const dirsToScan = scanDirs ?? [...new Set(layersToScan.map(d => d.layerRootDir))]
+
+        // Scan all source files
+        const allUsages: Array<{ key: string; file: string; line: number; callee: string }> = []
+        const allDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }> = []
+        let totalFilesScanned = 0
+
+        for (const scanDir of dirsToScan) {
+          const result = await scanSourceFiles(scanDir, excludeDirs)
+          totalFilesScanned += result.filesScanned
+          allUsages.push(...result.usages)
+          allDynamicKeys.push(...result.dynamicKeys)
+        }
+
+        // Filter to requested keys if specified
+        const filteredUsages = keys
+          ? allUsages.filter(u => keys.includes(u.key))
+          : allUsages
+
+        // Group usages by key
+        const byKey: Record<string, Array<{ file: string; line: number; callee: string }>> = {}
+        for (const usage of filteredUsages) {
+          if (!byKey[usage.key]) byKey[usage.key] = []
+          byKey[usage.key].push({
+            file: toRelativePath(usage.file, dir),
+            line: usage.line,
+            callee: usage.callee,
+          })
+        }
+
+        // Sort keys alphabetically
+        const sortedByKey: Record<string, Array<{ file: string; line: number; callee: string }>> = {}
+        for (const key of Object.keys(byKey).sort()) {
+          sortedByKey[key] = byKey[key]
+        }
+
+        // Report keys that were requested but not found
+        const notFound = keys
+          ? keys.filter(k => !byKey[k])
+          : []
+
+        const output: Record<string, unknown> = {
+          usages: sortedByKey,
+          summary: {
+            uniqueKeysFound: Object.keys(sortedByKey).length,
+            totalReferences: filteredUsages.length,
+            filesScanned: totalFilesScanned,
+            dirsScanned: dirsToScan,
+          },
+        }
+
+        if (notFound.length > 0) {
+          output.notFoundInCode = notFound
+        }
+
+        if (allDynamicKeys.length > 0) {
+          output.dynamicKeys = allDynamicKeys.map(dk => ({
+            expression: dk.expression,
+            file: toRelativePath(dk.file, dir),
+            line: dk.line,
+          }))
+        }
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(output, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return toolErrorResponse('scanning code usage', error)
+      }
+    },
+  )
+
   // ─── Resources ────────────────────────────────────────────────
 
   server.registerResource(
