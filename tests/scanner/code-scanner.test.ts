@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { extractKeys, scanSourceFiles, toRelativePath } from '../../src/scanner/code-scanner.js'
 
-const tmpDir = join(import.meta.dirname, '../../.tmp-test/scanner')
+const tmpDir = join(dirname(fileURLToPath(import.meta.url)), '../../.tmp-test/scanner')
 
 describe('extractKeys', () => {
   function extract(content: string, filePath = 'test.vue') {

@@ -1294,6 +1294,14 @@ export function createServer(): McpServer {
           throw new ToolError('No locale directories found.', 'LAYER_NOT_FOUND')
         }
 
+        // Reject alias layers — they share files with their target layer
+        if (layer && layersToCheck[0]?.aliasOf) {
+          throw new ToolError(
+            `Layer "${layer}" is an alias of "${layersToCheck[0].aliasOf}". Use the target layer instead.`,
+            'LAYER_IS_ALIAS',
+          )
+        }
+
         // Collect all translation keys from locale files
         const allTranslationKeys = new Map<string, string>() // key -> layer
         for (const localeDir of layersToCheck) {
@@ -1541,6 +1549,14 @@ export function createServer(): McpServer {
             )
           }
           throw new ToolError('No locale directories found.', 'LAYER_NOT_FOUND')
+        }
+
+        // Reject alias layers — they share files with their target layer
+        if (layer && layersToCheck[0]?.aliasOf) {
+          throw new ToolError(
+            `Layer "${layer}" is an alias of "${layersToCheck[0].aliasOf}". Use the target layer instead.`,
+            'LAYER_IS_ALIAS',
+          )
         }
 
         // Collect translation keys per layer
