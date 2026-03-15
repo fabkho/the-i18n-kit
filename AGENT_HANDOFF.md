@@ -7,6 +7,9 @@ An MCP (Model Context Protocol) server that gives AI coding agents structured to
 **Transport:** stdio (local MCP server, spawned by the host IDE)
 **SDK:** TypeScript MCP SDK (`@modelcontextprotocol/sdk`)
 **Build:** tsdown, pnpm, vitest
+**Lint:** ESLint 10 (flat config) + typescript-eslint
+**Commits:** Conventional Commits enforced via commitlint + Husky
+**CI/CD:** GitHub Actions (CI on push/PR) + Release Please (automated versioning + npm publish)
 
 ## Current State
 
@@ -51,6 +54,11 @@ tests/
     ├── remove-and-rename.test.ts     # remove + rename across locales (14 tests)
     └── translate-and-prompts.test.ts # translate_missing + prompt assembly (29 tests)
 
+.github/
+└── workflows/
+    ├── ci.yml                # Lint + typecheck + test + build (Node 18 & 22 matrix)
+    └── release.yml           # Release Please + npm publish on tag
+
 playground/                   # Real Nuxt 4 project for integration testing
 ├── nuxt.config.ts            # Root layer: 4 locales (de, en, fr, es)
 ├── i18n/locales/             # Root locale files (common.* namespace)
@@ -60,7 +68,13 @@ playground/                   # Real Nuxt 4 project for integration testing
     └── i18n/locales/         # Admin locale files (admin.* namespace)
                               # es-ES intentionally missing admin.users.* keys
 
+eslint.config.js              # ESLint flat config — typescript-eslint + no-console
+commitlint.config.ts          # Conventional commits enforcement
+release-please-config.json    # Release Please package config
+.release-please-manifest.json # Current version tracker for Release Please
 schema.json                   # JSON Schema for .i18n-mcp.json (2020-12)
+LICENSE                       # MIT
+CHANGELOG.md                  # Auto-maintained by Release Please
 ```
 
 ## Tools (10)
@@ -139,29 +153,61 @@ Benchmarked at 3000–5000 leaf keys (~8000 JSON lines):
 
 No bottlenecks. `loadNuxt` (~800ms cold) is the only slow path and it's cached after first call.
 
+## Dependencies
+
+**Runtime:**
+- `@modelcontextprotocol/sdk` — MCP protocol implementation
+- `glob` — File discovery
+- `zod` — Input schema validation
+
+**Peer:**
+- `@nuxt/kit` — Resolved from the target project's `node_modules`
+
+**Dev:**
+- `eslint` + `typescript-eslint` — Linting with TypeScript-aware rules
+- `@commitlint/cli` + `@commitlint/config-conventional` — Conventional commit enforcement
+- `husky` — Git hooks (pre-commit: lint + typecheck, commit-msg: commitlint)
+- `tsdown` — Build toolchain
+- `typescript` — Type checking
+- `vitest` — Test runner
+
+## CI/CD Architecture
+
+### CI (`ci.yml`)
+- **Triggers:** Push to `main`, PRs targeting `main`
+- **Matrix:** Node 18 + 22 on `ubuntu-latest`
+- **Steps:** Install → Lint → Typecheck → Test → Build
+- **Concurrency:** Cancels in-progress runs for the same branch/PR
+
+### Release (`release.yml`)
+- **Triggers:** Push to `main` (after CI passes)
+- **Job 1 — Release Please:** Opens/updates a release PR that bumps version + updates CHANGELOG. When merged, creates a GitHub Release + git tag.
+- **Job 2 — Publish:** Runs only when a release is created. Builds and publishes to npm.
+- **Requires:** `NPM_TOKEN` secret in GitHub repo settings.
+
+### Git Hooks (Husky)
+- **pre-commit:** `pnpm lint && pnpm typecheck`
+- **commit-msg:** `pnpm exec commitlint --edit "$1"` — enforces conventional commit format
+
+### Release Please Config
+- `release-please-config.json` — package config (node release type, bump-minor-pre-major)
+- `.release-please-manifest.json` — tracks current version (`0.1.0-alpha.1`)
+- Version bumps follow conventional commits: `feat:` → minor, `fix:` → patch, `feat!:` / `BREAKING CHANGE` → major (after 1.0)
+
 ## Next Steps
 
-### 1. Setup GitHub
-- [ ] Create repo (public or org-scoped)
-- [ ] Push current code
-- [ ] Update `$id` in `schema.json` to point to the real repo URL
-- [ ] Update README schema URL to match
+### Done
+- [x] GitHub Actions — CI (lint, typecheck, test on Node 18 & 22) + publish workflow
+- [x] Semantic versioning — conventional commits (commitlint + Husky) + Release Please
+- [x] CHANGELOG.md — auto-maintained by Release Please
+- [x] LICENSE — MIT
+- [x] ESLint — flat config with typescript-eslint, `no-console` enforced (protects stdio transport)
 
-### 2. Update README etc.
-- [ ] Add badges (CI, npm version, license)
+### Remaining
+- [ ] Add badges (CI, npm version, license) to README
 - [ ] Verify all setup instructions work with published package
-- [ ] Add CHANGELOG.md
 
-### 3. Add semantic versioning
-- [ ] Set up conventional commits
-- [ ] Configure release tooling (changesets, semantic-release, or release-it)
-
-### 4. Add GitHub Actions
-- [ ] CI workflow: lint, typecheck, test on push/PR
-- [ ] Publish workflow: build + publish to npm on release/tag
-- [ ] Consider: auto-generate changelog from conventional commits
-
-### 5. Tackle backlog items
+### Backlog
 Priority order (see PLAN.md Section 18 for full details):
 
 **Code analysis** (new tools, shared `code-scanner.ts` core):
@@ -183,6 +229,7 @@ Priority order (see PLAN.md Section 18 for full details):
 pnpm build          # Build via tsdown -> dist/index.js
 pnpm test           # Run all 131 tests
 pnpm test:perf      # Run performance benchmarks
+pnpm lint           # ESLint (typescript-eslint flat config)
 pnpm typecheck      # tsc --noEmit
 pnpm start          # Start the MCP server on stdio
 pnpm inspect        # Open MCP Inspector for manual testing

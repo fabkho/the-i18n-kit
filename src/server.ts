@@ -1,6 +1,6 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { detectI18nConfig, clearConfigCache, getCachedConfig } from './config/detector.js'
+import { detectI18nConfig, getCachedConfig } from './config/detector.js'
 import type { I18nConfig, ProjectConfig } from './config/types.js'
 import { readLocaleFile } from './io/json-reader.js'
 import { mutateLocaleFile } from './io/json-writer.js'
