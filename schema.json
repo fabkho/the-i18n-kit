@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/anny-co/nuxt-i18n-mcp/main/schema.json",
+  "$id": "https://raw.githubusercontent.com/fabkho/nuxt-i18n-mcp/main/schema.json",
   "title": "nuxt-i18n-mcp project configuration",
   "description": "Configuration file for the nuxt-i18n-mcp MCP server. Place as .i18n-mcp.json at your Nuxt project root (next to nuxt.config.ts). All fields are optional — the server passes them to the AI agent as context for translation workflows.",
   "type": "object",
