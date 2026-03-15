@@ -36,7 +36,7 @@ export async function detectI18nConfig(projectDir: string): Promise<I18nConfig> 
         vite: { clearScreen: false },
       },
     })
-  } catch (error) {
+  } catch (_error) {
     // Retry without modules — some may fail to load outside of full build context
     log.warn('Initial loadNuxt failed, retrying without modules...')
     try {

@@ -7,14 +7,19 @@ An MCP (Model Context Protocol) server that gives AI coding agents structured to
 **Transport:** stdio (local MCP server, spawned by the host IDE)
 **SDK:** TypeScript MCP SDK (`@modelcontextprotocol/sdk`)
 **Build:** tsdown, pnpm, vitest
+**Lint:** ESLint 10 (flat config) + typescript-eslint
+**Commits:** Conventional Commits enforced via commitlint + Husky
+**CI/CD:** GitHub Actions (CI on push/PR) + Release Please (automated versioning + npm publish)
+**Repo:** `github.com:fabkho/nuxt-i18n-mcp` (private, alpha)
+**Version:** `0.1.0-alpha.1`
 
 ## Current State
 
-All 5 phases complete. Repo review done. Ready for publishing.
+All 5 phases complete + code analysis tools added. In alpha testing on a real Nuxt monorepo.
 
-- **10 tools**, **2 prompts**, **1 resource template**
-- **131 tests** across 8 test files + 34 perf benchmarks
-- Build produces single `dist/index.js` (~60KB)
+- **13 tools**, **2 prompts**, **1 resource template**
+- **179 tests** across 9 test files + 34 perf benchmarks
+- Build produces single `dist/index.js` (~75KB)
 - Tested with MCP Inspector, Zed (tools + prompts), and VS Code (tools + prompts + sampling)
 
 ## Project Structure
@@ -32,6 +37,8 @@ src/
 │   ├── json-reader.ts        # JSON file reader with mtime-based caching
 │   ├── json-writer.ts        # Atomic JSON writer with format preservation
 │   └── key-operations.ts     # Nested JSON manipulation via dot-paths
+├── scanner/
+│   └── code-scanner.ts       # Source code scanner — extracts $t()/ t() key references
 └── utils/
     ├── errors.ts             # ConfigError, FileIOError, ToolError
     └── logger.ts             # All output to stderr (never stdout)
@@ -46,10 +53,17 @@ tests/
 │   └── key-operations.test.ts # get/set/remove/rename/sort on nested objects (30 tests)
 ├── perf/
 │   └── benchmark.test.ts     # Performance benchmarks (34 tests, excluded from default run)
+├── scanner/
+│   └── code-scanner.test.ts  # Key extraction, false positives, file walking (47 tests)
 └── tools/
-    ├── missing-and-search.test.ts    # get_missing + search logic (15 tests)
+    ├── missing-and-search.test.ts    # get_missing + search logic (16 tests)
     ├── remove-and-rename.test.ts     # remove + rename across locales (14 tests)
     └── translate-and-prompts.test.ts # translate_missing + prompt assembly (29 tests)
+
+.github/
+└── workflows/
+    ├── ci.yml                # Lint + typecheck + test + build (Node 18 & 22 matrix)
+    └── release.yml           # Release Please + npm publish on tag
 
 playground/                   # Real Nuxt 4 project for integration testing
 ├── nuxt.config.ts            # Root layer: 4 locales (de, en, fr, es)
@@ -59,24 +73,47 @@ playground/                   # Real Nuxt 4 project for integration testing
     ├── nuxt.config.ts        # extends: ['../']
     └── i18n/locales/         # Admin locale files (admin.* namespace)
                               # es-ES intentionally missing admin.users.* keys
+                              # fr-FR has admin.users.edit set to "" (empty-as-missing test)
 
+eslint.config.js              # ESLint flat config — typescript-eslint + no-console
+commitlint.config.ts          # Conventional commits enforcement
+release-please-config.json    # Release Please package config
+.release-please-manifest.json # Current version tracker for Release Please
 schema.json                   # JSON Schema for .i18n-mcp.json (2020-12)
+LICENSE                       # MIT
+CHANGELOG.md                  # Auto-maintained by Release Please
 ```
 
-## Tools (10)
+## Tools (13)
 
+### Config & Discovery
 | Tool | Purpose |
 |------|---------|
 | `detect_i18n_config` | Load Nuxt config, return locales, layers, project config |
 | `list_locale_dirs` | List locale directories with file counts and top-level keys |
+
+### Read & Search
+| Tool | Purpose |
+|------|---------|
 | `get_translations` | Read values for dot-path keys from a layer/locale |
+| `get_missing_translations` | Find keys in reference locale missing (or empty) from targets |
+| `search_translations` | Search by key pattern or value substring |
+
+### Write & Modify
+| Tool | Purpose |
+|------|---------|
 | `add_translations` | Add new keys across locales (fails if key exists) |
 | `update_translations` | Update existing keys (fails if key doesn't exist) |
-| `get_missing_translations` | Find keys in reference locale missing from targets |
-| `search_translations` | Search by key pattern or value substring |
 | `remove_translations` | Remove keys from all locales in a layer (dry-run support) |
 | `rename_translation_key` | Rename/move a key across all locales (dry-run + conflict detection) |
 | `translate_missing` | Auto-translate via MCP sampling, fallback for non-sampling hosts |
+
+### Code Analysis
+| Tool | Purpose |
+|------|---------|
+| `find_orphan_keys` | Keys in JSON but not referenced in any Vue/TS source code |
+| `scan_code_usage` | Where each key is used — file paths, line numbers, call patterns |
+| `cleanup_unused_translations` | Find orphan keys + remove them in one step (dry-run by default) |
 
 ## Prompts (2)
 
@@ -93,13 +130,14 @@ schema.json                   # JSON Schema for .i18n-mcp.json (2020-12)
 
 ## Key Files to Read
 
-1. **`src/server.ts`** — Start here. All 10 tools, 2 prompts, 1 resource template. Contains `toolErrorResponse()` helper, `applyTranslations()` shared logic for add/update, and prompt assembly helpers (`buildTranslationSystemPrompt`, `buildTranslationUserMessage`, `buildFallbackContext`).
-2. **`src/config/detector.ts`** — Config auto-detection via `@nuxt/kit` `loadNuxt()`. Resolves the full Nuxt config including layers. Caches result by `projectDir`. Calls `loadProjectConfig()` for `.i18n-mcp.json`.
-3. **`src/config/types.ts`** — All type definitions: `I18nConfig`, `LocaleDefinition`, `LocaleDir`, `ProjectConfig`.
-4. **`src/io/key-operations.ts`** — Nested JSON manipulation: `getNestedValue`, `setNestedValue`, `removeNestedValue`, `renameNestedKey`, `hasNestedKey`, `getLeafKeys`, `sortKeysDeep`, `validateTranslationValue`.
-5. **`src/io/json-reader.ts`** — JSON reading with mtime-based file cache. `detectIndentation()` for format preservation.
-6. **`src/io/json-writer.ts`** — Atomic writes (temp file + rename), alphabetical key sorting, format preservation. `mutateLocaleFile()` is the primary write entry point used by all tools.
-7. **`PLAN.md`** — Full implementation plan. Section 12 has phase checkboxes. Section 18 has the backlog.
+1. **`src/server.ts`** — Start here. All 13 tools, 2 prompts, 1 resource template. Contains `toolErrorResponse()` helper, `applyTranslations()` shared logic for add/update, and prompt assembly helpers (`buildTranslationSystemPrompt`, `buildTranslationUserMessage`, `buildFallbackContext`).
+2. **`src/scanner/code-scanner.ts`** — Source code scanner. Uses `tinyglobby` for file discovery. Extracts `$t('key')`, `t('key')`, `this.$t('key')` references via regex. Detects dynamic keys with template literals. Three exports: `extractKeys()`, `scanSourceFiles()`, `toRelativePath()`.
+3. **`src/config/detector.ts`** — Config auto-detection via `@nuxt/kit` `loadNuxt()`. Resolves the full Nuxt config including layers. Caches result by `projectDir`. Calls `loadProjectConfig()` for `.i18n-mcp.json`.
+4. **`src/config/types.ts`** — All type definitions: `I18nConfig`, `LocaleDefinition`, `LocaleDir`, `ProjectConfig`.
+5. **`src/io/key-operations.ts`** — Nested JSON manipulation: `getNestedValue`, `setNestedValue`, `removeNestedValue`, `renameNestedKey`, `hasNestedKey`, `getLeafKeys`, `sortKeysDeep`, `validateTranslationValue`.
+6. **`src/io/json-reader.ts`** — JSON reading with mtime-based file cache. `detectIndentation()` for format preservation.
+7. **`src/io/json-writer.ts`** — Atomic writes (temp file + rename), alphabetical key sorting, format preservation. `mutateLocaleFile()` is the primary write entry point used by all tools.
+8. **`PLAN.md`** — Full implementation plan. Section 12 has phase checkboxes. Section 18 has the backlog.
 
 ## Important Architectural Notes
 
@@ -115,11 +153,15 @@ schema.json                   # JSON Schema for .i18n-mcp.json (2020-12)
 - **Soft validation on writes.** `add_translations` and `update_translations` call `validateTranslationValue()` and include warnings (unbalanced placeholders, malformed linked refs) in the response without blocking the write.
 - **`add_translations` and `update_translations` share logic** via `applyTranslations()` in `server.ts`. The `mode` parameter (`'add'` | `'update'`) controls the exists/not-exists check direction.
 - **`translate_missing` accumulates across batches** and does a single `mutateLocaleFile` write per locale file rather than one per batch.
+- **Empty strings are missing.** `get_missing_translations` and `translate_missing` treat keys with `""` values as missing, not just absent keys. This matches what BabelEdit reports.
+- **Code scanner uses regex, not AST.** The `extractKeys()` function uses regex patterns to find `$t()` / `t()` / `this.$t()` calls. Bare `t('word')` without a dot is filtered out to avoid false positives from `emit()`, `import()`, etc. Dynamic keys (template literals with `${}`) are flagged but not resolved.
+- **`cleanup_unused_translations` defaults to dry-run.** The agent must explicitly pass `dryRun: false` to delete keys.
+- **Monorepo support.** Each `app-*` is an independent Nuxt app that extends root. The root doesn't know about child apps. To scan an app, point `projectDir` at the app directory — it discovers the root layer via `extends`.
 
 ## Playground Test Data
 
 - **Root layer** (`playground/i18n/locales/`): 4 locales (de-DE, en-US, fr-FR, es-ES), all complete with identical `common.actions.*`, `common.messages.*`, `common.navigation.*` keys.
-- **App-admin layer** (`playground/app-admin/i18n/locales/`): 4 locales with `admin.dashboard.*` and `admin.users.*` keys. **es-ES intentionally missing `admin.users.*`** (3 keys) for testing `get_missing_translations` and `translate_missing`.
+- **App-admin layer** (`playground/app-admin/i18n/locales/`): 4 locales with `admin.dashboard.*` and `admin.users.*` keys. **es-ES intentionally missing `admin.users.*`** (3 keys) for testing `get_missing_translations` and `translate_missing`. **fr-FR has `admin.users.edit` set to `""`** for testing empty-as-missing detection.
 - **`.i18n-mcp.json`** at playground root: example project config with layer rules, glossary, translation prompt, locale notes, and a few-shot example. References `../schema.json`.
 
 ## Performance Profile
@@ -139,50 +181,75 @@ Benchmarked at 3000–5000 leaf keys (~8000 JSON lines):
 
 No bottlenecks. `loadNuxt` (~800ms cold) is the only slow path and it's cached after first call.
 
-## Next Steps
+## Dependencies
 
-### 1. Setup GitHub
-- [ ] Create repo (public or org-scoped)
-- [ ] Push current code
-- [ ] Update `$id` in `schema.json` to point to the real repo URL
-- [ ] Update README schema URL to match
+**Runtime:**
+- `@modelcontextprotocol/sdk` — MCP protocol implementation
+- `zod` — Input schema validation
+- `tinyglobby` — Fast file discovery for code scanner (unjs ecosystem)
 
-### 2. Update README etc.
-- [ ] Add badges (CI, npm version, license)
-- [ ] Verify all setup instructions work with published package
-- [ ] Add CHANGELOG.md
+**Peer:**
+- `@nuxt/kit` — Resolved from the target project's `node_modules`
 
-### 3. Add semantic versioning
-- [ ] Set up conventional commits
-- [ ] Configure release tooling (changesets, semantic-release, or release-it)
+**Dev:**
+- `eslint` + `typescript-eslint` — Linting with TypeScript-aware rules
+- `@commitlint/cli` + `@commitlint/config-conventional` — Conventional commit enforcement
+- `husky` — Git hooks (pre-commit: lint + typecheck, commit-msg: commitlint)
+- `tsdown` — Build toolchain
+- `typescript` — Type checking
+- `vitest` — Test runner
 
-### 4. Add GitHub Actions
-- [ ] CI workflow: lint, typecheck, test on push/PR
-- [ ] Publish workflow: build + publish to npm on release/tag
-- [ ] Consider: auto-generate changelog from conventional commits
+## Backlog
 
-### 5. Tackle backlog items
-Priority order (see PLAN.md Section 18 for full details):
-
-**Code analysis** (new tools, shared `code-scanner.ts` core):
-- [ ] `scan_code_usage` — scan Vue/TS source files for `$t()` / `t()` / `useI18n()` key references
-- [ ] `find_orphan_keys` — keys in JSON but not referenced in code
+### Higher priority
 - [ ] `find_hardcoded_strings` — user-facing strings not wrapped in `$t()`
-- [ ] `cleanup_unused_translations` — combines orphan detection + `remove_translations`
-
-**Other backlog**:
 - [ ] `move_translations` — move keys between layers
+- [ ] Multi-app discovery — auto-detect `app-*` subdirectories so the agent doesn't need to target each one
 - [ ] Glossary validation — check translations against glossary terms
 - [ ] Auto-generate `.i18n-mcp.json` — propose config from existing translations
+
+### Lower priority
 - [ ] Flat JSON support — `flatJson: true` in vue-i18n config
-- [ ] File watching — `fs.watch` + MCP notifications (low priority, revisit when host support matures)
+- [ ] File watching — `fs.watch` + MCP notifications (revisit when host support matures)
+
+### Infrastructure (before public release)
+- [x] GitHub Actions — CI (lint, typecheck, test on Node 18 & 22) + publish workflow
+- [x] Semantic versioning — conventional commits (commitlint + Husky) + Release Please
+- [x] CHANGELOG.md — auto-maintained by Release Please
+- [x] LICENSE — MIT
+- [x] ESLint — flat config with typescript-eslint, `no-console` enforced (protects stdio transport)
+- [ ] README badges (CI, npm version, license)
+
+## CI/CD Architecture
+
+### CI (`ci.yml`)
+- **Triggers:** Push to `main`, PRs targeting `main`
+- **Matrix:** Node 18 + 22 on `ubuntu-latest`
+- **Steps:** Install → Lint → Typecheck → Test → Build
+- **Concurrency:** Cancels in-progress runs for the same branch/PR
+
+### Release (`release.yml`)
+- **Triggers:** Push to `main` (after CI passes)
+- **Job 1 — Release Please:** Opens/updates a release PR that bumps version + updates CHANGELOG. When merged, creates a GitHub Release + git tag.
+- **Job 2 — Publish:** Runs only when a release is created. Builds and publishes to npm.
+- **Requires:** `NPM_TOKEN` secret in GitHub repo settings.
+
+### Git Hooks (Husky)
+- **pre-commit:** `pnpm lint && pnpm typecheck`
+- **commit-msg:** `pnpm exec commitlint --edit "$1"` — enforces conventional commit format
+
+### Release Please Config
+- `release-please-config.json` — package config (node release type, bump-minor-pre-major)
+- `.release-please-manifest.json` — tracks current version (`0.1.0-alpha.1`)
+- Version bumps follow conventional commits: `feat:` → minor, `fix:` → patch, `feat!:` / `BREAKING CHANGE` → major (after 1.0)
 
 ## Commands
 
 ```sh
 pnpm build          # Build via tsdown -> dist/index.js
-pnpm test           # Run all 131 tests
+pnpm test           # Run all 179 tests
 pnpm test:perf      # Run performance benchmarks
+pnpm lint           # ESLint (typescript-eslint flat config)
 pnpm typecheck      # tsc --noEmit
 pnpm start          # Start the MCP server on stdio
 pnpm inspect        # Open MCP Inspector for manual testing

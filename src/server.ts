@@ -1,6 +1,6 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
-import { detectI18nConfig, clearConfigCache, getCachedConfig } from './config/detector.js'
+import { detectI18nConfig, getCachedConfig } from './config/detector.js'
 import type { I18nConfig, ProjectConfig } from './config/types.js'
 import { readLocaleFile } from './io/json-reader.js'
 import { mutateLocaleFile } from './io/json-writer.js'
@@ -1328,7 +1328,7 @@ export function createServer(): McpServer {
         const dirsToScan = scanDirs ?? [...new Set(layersToCheck.map(d => d.layerRootDir))]
 
         // Scan all source files for key usage
-        let combinedUniqueKeys = new Set<string>()
+        const combinedUniqueKeys = new Set<string>()
         let totalFilesScanned = 0
         const allDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }> = []
 
@@ -1638,8 +1638,6 @@ export function createServer(): McpServer {
         for (const [layerName, orphans] of Object.entries(orphansByLayer)) {
           const localeDir = config.localeDirs.find(d => d.layer === layerName)!
           if (localeDir.aliasOf) continue
-
-          const removedKeys: string[] = []
 
           for (const localeDef2 of config.locales) {
             const filePath = resolveLocaleFilePath(config, layerName, localeDef2.file)
