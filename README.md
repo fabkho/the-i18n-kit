@@ -14,15 +14,9 @@ Works with any [MCP](https://modelcontextprotocol.io/)-compatible host: **VS Cod
 
 ## Quick Start
 
-### 1. Install
+### 1. Configure your MCP host
 
-```bash
-pnpm add -D nuxt-i18n-mcp
-```
-
-> Requires `@nuxt/kit` as a peer dependency (resolved from your project's `node_modules`).
-
-### 2. Configure your MCP host
+No install needed — your MCP host runs the server via `npx`.
 
 <details>
 <summary><strong>VS Code / Cursor</strong></summary>
@@ -34,8 +28,8 @@ Add to `.vscode/mcp.json`:
   "servers": {
     "nuxt-i18n-mcp": {
       "type": "stdio",
-      "command": "node",
-      "args": ["node_modules/nuxt-i18n-mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["nuxt-i18n-mcp"]
     }
   }
 }
@@ -53,8 +47,8 @@ Add to `.zed/settings.json`:
   "context_servers": {
     "nuxt-i18n-mcp": {
       "command": {
-        "path": "node",
-        "args": ["node_modules/nuxt-i18n-mcp/dist/index.js"]
+        "path": "npx",
+        "args": ["nuxt-i18n-mcp"]
       }
     }
   }
@@ -66,14 +60,14 @@ Add to `.zed/settings.json`:
 <details>
 <summary><strong>Claude Desktop</strong></summary>
 
-Add to `claude_desktop_config.json` (needs absolute paths):
+Add to `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "nuxt-i18n-mcp": {
-      "command": "node",
-      "args": ["/absolute/path/to/your-project/node_modules/nuxt-i18n-mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["nuxt-i18n-mcp"]
     }
   }
 }
@@ -81,7 +75,7 @@ Add to `claude_desktop_config.json` (needs absolute paths):
 
 </details>
 
-### 3. Ask your agent
+### 2. Ask your agent
 
 That's it — no configuration needed. The server auto-detects your Nuxt config, layers, locales, and directory structure via `@nuxt/kit`. Just ask:
 
