@@ -1,28 +1,33 @@
 # nuxt-i18n-mcp
 
-An MCP server that gives AI coding agents structured tools for managing i18n translation files in Nuxt projects. Instead of the agent fumbling with nested JSON across dozens of locale files, it calls tools like `add_translations` and the server handles all the file I/O — atomic writes, format preservation, alphabetical key sorting, the works.
+[![npm version][npm-version-src]][npm-version-href]
+[![npm downloads][npm-downloads-src]][npm-downloads-href]
+[![License][license-src]][license-href]
+[![Nuxt][nuxt-src]][nuxt-href]
+[![CI][ci-src]][ci-href]
 
-Works with any MCP-compatible host: VS Code, Zed, Claude Desktop, Cursor, etc.
+An MCP server that lets AI agents manage i18n translations in Nuxt projects — without stuffing entire locale files into context.
 
-## How it works
+On large projects, translation files can be thousands of lines. Opening them eats context, and edits across dozens of locale files are error-prone. This server gives the agent structured tools that read and write only the keys it needs, keeping context small and operations safe. Feed it a glossary, tone guidelines, and per-locale instructions so translations stay consistent — even across teams.
 
-The server uses `@nuxt/kit` to load your actual Nuxt config (including layers), so it understands your project structure without any hardcoded paths. It discovers locale directories, reads and writes JSON translation files, and exposes everything through 13 MCP tools the agent can call.
+Works with any [MCP](https://modelcontextprotocol.io/)-compatible host: **VS Code**, **Cursor**, **Zed**, **Claude Desktop**, and more.
 
-The agent calls `detect_i18n_config` first to learn about the project, then uses the other tools to read, write, search, and manage translations. If you have a `.i18n-mcp.json` config file, the server passes your glossary, layer rules, and translation style to the agent so it follows your conventions.
+## Quick Start
 
-## Setup
+### 1. Install
 
-### Install
-
-```sh
+```bash
 pnpm add -D nuxt-i18n-mcp
 ```
 
-The server requires `@nuxt/kit` as a peer dependency (it resolves it from your project's `node_modules`).
+> Requires `@nuxt/kit` as a peer dependency (resolved from your project's `node_modules`).
 
-### VS Code / Cursor
+### 2. Configure your MCP host
 
-Add to `.vscode/mcp.json` in your project:
+<details>
+<summary><strong>VS Code / Cursor</strong></summary>
+
+Add to `.vscode/mcp.json`:
 
 ```json
 {
@@ -36,9 +41,12 @@ Add to `.vscode/mcp.json` in your project:
 }
 ```
 
-### Zed
+</details>
 
-Add to your project-level Zed settings (`.zed/settings.json`):
+<details>
+<summary><strong>Zed</strong></summary>
+
+Add to `.zed/settings.json`:
 
 ```json
 {
@@ -53,9 +61,12 @@ Add to your project-level Zed settings (`.zed/settings.json`):
 }
 ```
 
-### Claude Desktop
+</details>
 
-Add to `claude_desktop_config.json`:
+<details>
+<summary><strong>Claude Desktop</strong></summary>
+
+Add to `claude_desktop_config.json` (needs absolute paths):
 
 ```json
 {
@@ -68,65 +79,49 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-Claude Desktop needs absolute paths since it doesn't run from your project directory.
+</details>
+
+### 3. Ask your agent
+
+That's it — no configuration needed. The server auto-detects your Nuxt config, layers, locales, and directory structure via `@nuxt/kit`. Just ask:
+
+> *"Add a 'save changes' button translation in all locales"*
+>
+> *"Find and fix all missing translations in the admin layer"*
+>
+> *"Rename `common.actions.delete` to `common.actions.remove` across all locales"*
+
+## Features
+
+- **🔍 Zero config** — reads `nuxt.config.ts` (including layers) automatically. No manual paths, no config duplication. Works in monorepos — point at any app and it discovers the full layer tree.
+- **✏️ Safe writes** — atomic file I/O (temp file + rename), indentation preservation, alphabetical key sorting, and validation for `{placeholders}`, `@:linked` refs, and HTML in values.
+- **🌍 Full translation lifecycle** — add, update, remove, rename, search, find missing, and auto-translate keys across all locale files in a single tool call.
+- **🔎 Code analysis** — find orphan keys not referenced in source, scan where keys are used (file + line number), and clean up dead translations in one step.
+- **📋 Project-aware** — optional `.i18n-mcp.json` gives the agent your glossary, tone, layer rules, locale-specific instructions, and few-shot examples.
 
 ## Tools
 
-The server exposes 13 tools. The agent discovers them automatically — you just ask it to do things like "add a save button translation in all locales" and it figures out which tools to call.
-
-### Config & Discovery
-
-| Tool | What it does |
+| Tool | Description |
 |------|-------------|
-| `detect_i18n_config` | Loads your Nuxt config via `@nuxt/kit` and returns locales, layers, directories, and project config. The agent should call this first. |
-| `list_locale_dirs` | Lists all locale directories grouped by layer, with file counts and top-level key namespaces. Good for orientation. |
+| `detect_i18n_config` | Loads your Nuxt config and returns locales, layers, directories, and project config |
+| `list_locale_dirs` | Lists locale directories grouped by layer, with file counts and key namespaces |
+| `get_translations` | Reads values for specific dot-path keys from a locale/layer (`*` for all locales) |
+| `get_missing_translations` | Finds keys in a reference locale that are missing or empty in targets |
+| `search_translations` | Searches by key pattern or value substring |
+| `add_translations` | Adds new keys across locales (fails if key exists) |
+| `update_translations` | Updates existing keys (fails if key doesn't exist) |
+| `remove_translations` | Removes keys from all locale files in a layer (dry-run support) |
+| `rename_translation_key` | Renames/moves a key across all locales (conflict detection + dry-run) |
+| `translate_missing` | Auto-translates via MCP sampling or returns context for inline translation |
+| `find_orphan_keys` | Finds keys in JSON not referenced in any Vue/TS source code |
+| `scan_code_usage` | Shows where keys are used — file paths, line numbers, call patterns |
+| `cleanup_unused_translations` | Finds orphan keys + removes them in one step (dry-run by default) |
 
-### Read & Search
+The server also exposes two guided **prompts** (`add-feature-translations`, `fix-missing-translations`) and a **resource template** (`i18n:///{layer}/{file}`) for browsing locale files.
 
-| Tool | What it does |
-|------|-------------|
-| `get_translations` | Reads values for dot-path keys from a specific locale and layer. Pass `*` as locale to read from all locales at once. |
-| `get_missing_translations` | Finds keys present in a reference locale but missing (or empty) in target locales. Scans one layer or all layers. |
-| `search_translations` | Searches by key pattern or value substring. Useful for finding existing translations before adding duplicates. |
+## Project Config
 
-### Write & Modify
-
-| Tool | What it does |
-|------|-------------|
-| `add_translations` | Adds new keys across locales. Fails if a key already exists (use `update_translations` instead). Keys are inserted alphabetically. |
-| `update_translations` | Updates existing keys. Fails if a key doesn't exist (use `add_translations` instead). |
-| `remove_translations` | Removes keys from all locale files in a layer. Supports dry-run mode. |
-| `rename_translation_key` | Renames or moves a key across all locale files in a layer. Detects conflicts. Supports dry-run mode. |
-| `translate_missing` | Finds missing keys and translates them. Uses MCP sampling (host LLM) if available, otherwise returns context for the agent to translate inline. Respects your glossary, translation prompt, and locale notes. |
-
-### Code Analysis
-
-| Tool | What it does |
-|------|-------------|
-| `find_orphan_keys` | Finds translation keys that exist in locale JSON files but aren't referenced in any Vue/TS source code. Reports dynamic key references that can't be statically resolved. |
-| `scan_code_usage` | Scans source files to show where translation keys are used — file paths, line numbers, call patterns (`$t`, `t`, `this.$t`). Useful before renaming or removing a key. |
-| `cleanup_unused_translations` | Combines orphan detection and removal in one step. Defaults to dry-run so the agent previews before deleting. |
-
-The code analysis tools scan for `$t('key')`, `t('key')`, and `this.$t('key')` patterns in `.vue`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, and `.mts` files. Dynamic keys using template literals (e.g., `` t(`prefix.${var}`) ``) are detected and flagged as unresolvable so you can review them manually.
-
-### Prompts
-
-Two guided workflows the agent can use:
-
-| Prompt | What it does |
-|--------|-------------|
-| `add-feature-translations` | Walks through adding translations for a new feature — picks the right layer, creates keys, translates to all locales. |
-| `fix-missing-translations` | Finds all translation gaps across the project and fixes them. |
-
-Both prompts include your project config (glossary, layer rules, examples) when available.
-
-### Resources
-
-The server exposes locale files as browsable resources via the `i18n:///{layer}/{file}` URI template. This lets agents read translation files through the MCP resource protocol. Requires `detect_i18n_config` to be called first.
-
-## Project config
-
-Drop a `.i18n-mcp.json` file at your project root (next to `nuxt.config.ts`) to give the agent project-specific context. Everything in this file is optional — the server passes it straight to the agent, which interprets the natural-language rules.
+Optionally drop a `.i18n-mcp.json` at your project root to give the agent project-specific context. Everything is optional — the server passes it to the agent, which interprets the natural-language rules.
 
 For IDE autocompletion, point to the schema:
 
@@ -136,83 +131,45 @@ For IDE autocompletion, point to the schema:
 }
 ```
 
-### Fields
+| Field | Purpose |
+|-------|---------|
+| `context` | Free-form project background (what the app is, who uses it, what tone) |
+| `layerRules` | Rules for which layer a key belongs to, with plain-English `when` conditions |
+| `glossary` | Term dictionary for consistent translations |
+| `translationPrompt` | System prompt prepended to all translation requests |
+| `localeNotes` | Per-locale instructions (e.g., "Formal German using 'Sie'") |
+| `examples` | Few-shot translation examples demonstrating your project's style |
 
-#### `context`
-
-Free-form project background. Tell the agent what your app is, who uses it, what tone to use.
-
-```json
-{
-  "context": "B2B SaaS booking platform. Professional but approachable tone. Primary market is Germany."
-}
-```
-
-#### `layerRules`
-
-Rules for deciding which Nuxt layer a translation key belongs to. The agent reads the `when` field (plain English) and makes the call.
+<details>
+<summary><strong>Full example</strong></summary>
 
 ```json
 {
+  "$schema": "node_modules/nuxt-i18n-mcp/schema.json",
+  "context": "B2B SaaS booking platform. Professional but approachable tone.",
   "layerRules": [
     {
-      "layer": "root",
-      "description": "Shared translations: common.actions.*, common.messages.*, common.navigation.*",
-      "when": "The key is generic enough to be used in multiple apps (e.g., 'Save', 'Cancel', 'Loading...')"
+      "layer": "shared",
+      "description": "Shared translations: common.actions.*, common.messages.*",
+      "when": "The key is generic enough to be used in multiple apps"
     },
     {
       "layer": "app-admin",
-      "description": "Admin dashboard translations.",
+      "description": "Admin dashboard translations",
       "when": "The key is only relevant to admin functionality"
     }
-  ]
-}
-```
-
-#### `glossary`
-
-Term dictionary for consistent translations. Keys are source terms, values describe the required translation or usage.
-
-```json
-{
+  ],
   "glossary": {
     "Buchung": "Booking (never 'Reservation')",
     "Ressource": "Resource (a bookable entity like a room, desk, or person)",
     "Termin": "Appointment"
-  }
-}
-```
-
-#### `translationPrompt`
-
-System prompt prepended to all translation requests. Sets tone, style, and constraints.
-
-```json
-{
-  "translationPrompt": "You are translating for a SaaS booking platform. Use professional but approachable tone. Preserve all {placeholders}. Keep translations concise."
-}
-```
-
-#### `localeNotes`
-
-Per-locale context. Included in translation prompts when translating to that specific locale.
-
-```json
-{
+  },
+  "translationPrompt": "Use professional but approachable tone. Preserve all {placeholders}. Keep translations concise.",
   "localeNotes": {
     "de-DE-formal": "Formal German using 'Sie'. Used by enterprise customers.",
     "en-US": "American English.",
     "en-GB": "British English. Use 'colour' not 'color'."
-  }
-}
-```
-
-#### `examples`
-
-Few-shot translation examples that demonstrate your project's style. Each example needs a `key` and one or more locale values. Add a `note` to explain the style choice.
-
-```json
-{
+  },
   "examples": [
     {
       "key": "common.actions.save",
@@ -224,30 +181,32 @@ Few-shot translation examples that demonstrate your project's style. Each exampl
 }
 ```
 
-### Full example
+See [`playground/.i18n-mcp.json`](playground/.i18n-mcp.json) for a working example.
 
-See [playground/.i18n-mcp.json](playground/.i18n-mcp.json) for a complete working example.
+</details>
 
-## Notes
+## Roadmap
 
-A few things worth knowing:
+- [ ] `find_hardcoded_strings` — detect user-facing strings not wrapped in `$t()`
+- [ ] `move_translations` — move keys between layers (e.g., promote to shared)
+- [ ] Glossary validation — check translations against glossary terms
+- [ ] Flat JSON support — `flatJson: true` in vue-i18n config
+- [ ] Pluralization support — vue-i18n plural forms
+- [ ] Plain vue-i18n support — extract core into a monorepo, add a Vue/Vite adapter alongside the Nuxt one
 
-- **stdout is sacred.** The server never writes to stdout — that's the JSON-RPC transport. All logging goes to stderr.
-- **Writes are atomic.** The server writes to a temp file first, then renames it. No half-written JSON files.
-- **Format preservation.** The server detects your indentation style (tabs, 2-space, 4-space) and preserves it on write.
-- **Keys are sorted.** All writes sort keys alphabetically. This keeps diffs clean and works well with tools like BabelEdit.
-- **Empty strings are missing.** `get_missing_translations` and `translate_missing` treat keys with empty string values (`""`) as missing, not just absent keys. This matches what BabelEdit and other i18n tools report.
-- **Caching.** Config detection and file reads are cached (mtime-based for files). Writes automatically invalidate the cache.
-- **Sampling support varies.** VS Code supports MCP sampling, so `translate_missing` can call the host LLM directly. Zed doesn't (as of July 2025), so the tool falls back to giving the agent context to translate inline. Both paths work fine.
-- **Layers can overlap.** Different layers can define the same locale codes with different key namespaces. The agent (guided by your `layerRules`) decides which layer to write to.
-- **Monorepo with multiple apps.** If your project has multiple Nuxt apps that extend a shared root (e.g., `app-admin/`, `app-shop/`), point the agent at each app's directory — it'll discover the root layer automatically via the `extends` config.
+## Good to Know
+
+- **Empty strings are missing** — `get_missing_translations` and `translate_missing` treat `""` as missing, matching BabelEdit behaviour.
+- **Caching** — config detection and file reads are cached (mtime-based). Writes invalidate automatically.
+- **Sampling support varies** — VS Code supports MCP sampling for `translate_missing`. Zed doesn't yet — the tool falls back to returning context for the agent to translate inline. Both paths work.
 
 ## Development
 
-```sh
-pnpm build          # Build via tsdown -> dist/index.js
+```bash
+pnpm build          # Build via tsdown → dist/index.js
 pnpm test           # Run all tests
 pnpm test:perf      # Run performance benchmarks
+pnpm lint           # ESLint
 pnpm typecheck      # tsc --noEmit
 pnpm start          # Start the server on stdio
 pnpm inspect        # Open MCP Inspector for manual testing
@@ -255,4 +214,20 @@ pnpm inspect        # Open MCP Inspector for manual testing
 
 ## License
 
-MIT
+[MIT](./LICENSE)
+
+<!-- Badges -->
+[npm-version-src]: https://img.shields.io/npm/v/nuxt-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
+[npm-version-href]: https://npmjs.com/package/nuxt-i18n-mcp
+
+[npm-downloads-src]: https://img.shields.io/npm/dm/nuxt-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
+[npm-downloads-href]: https://npmjs.com/package/nuxt-i18n-mcp
+
+[license-src]: https://img.shields.io/npm/l/nuxt-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
+[license-href]: https://github.com/fabkho/nuxt-i18n-mcp/blob/main/LICENSE
+
+[nuxt-src]: https://img.shields.io/badge/Nuxt-18181B?logo=nuxt.js&logoColor=4fc08d
+[nuxt-href]: https://nuxt.com
+
+[ci-src]: https://github.com/fabkho/nuxt-i18n-mcp/actions/workflows/ci.yml/badge.svg
+[ci-href]: https://github.com/fabkho/nuxt-i18n-mcp/actions/workflows/ci.yml
