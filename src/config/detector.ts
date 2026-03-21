@@ -136,12 +136,18 @@ async function extractI18nConfig(
   // Discover locale directories from layers
   const localeDirs = await discoverLocaleDirs(layers, i18nOptions, projectDir)
 
+  const layerRootDirs = [...new Set(layers.map(l => l.config.rootDir))]
+  if (layerRootDirs.length === 0) {
+    layerRootDirs.push(projectDir)
+  }
+
   return {
     rootDir: projectDir,
     defaultLocale,
     fallbackLocale,
     locales,
     localeDirs,
+    layerRootDirs,
     projectConfig: projectConfig ?? undefined,
   }
 }

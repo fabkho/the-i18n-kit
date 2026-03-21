@@ -1332,8 +1332,10 @@ export function createServer(): McpServer {
           }
         }
 
-        // Determine directories to scan for source code
-        const dirsToScan = scanDirs ?? [...new Set(layersToCheck.map(d => d.layerRootDir))]
+        // Determine directories to scan for source code.
+        // Use all layer roots (not just those with locale dirs) so layers without
+        // i18n/locales/ still have their source files scanned for key usage.
+        const dirsToScan = scanDirs ?? config.layerRootDirs
 
         // Scan all source files for key usage
         const combinedUniqueKeys = new Set<string>()
@@ -1424,9 +1426,10 @@ export function createServer(): McpServer {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
 
-        // Determine directories to scan
-        const layersToScan = config.localeDirs.filter(d => !d.aliasOf)
-        const dirsToScan = scanDirs ?? [...new Set(layersToScan.map(d => d.layerRootDir))]
+        // Determine directories to scan.
+        // Use all layer roots (not just those with locale dirs) so layers without
+        // i18n/locales/ still have their source files scanned for key usage.
+        const dirsToScan = scanDirs ?? config.layerRootDirs
 
         // Scan all source files
         const allUsages: Array<{ key: string; file: string; line: number; callee: string }> = []
@@ -1585,8 +1588,10 @@ export function createServer(): McpServer {
           }
         }
 
-        // Scan source files for key usage
-        const dirsToScan = scanDirs ?? [...new Set(layersToCheck.map(d => d.layerRootDir))]
+        // Scan source files for key usage.
+        // Use all layer roots (not just those with locale dirs) so layers without
+        // i18n/locales/ still have their source files scanned for key usage.
+        const dirsToScan = scanDirs ?? config.layerRootDirs
         const combinedUniqueKeys = new Set<string>()
         let totalFilesScanned = 0
         const allDynamicKeys: Array<{ expression: string; file: string; line: number }> = []
