@@ -1637,12 +1637,15 @@ export function createServer(): McpServer {
         }
 
         if (orphanCount === 0) {
+          const message = dynamicMatchedCount > 0
+            ? `No orphan keys found. ${dynamicMatchedCount} key(s) were excluded by dynamic pattern matching.`
+            : 'No orphan keys found. All translation keys are referenced in code.'
           return {
             content: [{
               type: 'text' as const,
               text: JSON.stringify({
                 orphanKeys: {},
-                summary: { totalKeys, orphanCount: 0, filesScanned: totalFilesScanned, message: 'No orphan keys found. All translation keys are referenced in code.' },
+                summary: { totalKeys, orphanCount: 0, dynamicMatchedCount, filesScanned: totalFilesScanned, message },
               }, null, 2),
             }],
           }

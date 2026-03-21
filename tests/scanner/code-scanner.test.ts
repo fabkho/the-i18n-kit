@@ -323,6 +323,13 @@ describe('buildDynamicKeyRegexes', () => {
     const regexes = buildDynamicKeyRegexes([])
     expect(regexes).toHaveLength(0)
   })
+
+  it('handles nested braces inside interpolation', () => {
+    const regexes = buildDynamicKeyRegexes([makeDynamic('`prefix.${fn({a:1})}.title`')])
+    expect(regexes).toHaveLength(1)
+    expect(regexes[0].test('prefix.computed.title')).toBe(true)
+    expect(regexes[0].test('prefix.computed.title.extra')).toBe(false)
+  })
 })
 
 describe('scanSourceFiles', () => {

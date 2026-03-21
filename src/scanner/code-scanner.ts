@@ -88,6 +88,37 @@ export function extractKeys(content: string, filePath: string): { usages: KeyUsa
 // ─── Dynamic key pattern matching ───────────────────────────────
 
 /**
+ * Split a template literal expression on `${...}` interpolation boundaries,
+ * returning only the static literal segments. Handles nested braces inside
+ * interpolations (e.g. `${fn({a:1})}`) by tracking brace depth.
+ */
+function splitInterpolations(expr: string): string[] {
+  const parts: string[] = []
+  let current = ''
+  let i = 0
+
+  while (i < expr.length) {
+    if (expr[i] === '$' && expr[i + 1] === '{') {
+      parts.push(current)
+      current = ''
+      i += 2
+      let depth = 1
+      while (i < expr.length && depth > 0) {
+        if (expr[i] === '{') depth++
+        else if (expr[i] === '}') depth--
+        i++
+      }
+    } else {
+      current += expr[i]
+      i++
+    }
+  }
+
+  parts.push(current)
+  return parts
+}
+
+/**
  * Convert dynamic key expressions (template literals with interpolation) into
  * regex patterns that can match concrete translation keys.
  *
@@ -107,9 +138,7 @@ export function buildDynamicKeyRegexes(dynamicKeys: Pick<DynamicKeyUsage, 'expre
     // Skip expressions that don't contain interpolation
     if (!expr.includes('${')) continue
 
-    // Escape regex-special chars in static parts, replace ${...} with [^.]+ (one key segment)
-    const pattern = expr
-      .split(/\$\{[^}]*\}/)
+    const pattern = splitInterpolations(expr)
       .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
       .join('[^.]+')
 
