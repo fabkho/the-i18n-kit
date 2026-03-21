@@ -9,6 +9,7 @@ import {
   generateTranslationPrompt,
   generateProjectConfig,
 } from '../../src/generator/config-generator.js'
+import type { ElicitedProjectInfo } from '../../src/generator/config-generator.js'
 
 vi.mock('../../src/io/json-reader.js', () => ({
   readLocaleFile: vi.fn(),
@@ -83,51 +84,9 @@ describe('generateLayerRules', () => {
 })
 
 describe('generateGlossary', () => {
-  it('extracts frequently occurring words', () => {
-    const data = new Map([
-      ['root', {
-        a: { save: 'Save booking' },
-        b: { edit: 'Edit booking' },
-        c: { delete: 'Delete booking' },
-        d: { view: 'View booking details' },
-      }],
-    ])
-    const glossary = generateGlossary(data, 'en')
-
-    expect(glossary).toHaveProperty('Booking')
-    expect(glossary.Booking).toContain('4 times')
-  })
-
-  it('filters out stop words and short words', () => {
-    const data = new Map([
-      ['root', {
-        a: 'the booking is here',
-        b: 'the booking is there',
-        c: 'the booking is everywhere',
-      }],
-    ])
-    const glossary = generateGlossary(data, 'en')
-
-    expect(glossary).not.toHaveProperty('The')
-    expect(glossary).toHaveProperty('Booking')
-  })
-
-  it('returns empty glossary when no words appear 3+ times', () => {
-    const data = new Map([
-      ['root', { a: 'hello', b: 'world' }],
-    ])
-    const glossary = generateGlossary(data, 'en')
+  it('returns empty glossary for manual refinement', () => {
+    const glossary = generateGlossary()
     expect(Object.keys(glossary)).toHaveLength(0)
-  })
-
-  it('limits to top 15 terms', () => {
-    const entries: Record<string, string> = {}
-    for (let i = 0; i < 20; i++) {
-      entries[`key${i}`] = `word${i} word${i} word${i} extra${i} extra${i} extra${i}`
-    }
-    const data = new Map([['root', entries]])
-    const glossary = generateGlossary(data, 'en')
-    expect(Object.keys(glossary).length).toBeLessThanOrEqual(15)
   })
 })
 
@@ -300,6 +259,18 @@ describe('generateContext', () => {
     expect(context).toContain('1 locale ')
     expect(context).toContain('1 layer.')
   })
+
+  it('prepends project description when provided', () => {
+    const dirs: LocaleDir[] = [
+      { path: '/p/i18n', layer: 'root', layerRootDir: '/p' },
+    ]
+    const locales: LocaleDefinition[] = [
+      { code: 'en', language: 'en-US', file: 'en-US.json' },
+    ]
+    const context = generateContext(dirs, locales, 'B2B SaaS booking platform')
+    expect(context).toMatch(/^B2B SaaS booking platform/)
+    expect(context).toContain('1 locale')
+  })
 })
 
 describe('generateTranslationPrompt', () => {
@@ -307,6 +278,25 @@ describe('generateTranslationPrompt', () => {
     const prompt = generateTranslationPrompt()
     expect(prompt).toContain('{placeholders}')
     expect(prompt).toContain('@:linked')
+  })
+
+  it('prepends formal tone instruction', () => {
+    const prompt = generateTranslationPrompt('formal')
+    expect(prompt).toMatch(/^Use a formal/)
+    expect(prompt).toContain('{placeholders}')
+  })
+
+  it('prepends informal tone instruction', () => {
+    const prompt = generateTranslationPrompt('informal')
+    expect(prompt).toMatch(/^Use a friendly/)
+    expect(prompt).toContain('{placeholders}')
+  })
+
+  it('returns base prompt for mixed tone', () => {
+    const prompt = generateTranslationPrompt('mixed')
+    expect(prompt).not.toContain('formal')
+    expect(prompt).not.toContain('friendly')
+    expect(prompt).toContain('{placeholders}')
   })
 })
 
@@ -358,7 +348,7 @@ describe('generateProjectConfig', () => {
     expect(result.context).toContain('2 layers')
     expect(result.layerRules).toBeDefined()
     expect(result.layerRules!.length).toBe(2)
-    expect(result.glossary).toBeDefined()
+    expect(result.glossary).toEqual({})
     expect(result.translationPrompt).toBeDefined()
     expect(result.localeNotes).toBeDefined()
     expect(result.localeNotes!['de-formal']).toContain('Formal German')
@@ -395,5 +385,30 @@ describe('generateProjectConfig', () => {
     expect(result.layerRules).toBeDefined()
     expect(result.glossary).toEqual({})
     expect(result.examples).toEqual([])
+  })
+
+  it('merges elicited project info into context and translationPrompt', async () => {
+    mockReadLocaleFile.mockResolvedValue({
+      common: { save: 'Save' },
+    })
+
+    const config: I18nConfig = {
+      rootDir: '/project',
+      defaultLocale: 'en',
+      fallbackLocale: {},
+      locales: [{ code: 'en', language: 'en-US', file: 'en-US.json' }],
+      localeDirs: [
+        { path: '/project/i18n', layer: 'root', layerRootDir: '/project' },
+      ],
+    }
+
+    const elicited: ElicitedProjectInfo = {
+      description: 'B2B SaaS booking platform',
+      tone: 'formal',
+    }
+
+    const result = await generateProjectConfig(config, elicited)
+    expect(result.context).toContain('B2B SaaS booking platform')
+    expect(result.translationPrompt).toContain('formal')
   })
 })

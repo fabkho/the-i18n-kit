@@ -4,42 +4,6 @@ import { readLocaleFile } from '../io/json-reader.js'
 import { getLeafKeys, getNestedValue } from '../io/key-operations.js'
 import { log } from '../utils/logger.js'
 
-// ─── Stop words for glossary extraction ──────────────────────────
-
-const STOP_WORDS = new Set([
-  // English
-  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-  'should', 'may', 'might', 'shall', 'can', 'need', 'must', 'ought',
-  'and', 'but', 'or', 'nor', 'not', 'so', 'yet', 'for', 'with',
-  'about', 'against', 'between', 'through', 'during', 'before', 'after',
-  'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on',
-  'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here',
-  'there', 'when', 'where', 'why', 'how', 'all', 'each', 'every',
-  'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'only',
-  'own', 'same', 'than', 'too', 'very', 'just', 'because', 'as', 'if',
-  'into', 'it', 'its', 'this', 'that', 'these', 'those', 'what', 'which',
-  'who', 'whom', 'of', 'at', 'by', 'any', 'also', 'you', 'your',
-  'we', 'our', 'they', 'their', 'he', 'she', 'him', 'her', 'his',
-  'my', 'me', 'i',
-  // German
-  'der', 'die', 'das', 'ein', 'eine', 'ist', 'sind', 'war', 'waren',
-  'und', 'oder', 'aber', 'nicht', 'mit', 'von', 'zu', 'für', 'auf',
-  'dem', 'den', 'des', 'sich', 'als', 'auch', 'es', 'im', 'ich',
-  'wir', 'sie', 'er', 'ihr', 'noch', 'nach', 'wird', 'bei', 'aus',
-  'wie', 'nur', 'noch', 'werden', 'hat', 'über', 'hab', 'am', 'bis',
-  'wenn', 'an', 'um', 'kann', 'dann', 'so', 'da', 'schon', 'vor',
-  'mal', 'mir', 'dir', 'dich', 'mich', 'uns', 'was', 'einem', 'einer',
-  // French
-  'le', 'la', 'les', 'un', 'une', 'des', 'du', 'de', 'est', 'sont',
-  'et', 'ou', 'mais', 'pas', 'avec', 'pour', 'sur', 'dans', 'par',
-  'en', 'au', 'aux', 'ce', 'cette', 'ces', 'il', 'elle', 'on', 'nous',
-  'vous', 'ils', 'elles', 'qui', 'que', 'ne', 'se', 'sa', 'son', 'ses',
-  // Spanish
-  'el', 'los', 'del', 'al', 'es', 'son', 'fue', 'con', 'para',
-  'por', 'como', 'más', 'pero', 'sus', 'está', 'hay',
-])
-
 // ─── BCP-47 primary subtag → human-readable language name ────────
 
 const LANGUAGE_NAMES: Record<string, string> = {
@@ -68,10 +32,23 @@ const REGION_NAMES: Record<string, string> = {
 // ─── Public API ──────────────────────────────────────────────────
 
 /**
+ * Optional user-provided context collected via MCP elicitation.
+ */
+export interface ElicitedProjectInfo {
+  /** Free-form project description (e.g. "B2B SaaS booking platform") */
+  description?: string
+  /** Desired translation tone */
+  tone?: 'formal' | 'informal' | 'mixed'
+}
+
+/**
  * Reads locale files and generates a complete ProjectConfig.
  * Only function with I/O — all others are pure.
  */
-export async function generateProjectConfig(config: I18nConfig): Promise<ProjectConfig> {
+export async function generateProjectConfig(
+  config: I18nConfig,
+  elicited?: ElicitedProjectInfo,
+): Promise<ProjectConfig> {
   const { localeDirs, locales, defaultLocale, fallbackLocale } = config
   const nonAliasLayers = localeDirs.filter(d => !d.aliasOf)
 
@@ -113,10 +90,10 @@ export async function generateProjectConfig(config: I18nConfig): Promise<Project
     }
   }
 
-  const context = generateContext(localeDirs, locales)
+  const context = generateContext(localeDirs, locales, elicited?.description)
   const layerRules = generateLayerRules(localeDirs, keysByLayer)
-  const glossary = generateGlossary(defaultLocaleDataByLayer, defaultLocale)
-  const translationPrompt = generateTranslationPrompt()
+  const glossary = generateGlossary()
+  const translationPrompt = generateTranslationPrompt(elicited?.tone)
   const localeNotes = generateLocaleNotes(locales, fallbackLocale)
 
   let examples: Array<Record<string, string>> = []
@@ -191,42 +168,13 @@ export function generateLayerRules(
   return rules
 }
 
-export function generateGlossary(
-  dataByLayer: Map<string, Record<string, unknown>>,
-  defaultLocale: string,
-): Record<string, string> {
-  const wordCounts = new Map<string, number>()
-
-  for (const data of dataByLayer.values()) {
-    const leafKeys = getLeafKeys(data)
-    for (const key of leafKeys) {
-      const value = getNestedValue(data, key)
-      if (typeof value !== 'string' || value.length === 0) continue
-
-      const words = value
-        .split(/[\s,.!?;:'"()\[\]{}<>\/\\|@#$%^&*+=~`]+/)
-        .filter(w => w.length >= 3)
-        .map(w => w.toLowerCase())
-
-      for (const word of words) {
-        if (STOP_WORDS.has(word)) continue
-        wordCounts.set(word, (wordCounts.get(word) ?? 0) + 1)
-      }
-    }
-  }
-
-  const sorted = [...wordCounts.entries()]
-    .filter(([, count]) => count >= 3)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 15)
-
-  const glossary: Record<string, string> = {}
-  for (const [word, count] of sorted) {
-    const capitalized = word.charAt(0).toUpperCase() + word.slice(1)
-    glossary[capitalized] = `Keep as '${capitalized}' — appears ${count} times in ${defaultLocale} translations`
-  }
-
-  return glossary
+/**
+ * Returns an empty glossary — glossary entries require domain knowledge
+ * that only a human or an AI agent with project context can provide.
+ * The generated config leaves this empty for manual or agent-assisted refinement.
+ */
+export function generateGlossary(): Record<string, string> {
+  return {}
 }
 
 export function generateLocaleNotes(
@@ -339,23 +287,38 @@ export function generateExamples(
 export function generateContext(
   localeDirs: LocaleDir[],
   locales: LocaleDefinition[],
+  projectDescription?: string,
 ): string {
+  const parts: string[] = []
+
+  if (projectDescription) {
+    parts.push(projectDescription)
+  }
+
   const nonAliasLayers = localeDirs.filter(d => !d.aliasOf)
   const aliasLayers = localeDirs.filter(d => d.aliasOf)
   const layerNames = nonAliasLayers.map(d => d.layer)
 
-  let context = `This project uses ${locales.length} locale${locales.length === 1 ? '' : 's'} across ${nonAliasLayers.length} layer${nonAliasLayers.length === 1 ? '' : 's'}. Layers: ${layerNames.join(', ')}.`
+  parts.push(`This project uses ${locales.length} locale${locales.length === 1 ? '' : 's'} across ${nonAliasLayers.length} layer${nonAliasLayers.length === 1 ? '' : 's'}. Layers: ${layerNames.join(', ')}.`)
 
   if (aliasLayers.length > 0) {
     const aliasList = aliasLayers.map(d => `${d.layer} → ${d.aliasOf}`).join(', ')
-    context += ` Aliases: ${aliasList}.`
+    parts[parts.length - 1] += ` Aliases: ${aliasList}.`
   }
 
-  return context
+  return parts.join(' ')
 }
 
-export function generateTranslationPrompt(): string {
-  return 'Preserve all {placeholders} and @:linked.message references. Keep translations concise — UI space is limited.'
+export function generateTranslationPrompt(tone?: 'formal' | 'informal' | 'mixed'): string {
+  const base = 'Preserve all {placeholders} and @:linked.message references. Keep translations concise — UI space is limited.'
+
+  if (!tone || tone === 'mixed') return base
+
+  const toneInstruction = tone === 'formal'
+    ? 'Use a formal, professional tone.'
+    : 'Use a friendly, informal tone.'
+
+  return `${toneInstruction} ${base}`
 }
 
 // ─── Internal helpers ────────────────────────────────────────────
