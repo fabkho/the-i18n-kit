@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import type { ProjectConfig } from './types.js'
 import { ConfigError } from '../utils/errors.js'
 import { log } from '../utils/logger.js'
@@ -8,17 +8,37 @@ import { log } from '../utils/logger.js'
 const CONFIG_FILENAME = '.i18n-mcp.json'
 
 /**
+ * Walk up the directory tree from `startDir` to find the nearest config file.
+ * Returns the full path if found, null otherwise.
+ */
+export function findConfigFile(startDir: string): string | null {
+  let dir = startDir
+  while (true) {
+    const candidate = join(dir, CONFIG_FILENAME)
+    if (existsSync(candidate)) {
+      return candidate
+    }
+    const parent = dirname(dir)
+    if (parent === dir) break // filesystem root
+    dir = parent
+  }
+  return null
+}
+
+/**
  * Load the optional project config file (.i18n-mcp.json).
- * Returns null if the file does not exist.
- * Throws ConfigError if the file exists but is invalid.
+ * Walks up from projectDir to find the nearest config file,
+ * similar to how ESLint, Prettier, and tsconfig resolve configs.
+ * Returns null if no config file is found in any ancestor.
+ * Throws ConfigError if a file is found but is invalid.
  */
 export async function loadProjectConfig(projectDir: string): Promise<ProjectConfig | null> {
-  const configPath = join(projectDir, CONFIG_FILENAME)
+  log.debug(`Searching for ${CONFIG_FILENAME} starting from: ${projectDir}`)
 
-  log.debug(`Looking for project config at: ${configPath}`)
+  const configPath = findConfigFile(projectDir)
 
-  if (!existsSync(configPath)) {
-    log.info(`No project config found at ${configPath} — skipping`)
+  if (!configPath) {
+    log.info(`No ${CONFIG_FILENAME} found in ${projectDir} or any parent directory — skipping`)
     return null
   }
 
