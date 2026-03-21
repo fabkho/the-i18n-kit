@@ -70,6 +70,7 @@ export function createPlaygroundConfig(): I18nConfig {
         layerRootDir: playgroundDir,
       },
     ],
+    layerRootDirs: [playgroundDir],
     projectConfig: structuredClone(projectConfig),
   }
 }
@@ -101,6 +102,7 @@ export function createAppAdminConfig(): I18nConfig {
         layerRootDir: playgroundDir,
       },
     ],
+    layerRootDirs: [appAdminDir, playgroundDir],
     projectConfig: structuredClone(projectConfig),
   }
 }

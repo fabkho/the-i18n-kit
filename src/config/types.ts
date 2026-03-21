@@ -63,6 +63,8 @@ export interface I18nConfig {
   locales: LocaleDefinition[]
   /** All discovered locale directories, per layer */
   localeDirs: LocaleDir[]
+  /** Root directories of ALL Nuxt layers (including those without locale files). Used for source code scanning. */
+  layerRootDirs: string[]
   /** Optional project-specific config from .i18n-mcp.json */
   projectConfig?: ProjectConfig
 }
