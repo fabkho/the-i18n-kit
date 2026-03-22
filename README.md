@@ -110,6 +110,30 @@ That's it — no configuration needed. The server auto-detects your Nuxt config,
 | `scan_code_usage` | Shows where keys are used — file paths, line numbers, call patterns |
 | `cleanup_unused_translations` | Finds orphan keys + removes them in one step (dry-run by default) |
 
+### Writing reports to file
+
+Five diagnostic tools — `get_missing_translations`, `find_empty_translations`, `find_orphan_keys`, `scan_code_usage`, and `cleanup_unused_translations` — accept an optional `reportFile` parameter (a path relative to the project root).
+
+When `reportFile` is set:
+
+1. The full output (plus `generatedAt`, `tool`, and `args` metadata) is written atomically to that file.
+2. The MCP response returns only the `summary` object and the `reportFile` path — keeping the agent's context small.
+
+Without `reportFile`, the tools behave exactly as before and return the full JSON payload in the MCP response.
+
+```jsonc
+// Example: agent calls get_missing_translations with reportFile
+{
+  "reportFile": "reports/missing.json",
+  "summary": {
+    "referenceLocale": "de-DE",
+    "targetLocales": ["en-US", "fr-FR"],
+    "layersScanned": ["root"],
+    "totalMissingKeys": 12
+  }
+}
+```
+
 The server also exposes two guided **prompts** (`add-feature-translations`, `fix-missing-translations`) and a **resource template** (`i18n:///{layer}/{file}`) for browsing locale files.
 
 ## Project Config
