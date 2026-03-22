@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { writeLocaleFile, mutateLocaleFile } from '../../src/io/json-writer.js'
+import { writeLocaleFile, mutateLocaleFile, writeReportFile } from '../../src/io/json-writer.js'
 import { setNestedValue } from '../../src/io/key-operations.js'
 
 let tempDir: string
@@ -145,5 +145,69 @@ describe('mutateLocaleFile', () => {
     const parsed = JSON.parse(content)
     expect(parsed.common.actions.delete).toBe('Delete')
     expect(parsed.common.actions.save).toBe('Save')
+  })
+})
+
+describe('writeReportFile', () => {
+  it('writes JSON with metadata fields', async () => {
+    const filePath = join(tempDir, 'report.json')
+    await writeReportFile(filePath, { summary: { total: 5 }, details: ['a', 'b'] }, {
+      tool: 'get_missing_translations',
+      args: { layer: 'app' },
+    })
+
+    const content = await readFile(filePath, 'utf-8')
+    const parsed = JSON.parse(content)
+    expect(parsed.tool).toBe('get_missing_translations')
+    expect(parsed.args).toEqual({ layer: 'app' })
+    expect(parsed.generatedAt).toBeDefined()
+    expect(new Date(parsed.generatedAt).getTime()).not.toBeNaN()
+    expect(parsed.summary).toEqual({ total: 5 })
+    expect(parsed.details).toEqual(['a', 'b'])
+  })
+
+  it('ends with trailing newline', async () => {
+    const filePath = join(tempDir, 'report.json')
+    await writeReportFile(filePath, { summary: {} }, { tool: 'test', args: {} })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content.endsWith('\n')).toBe(true)
+  })
+
+  it('creates parent directories', async () => {
+    const filePath = join(tempDir, 'deep', 'nested', 'report.json')
+    await writeReportFile(filePath, { summary: {} }, { tool: 'test', args: {} })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(JSON.parse(content).tool).toBe('test')
+  })
+
+  it('overwrites existing file', async () => {
+    const filePath = join(tempDir, 'report.json')
+    await writeFile(filePath, '{"old": true}')
+    await writeReportFile(filePath, { summary: { v: 2 } }, { tool: 'test', args: {} })
+
+    const parsed = JSON.parse(await readFile(filePath, 'utf-8'))
+    expect(parsed.old).toBeUndefined()
+    expect(parsed.summary).toEqual({ v: 2 })
+  })
+
+  it('uses 2-space indentation', async () => {
+    const filePath = join(tempDir, 'report.json')
+    await writeReportFile(filePath, { summary: {} }, { tool: 'test', args: {} })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content).toContain('  "tool"')
+  })
+
+  it('places metadata before output fields', async () => {
+    const filePath = join(tempDir, 'report.json')
+    await writeReportFile(filePath, { orphanKeys: [], summary: {} }, { tool: 'find_orphan_keys', args: {} })
+
+    const content = await readFile(filePath, 'utf-8')
+    const keys = Object.keys(JSON.parse(content))
+    expect(keys[0]).toBe('generatedAt')
+    expect(keys[1]).toBe('tool')
+    expect(keys[2]).toBe('args')
   })
 })
