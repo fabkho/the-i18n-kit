@@ -204,7 +204,7 @@ describe('loadProjectConfig', () => {
     const configPath = resolve(tmpDir, '.i18n-mcp.json')
     try {
       await writeFile(configPath, JSON.stringify({ reportOutput: false }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a string (directory path) or true')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a non-empty string (directory path) or true')
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }
@@ -215,7 +215,29 @@ describe('loadProjectConfig', () => {
     const configPath = resolve(tmpDir, '.i18n-mcp.json')
     try {
       await writeFile(configPath, JSON.stringify({ reportOutput: 42 }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a string (directory path) or true')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a non-empty string (directory path) or true')
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
+  it('throws when reportOutput is an empty string', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({ reportOutput: '' }), 'utf-8')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a non-empty string (directory path) or true')
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
+  it('throws when reportOutput is whitespace-only', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({ reportOutput: '   ' }), 'utf-8')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a non-empty string (directory path) or true')
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }

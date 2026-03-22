@@ -1,4 +1,4 @@
-import { writeFile, rename, mkdir } from 'node:fs/promises'
+import { writeFile, rename, mkdir, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { FileIOError } from '../utils/errors'
@@ -50,7 +50,6 @@ export async function writeLocaleFile(
     } catch (error) {
       // Clean up temp file on failure (best-effort)
       try {
-        const { unlink } = await import('node:fs/promises')
         await unlink(tmpPath)
       } catch {
         // Ignore cleanup errors
@@ -101,7 +100,6 @@ export async function writeReportFile(
       await rename(tmpPath, filePath)
     } catch (error) {
       try {
-        const { unlink } = await import('node:fs/promises')
         await unlink(tmpPath)
       } catch {
         // Ignore cleanup errors
