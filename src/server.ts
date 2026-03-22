@@ -29,6 +29,39 @@ function resolveOrphanScanDirs(
   return layerConfig.scanDirs.map(d => resolve(config.rootDir, d))
 }
 
+// ─── Report output helpers ──────────────────────────────────────
+
+const DEFAULT_REPORT_DIR = '.i18n-reports'
+
+export function validateReportPath(baseDir: string, absPath: string): void {
+  const normalizedBase = resolve(baseDir)
+  const normalizedPath = resolve(absPath)
+  if (normalizedPath !== normalizedBase && !normalizedPath.startsWith(normalizedBase + '/')) {
+    throw new ToolError(
+      `Report path "${absPath}" resolves outside the project directory. Path must stay within "${normalizedBase}".`,
+      'INVALID_REPORT_PATH',
+    )
+  }
+}
+
+/**
+ * Resolve the report file path from project config.
+ * Returns undefined if reportOutput is not configured,
+ * or the absolute path to `<reportDir>/<toolName>.json`.
+ */
+function resolveReportFilePath(
+  config: I18nConfig,
+  dir: string,
+  toolName: string,
+): string | undefined {
+  const reportOutput = config.projectConfig?.reportOutput
+  if (!reportOutput) return undefined
+  const relDir = reportOutput === true ? DEFAULT_REPORT_DIR : reportOutput
+  const absPath = resolve(dir, relDir, `${toolName}.json`)
+  validateReportPath(dir, absPath)
+  return absPath
+}
+
 // ─── Shared helpers ───────────────────────────────────────────────
 
 /**
@@ -550,11 +583,10 @@ export function createServer(): McpServer {
         layer: z.string().optional().describe('Layer name to scan. If omitted, scans all layers.'),
         referenceLocale: z.string().optional().describe('Reference locale code to compare against. Defaults to the project default locale.'),
         targetLocales: z.array(z.string()).optional().describe('Locale codes to check for missing keys. Defaults to all locales except the reference.'),
-        reportFile: z.string().optional().describe('Relative path (from project root) to write the full JSON report to. When set, the MCP response contains only the summary and the file path.'),
         projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
       },
     },
-    async ({ layer, referenceLocale, targetLocales, reportFile, projectDir }) => {
+    async ({ layer, referenceLocale, targetLocales, projectDir }) => {
       try {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
@@ -650,14 +682,14 @@ export function createServer(): McpServer {
           },
         }
 
-        if (reportFile) {
-          const absPath = resolve(dir, reportFile)
-          await writeReportFile(absPath, output, {
+        const reportPath = resolveReportFilePath(config, dir, 'get_missing_translations')
+        if (reportPath) {
+          await writeReportFile(reportPath, output, {
             tool: 'get_missing_translations',
-            args: { layer, referenceLocale, targetLocales, reportFile },
+            args: { layer, referenceLocale, targetLocales },
           })
           return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile, summary: output.summary }, null, 2) }],
+            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: reportPath, summary: output.summary }, null, 2) }],
           }
         }
 
@@ -686,11 +718,10 @@ export function createServer(): McpServer {
       inputSchema: {
         layer: z.string().optional().describe('Layer name to scan. If omitted, scans all layers.'),
         locale: z.string().optional().describe('Locale code to check. If omitted, checks all locales.'),
-        reportFile: z.string().optional().describe('Relative path (from project root) to write the full JSON report to. When set, the MCP response contains only the summary and the file path.'),
         projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
       },
     },
-    async ({ layer, locale, reportFile, projectDir }) => {
+    async ({ layer, locale, projectDir }) => {
       try {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
@@ -759,14 +790,14 @@ export function createServer(): McpServer {
           },
         }
 
-        if (reportFile) {
-          const absPath = resolve(dir, reportFile)
-          await writeReportFile(absPath, output, {
+        const reportPath = resolveReportFilePath(config, dir, 'find_empty_translations')
+        if (reportPath) {
+          await writeReportFile(reportPath, output, {
             tool: 'find_empty_translations',
-            args: { layer, locale, reportFile },
+            args: { layer, locale },
           })
           return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile, summary: output.summary }, null, 2) }],
+            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: reportPath, summary: output.summary }, null, 2) }],
           }
         }
 
@@ -1392,11 +1423,10 @@ export function createServer(): McpServer {
         locale: z.string().optional().describe('Locale code to read keys from. Defaults to the project default locale.'),
         scanDirs: z.array(z.string()).optional().describe('Directories to scan for source code (absolute paths). Defaults to all layer root directories.'),
         excludeDirs: z.array(z.string()).optional().describe('Additional directory names to skip when scanning (e.g., ["storybook", "__tests__"]).'),
-        reportFile: z.string().optional().describe('Relative path (from project root) to write the full JSON report to. When set, the MCP response contains only the summary and the file path.'),
         projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
       },
     },
-    async ({ layer, locale, scanDirs, excludeDirs, reportFile, projectDir }) => {
+    async ({ layer, locale, scanDirs, excludeDirs, projectDir }) => {
       try {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
@@ -1455,14 +1485,14 @@ export function createServer(): McpServer {
 
         if (allTranslationKeys.size === 0) {
           const emptyOutput = { orphanKeys: [], summary: { totalKeys: 0, orphanCount: 0, filesScanned: 0, message: 'No translation keys found in locale files.' } }
-          if (reportFile) {
-            const absPath = resolve(dir, reportFile)
-            await writeReportFile(absPath, emptyOutput, {
+          const reportPath = resolveReportFilePath(config, dir, 'find_orphan_keys')
+          if (reportPath) {
+            await writeReportFile(reportPath, emptyOutput, {
               tool: 'find_orphan_keys',
-              args: { layer, locale, scanDirs, excludeDirs, reportFile },
+              args: { layer, locale, scanDirs, excludeDirs },
             })
             return {
-              content: [{ type: 'text' as const, text: JSON.stringify({ reportFile, summary: emptyOutput.summary }, null, 2) }],
+              content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: reportPath, summary: emptyOutput.summary }, null, 2) }],
             }
           }
           return {
@@ -1543,14 +1573,14 @@ export function createServer(): McpServer {
             : undefined,
         }
 
-        if (reportFile) {
-          const absPath = resolve(dir, reportFile)
-          await writeReportFile(absPath, output, {
+        const reportPath = resolveReportFilePath(config, dir, 'find_orphan_keys')
+        if (reportPath) {
+          await writeReportFile(reportPath, output, {
             tool: 'find_orphan_keys',
-            args: { layer, locale, scanDirs, excludeDirs, reportFile },
+            args: { layer, locale, scanDirs, excludeDirs },
           })
           return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile, summary: output.summary }, null, 2) }],
+            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: reportPath, summary: output.summary }, null, 2) }],
           }
         }
 
@@ -1580,11 +1610,10 @@ export function createServer(): McpServer {
         keys: z.array(z.string()).optional().describe('Specific dot-path keys to search for. If omitted, returns all key usages found in code.'),
         scanDirs: z.array(z.string()).optional().describe('Directories to scan (absolute paths). Defaults to all layer root directories.'),
         excludeDirs: z.array(z.string()).optional().describe('Additional directory names to skip (e.g., ["storybook", "__tests__"]).'),
-        reportFile: z.string().optional().describe('Relative path (from project root) to write the full JSON report to. When set, the MCP response contains only the summary and the file path.'),
         projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
       },
     },
-    async ({ keys, scanDirs, excludeDirs, reportFile, projectDir }) => {
+    async ({ keys, scanDirs, excludeDirs, projectDir }) => {
       try {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
@@ -1655,14 +1684,14 @@ export function createServer(): McpServer {
           }))
         }
 
-        if (reportFile) {
-          const absPath = resolve(dir, reportFile)
-          await writeReportFile(absPath, output, {
+        const reportPath = resolveReportFilePath(config, dir, 'scan_code_usage')
+        if (reportPath) {
+          await writeReportFile(reportPath, output, {
             tool: 'scan_code_usage',
-            args: { keys, scanDirs, excludeDirs, reportFile },
+            args: { keys, scanDirs, excludeDirs },
           })
           return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile, summary: output.summary }, null, 2) }],
+            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: reportPath, summary: output.summary }, null, 2) }],
           }
         }
 
@@ -1694,11 +1723,10 @@ export function createServer(): McpServer {
         scanDirs: z.array(z.string()).optional().describe('Directories to scan for source code (absolute paths). Defaults to all layer root directories.'),
         excludeDirs: z.array(z.string()).optional().describe('Additional directory names to skip when scanning (e.g., ["storybook", "__tests__"]).'),
         dryRun: z.boolean().optional().describe('If true (default), only report what would be removed. Set to false to actually delete the keys.'),
-        reportFile: z.string().optional().describe('Relative path (from project root) to write the full JSON report to. When set, the MCP response contains only the summary and the file path.'),
         projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
       },
     },
-    async ({ layer, locale, scanDirs, excludeDirs, dryRun, reportFile, projectDir }) => {
+    async ({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir }) => {
       try {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
@@ -1756,14 +1784,14 @@ export function createServer(): McpServer {
         const totalKeys = [...keysByLayer.values()].reduce((sum, keys) => sum + keys.length, 0)
         if (totalKeys === 0) {
           const emptyOutput = { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
-          if (reportFile) {
-            const absPath = resolve(dir, reportFile)
-            await writeReportFile(absPath, emptyOutput, {
+          const emptyReportPath = resolveReportFilePath(config, dir, 'cleanup_unused_translations')
+          if (emptyReportPath) {
+            await writeReportFile(emptyReportPath, emptyOutput, {
               tool: 'cleanup_unused_translations',
-              args: { layer, locale, scanDirs, excludeDirs, dryRun, reportFile },
+              args: { layer, locale, scanDirs, excludeDirs, dryRun },
             })
             return {
-              content: [{ type: 'text' as const, text: JSON.stringify({ reportFile, summary: emptyOutput.summary }, null, 2) }],
+              content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: emptyReportPath, summary: emptyOutput.summary }, null, 2) }],
             }
           }
           return {
@@ -1822,14 +1850,14 @@ export function createServer(): McpServer {
             orphanKeys: {},
             summary: { totalKeys, orphanCount: 0, dynamicMatchedCount, filesScanned: totalFilesScanned, message },
           }
-          if (reportFile) {
-            const absPath = resolve(dir, reportFile)
-            await writeReportFile(absPath, zeroOutput, {
+          const zeroReportPath = resolveReportFilePath(config, dir, 'cleanup_unused_translations')
+          if (zeroReportPath) {
+            await writeReportFile(zeroReportPath, zeroOutput, {
               tool: 'cleanup_unused_translations',
-              args: { layer, locale, scanDirs, excludeDirs, dryRun, reportFile },
+              args: { layer, locale, scanDirs, excludeDirs, dryRun },
             })
             return {
-              content: [{ type: 'text' as const, text: JSON.stringify({ reportFile, summary: zeroOutput.summary }, null, 2) }],
+              content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: zeroReportPath, summary: zeroOutput.summary }, null, 2) }],
             }
           }
           return {
@@ -1858,14 +1886,14 @@ export function createServer(): McpServer {
             output.dynamicKeyWarning = `${allDynamicKeys.length} dynamic key reference(s) found. Some "orphan" keys may be used via dynamic keys. Review before removing.`
             output.dynamicKeys = allDynamicKeys
           }
-          if (reportFile) {
-            const absPath = resolve(dir, reportFile)
-            await writeReportFile(absPath, output, {
+          const dryRunReportPath = resolveReportFilePath(config, dir, 'cleanup_unused_translations')
+          if (dryRunReportPath) {
+            await writeReportFile(dryRunReportPath, output, {
               tool: 'cleanup_unused_translations',
-              args: { layer, locale, scanDirs, excludeDirs, dryRun, reportFile },
+              args: { layer, locale, scanDirs, excludeDirs, dryRun },
             })
             return {
-              content: [{ type: 'text' as const, text: JSON.stringify({ reportFile, summary: output.summary }, null, 2) }],
+              content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: dryRunReportPath, summary: output.summary }, null, 2) }],
             }
           }
           return {
@@ -1913,14 +1941,14 @@ export function createServer(): McpServer {
           },
         }
 
-        if (reportFile) {
-          const absPath = resolve(dir, reportFile)
-          await writeReportFile(absPath, removalOutput, {
+        const removalReportPath = resolveReportFilePath(config, dir, 'cleanup_unused_translations')
+        if (removalReportPath) {
+          await writeReportFile(removalReportPath, removalOutput, {
             tool: 'cleanup_unused_translations',
-            args: { layer, locale, scanDirs, excludeDirs, dryRun, reportFile },
+            args: { layer, locale, scanDirs, excludeDirs, dryRun },
           })
           return {
-            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile, summary: removalOutput.summary }, null, 2) }],
+            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: removalReportPath, summary: removalOutput.summary }, null, 2) }],
           }
         }
 

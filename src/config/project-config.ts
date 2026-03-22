@@ -168,6 +168,12 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
     }
   }
 
+  if ('reportOutput' in config) {
+    if (typeof config.reportOutput !== 'string' && config.reportOutput !== true) {
+      throw new ConfigError(`${CONFIG_FILENAME}: "reportOutput" must be a string (directory path) or true`)
+    }
+  }
+
   log.debug(`Project config loaded successfully from ${configPath}`)
 
   return {
@@ -178,5 +184,6 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
     localeNotes: config.localeNotes as Record<string, string> | undefined,
     examples: config.examples as Array<Record<string, string>> | undefined,
     orphanScan: config.orphanScan as ProjectConfig['orphanScan'],
+    reportOutput: config.reportOutput as string | boolean | undefined,
   }
 }

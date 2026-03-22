@@ -112,19 +112,27 @@ That's it — no configuration needed. The server auto-detects your Nuxt config,
 
 ### Writing reports to file
 
-Five diagnostic tools — `get_missing_translations`, `find_empty_translations`, `find_orphan_keys`, `scan_code_usage`, and `cleanup_unused_translations` — accept an optional `reportFile` parameter (a path relative to the project root).
+Five diagnostic tools — `get_missing_translations`, `find_empty_translations`, `find_orphan_keys`, `scan_code_usage`, and `cleanup_unused_translations` — can write their full output to disk so the MCP response stays small.
 
-When `reportFile` is set:
+Enable report writing via the `reportOutput` field in `.i18n-mcp.json`:
 
-1. The full output (plus `generatedAt`, `tool`, and `args` metadata) is written atomically to that file.
-2. The MCP response returns only the `summary` object and the `reportFile` path — keeping the agent's context small.
+```json
+{
+  "reportOutput": true
+}
+```
 
-Without `reportFile`, the tools behave exactly as before and return the full JSON payload in the MCP response.
+- **`true`** — reports are written to `.i18n-reports/` (default directory, created automatically).
+- **`"custom/path"`** — reports are written to that directory relative to the project root.
+
+Each tool writes a file named `<toolName>.json` (e.g., `.i18n-reports/get_missing_translations.json`). The file contains the full output plus `generatedAt`, `tool`, and `args` metadata. The MCP response returns only the `summary` object and the `reportFile` path — keeping the agent's context small.
+
+Without `reportOutput`, the tools behave exactly as before and return the full JSON payload in the MCP response.
 
 ```jsonc
-// Example: agent calls get_missing_translations with reportFile
+// Example: MCP response when reportOutput is enabled
 {
-  "reportFile": "reports/missing.json",
+  "reportFile": ".i18n-reports/get_missing_translations.json",
   "summary": {
     "referenceLocale": "de-DE",
     "targetLocales": ["en-US", "fr-FR"],
@@ -156,6 +164,7 @@ For IDE autocompletion, point to the schema:
 | `translationPrompt` | System prompt prepended to all translation requests |
 | `localeNotes` | Per-locale instructions (e.g., "Formal German using 'Sie'") |
 | `examples` | Few-shot translation examples demonstrating your project's style |
+| `reportOutput` | `true` for default `.i18n-reports/` dir, or a custom directory path for diagnostic report files |
 
 <details>
 <summary><strong>Full example</strong></summary>
@@ -194,7 +203,8 @@ For IDE autocompletion, point to the schema:
       "en-US": "Save",
       "note": "Concise, imperative"
     }
-  ]
+  ],
+  "reportOutput": true
 }
 ```
 

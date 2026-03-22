@@ -51,6 +51,8 @@ export interface ProjectConfig {
   orphanScan?: Record<string, {
     scanDirs: string[]
   }>
+  /** Default output directory for diagnostic tool reports. Set to true for '.i18n-reports/', or a string for a custom relative path. */
+  reportOutput?: string | boolean
 }
 
 /**
