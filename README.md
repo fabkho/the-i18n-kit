@@ -164,6 +164,7 @@ For IDE autocompletion, point to the schema:
 | `translationPrompt` | System prompt prepended to all translation requests |
 | `localeNotes` | Per-locale instructions (e.g., "Formal German using 'Sie'") |
 | `examples` | Few-shot translation examples demonstrating your project's style |
+| `orphanScan` | Per-layer config for orphan key detection: `scanDirs` to scan and `ignorePatterns` to exclude keys by glob pattern |
 | `reportOutput` | `true` for default `.i18n-reports/` dir, or a custom directory path for diagnostic report files |
 
 <details>
@@ -204,6 +205,15 @@ For IDE autocompletion, point to the schema:
       "note": "Concise, imperative"
     }
   ],
+  "orphanScan": {
+    "shared": {
+      "scanDirs": ["apps/shop", "apps/admin", "packages/shared"],
+      "ignorePatterns": ["common.datetime.**", "common.countries.*"]
+    },
+    "app-admin": {
+      "scanDirs": ["apps/admin"]
+    }
+  },
   "reportOutput": true
 }
 ```
