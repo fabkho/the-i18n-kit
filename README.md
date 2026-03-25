@@ -6,11 +6,7 @@
 [![Nuxt][nuxt-src]][nuxt-href]
 [![CI][ci-src]][ci-href]
 
-An MCP server that lets AI agents manage i18n translations in Nuxt projects — without stuffing entire locale files into context.
-
-On large projects, translation files can be thousands of lines. Opening them eats context, and edits across dozens of locale files are error-prone. This server gives the agent structured tools that read and write only the keys it needs, keeping context small and operations safe. Feed it a glossary, tone guidelines, and per-locale instructions so translations stay consistent — even across teams.
-
-Works with any [MCP](https://modelcontextprotocol.io/)-compatible host: **VS Code**, **Cursor**, **Zed**, **Claude Desktop**, and more.
+MCP server for managing i18n translations in Nuxt projects. Provides 14 tools for the full translation lifecycle: read, write, search, rename, remove, find missing, auto-translate, and detect unused keys — all without loading entire locale files into context. Supports monorepos, Nuxt layers, and per-project configuration (glossary, tone, layer rules). Works with any MCP host (VS Code, Cursor, Zed, Claude Desktop).
 
 ## Quick Start
 
@@ -83,70 +79,75 @@ That's it — no configuration needed. The server auto-detects your Nuxt config,
 >
 > *"Rename `common.actions.delete` to `common.actions.remove` across all locales"*
 
-## Features
+## Typical Workflow
 
-- **🔍 Zero config** — reads `nuxt.config.ts` (including layers) automatically. No manual paths, no config duplication. Works in monorepos — point at any app and it discovers the full layer tree.
-- **✏️ Safe writes** — atomic file I/O (temp file + rename), indentation preservation, alphabetical key sorting, and validation for `{placeholders}`, `@:linked` refs, and HTML in values.
-- **🌍 Full translation lifecycle** — add, update, remove, rename, search, find missing, and auto-translate keys across all locale files in a single tool call.
-- **🔎 Code analysis** — find orphan keys not referenced in source, scan where keys are used (file + line number), and clean up dead translations in one step.
-- **📋 Project-aware** — optional `.i18n-mcp.json` gives the agent your glossary, tone, layer rules, locale-specific instructions, and few-shot examples.
+```
+1. detect_i18n_config        → understand project structure, locales, layers
+2. list_locale_dirs           → see available layers with file counts and key namespaces
+3. get_missing_translations   → find gaps between reference locale and targets
+4. add_translations           → add new keys (requires layer param)
+   translate_missing          → auto-translate missing keys via MCP sampling
+5. find_orphan_keys           → find keys not referenced in source code
+   cleanup_unused_translations → remove orphan keys in one step
+```
+
+Always call `detect_i18n_config` first — all other tools depend on the detected config.
 
 ## Tools
 
+Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`). Use `list_locale_dirs` to discover available layers.
+
 | Tool | Description |
 |------|-------------|
-| `detect_i18n_config` | Loads your Nuxt config and returns locales, layers, directories, and project config |
-| `list_locale_dirs` | Lists locale directories grouped by layer, with file counts and key namespaces |
-| `get_translations` | Reads values for specific dot-path keys from a locale/layer (`*` for all locales) |
-| `get_missing_translations` | Finds keys in a reference locale that are missing or empty in targets |
-| `find_empty_translations` | Finds keys with empty string values in locale files (checks each locale independently) |
-| `search_translations` | Searches by key pattern or value substring |
-| `add_translations` | Adds new keys across locales (fails if key exists) |
-| `update_translations` | Updates existing keys (fails if key doesn't exist) |
-| `remove_translations` | Removes keys from all locale files in a layer (dry-run support) |
-| `rename_translation_key` | Renames/moves a key across all locales (conflict detection + dry-run) |
-| `translate_missing` | Auto-translates via MCP sampling or returns context for inline translation |
+| `detect_i18n_config` | Loads Nuxt config, returns locales, layers, directories, and project config. **Call first.** |
+| `list_locale_dirs` | Lists locale directories grouped by layer, with file counts and top-level key namespaces |
+| `get_translations` | Reads values for dot-path keys from a locale/layer. Use `"*"` as locale for all locales |
+| `add_translations` | Adds new keys to a **layer** across locales. Fails if key already exists |
+| `update_translations` | Updates existing keys in a **layer**. Fails if key doesn't exist |
+| `remove_translations` | Removes keys from ALL locale files in a **layer**. Supports `dryRun` |
+| `rename_translation_key` | Renames/moves a key across all locales in a **layer**. Conflict detection + `dryRun` |
+| `get_missing_translations` | Finds keys present in reference locale but missing/empty in targets. `""` counts as missing |
+| `find_empty_translations` | Finds keys with empty string values. Checks each locale independently |
+| `search_translations` | Searches by key pattern or value substring across layers and locales |
+| `translate_missing` | Auto-translates via MCP sampling, or returns context for inline translation when sampling unavailable |
 | `find_orphan_keys` | Finds keys in JSON not referenced in any Vue/TS source code |
 | `scan_code_usage` | Shows where keys are used — file paths, line numbers, call patterns |
-| `cleanup_unused_translations` | Finds orphan keys + removes them in one step (dry-run by default) |
+| `cleanup_unused_translations` | Finds orphan keys + removes them in one step. Dry-run by default |
 
-### Writing reports to file
+### Prompts
 
-Five diagnostic tools — `get_missing_translations`, `find_empty_translations`, `find_orphan_keys`, `scan_code_usage`, and `cleanup_unused_translations` — can write their full output to disk so the MCP response stays small.
+| Prompt | Description |
+|--------|-------------|
+| `add-feature-translations` | Guided workflow for adding translations when building a new feature. Accepts optional `layer` and `namespace` |
+| `fix-missing-translations` | Find and fix all missing translations across the project. Accepts optional `layer` |
 
-Enable report writing via the `reportOutput` field in `.i18n-mcp.json`:
+### Resources
 
-```json
-{
-  "reportOutput": true
-}
+| Resource | Description |
+|----------|-------------|
+| `i18n:///{layer}/{file}` | Browse locale files directly (e.g., `i18n:///root/en-US.json`) |
+
+## Monorepo Support
+
+The server discovers all Nuxt apps with i18n configuration under the given `projectDir`. Pass the monorepo root and it walks the directory tree, finds every `nuxt.config.ts` with i18n settings, loads each app via `@nuxt/kit`, and merges the results. Each app's locale directories become separate layers.
+
+```
+monorepo/
+├── apps/
+│   ├── shop/          ← discovered, becomes "shop" layer
+│   │   └── nuxt.config.ts (has i18n)
+│   └── admin/         ← discovered, becomes "admin" layer
+│       └── nuxt.config.ts (has i18n)
+├── packages/
+│   └── shared/        ← skipped, no nuxt.config with i18n
+└── package.json
 ```
 
-- **`true`** — reports are written to `.i18n-reports/` (default directory, created automatically).
-- **`"custom/path"`** — reports are written to that directory relative to the project root.
-
-Each tool writes a file named `<toolName>.json` (e.g., `.i18n-reports/get_missing_translations.json`). The file contains the full output plus `generatedAt`, `tool`, and `args` metadata. The MCP response returns only the `summary` object and the `reportFile` path — keeping the agent's context small.
-
-Without `reportOutput`, the tools behave exactly as before and return the full JSON payload in the MCP response.
-
-```jsonc
-// Example: MCP response when reportOutput is enabled
-{
-  "reportFile": ".i18n-reports/get_missing_translations.json",
-  "summary": {
-    "referenceLocale": "de-DE",
-    "targetLocales": ["en-US", "fr-FR"],
-    "layersScanned": ["root"],
-    "totalMissingKeys": 12
-  }
-}
-```
-
-The server also exposes two guided **prompts** (`add-feature-translations`, `fix-missing-translations`) and a **resource template** (`i18n:///{layer}/{file}`) for browsing locale files.
+Discovery stops descending into a directory once it finds a `nuxt.config` — nested Nuxt layers are loaded by `@nuxt/kit` automatically.
 
 ## Project Config
 
-Optionally drop a `.i18n-mcp.json` at your project root to give the agent project-specific context. Everything is optional — the server passes it to the agent, which interprets the natural-language rules.
+Optionally drop a `.i18n-mcp.json` at your project root to give the agent project-specific context. Everything is optional — the server passes it to the agent, which interprets the natural-language rules. The server walks up from `projectDir` to find the nearest config file (like ESLint or tsconfig resolution).
 
 For IDE autocompletion, point to the schema:
 
@@ -158,17 +159,16 @@ For IDE autocompletion, point to the schema:
 
 | Field | Purpose |
 |-------|---------|
-| `context` | Free-form project background (what the app is, who uses it, what tone) |
-| `layerRules` | Rules for which layer a key belongs to, with plain-English `when` conditions |
+| `context` | Free-form project background (business domain, user base, brand voice) |
+| `layerRules` | Rules for which layer a new key belongs to, with natural-language `when` conditions |
 | `glossary` | Term dictionary for consistent translations |
 | `translationPrompt` | System prompt prepended to all translation requests |
-| `localeNotes` | Per-locale instructions (e.g., "Formal German using 'Sie'") |
-| `examples` | Few-shot translation examples demonstrating your project's style |
-| `orphanScan` | Per-layer config for orphan key detection: `scanDirs` to scan and `ignorePatterns` to exclude keys by glob pattern |
-| `reportOutput` | `true` for default `.i18n-reports/` dir, or a custom directory path for diagnostic report files |
+| `localeNotes` | Per-locale instructions (e.g., `"de-DE-formal": "Use 'Sie', not 'du'"`) |
+| `examples` | Few-shot translation examples demonstrating project style |
+| `orphanScan` | Per-layer config for orphan detection: `scanDirs` (overrides auto-discovered dirs) and `ignorePatterns` (glob) |
+| `reportOutput` | `true` for default `.i18n-reports/` dir, or a string for a custom path. Diagnostic tools write full output to disk and return only a summary in the MCP response |
 
-<details>
-<summary><strong>Full example</strong></summary>
+### Full example
 
 ```json
 {
@@ -220,7 +220,15 @@ For IDE autocompletion, point to the schema:
 
 See [`playground/.i18n-mcp.json`](playground/.i18n-mcp.json) for a working example.
 
-</details>
+## Features
+
+- **Zero config** — reads `nuxt.config.ts` (including layers) automatically via `@nuxt/kit`. Works in monorepos.
+- **Safe writes** — atomic file I/O (temp file + rename), indentation preservation, alphabetical key sorting, `{placeholder}` and `@:linked` ref validation.
+- **Full lifecycle** — add, update, remove, rename, search, find missing, auto-translate, and clean up unused keys.
+- **Code analysis** — find orphan keys not referenced in Vue/TS source, scan usage locations (file + line), bulk cleanup.
+- **Project-aware** — optional `.i18n-mcp.json` for glossary, tone, layer rules, locale-specific instructions, and few-shot examples.
+- **Caching** — config detection and file reads are cached (mtime-based). Writes invalidate automatically.
+- **Sampling support** — `translate_missing` uses MCP sampling when available (VS Code). Falls back to returning context for inline translation (Zed, others).
 
 ## Roadmap
 
@@ -230,12 +238,6 @@ See [`playground/.i18n-mcp.json`](playground/.i18n-mcp.json) for a working examp
 - [ ] Flat JSON support — `flatJson: true` in vue-i18n config
 - [ ] Pluralization support — vue-i18n plural forms
 - [ ] Plain vue-i18n support — extract core into a monorepo, add a Vue/Vite adapter alongside the Nuxt one
-
-## Good to Know
-
-- **Empty strings are missing** — `get_missing_translations` and `translate_missing` treat `""` as missing, matching BabelEdit behaviour.
-- **Caching** — config detection and file reads are cached (mtime-based). Writes invalidate automatically.
-- **Sampling support varies** — VS Code supports MCP sampling for `translate_missing`. Zed doesn't yet — the tool falls back to returning context for the agent to translate inline. Both paths work.
 
 ## Development
 
