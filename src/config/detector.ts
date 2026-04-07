@@ -33,22 +33,30 @@ export async function detectI18nConfig(projectDir: string): Promise<I18nConfig> 
 
   log.info(`Detecting i18n config from: ${projectDir}`)
 
-  const isNuxtApp = findNuxtConfig(projectDir) !== null
+  const appDirs = await discoverNuxtApps(projectDir)
 
-  if (isNuxtApp) {
-    const config = await loadSingleApp(projectDir, projectDir)
-    configCache.set(canonDir, config)
-    lastConfig = config
-    log.info(`Detected ${config.locales.length} locales, ${config.localeDirs.length} locale directories`)
-    return config
+  // discoverNuxtApps stops descending at nuxt.config dirs, so the root is
+  // included when it has i18n. Guard against root having a config without i18n.
+  if (findNuxtConfig(projectDir) && !appDirs.includes(projectDir)) {
+    appDirs.unshift(projectDir)
   }
 
-  const appDirs = await discoverNuxtApps(projectDir)
   if (appDirs.length === 0) {
     throw new ConfigError(
       `No Nuxt apps with i18n configuration found under ${projectDir}. `
       + 'Make sure your Nuxt apps have a nuxt.config.ts with i18n configured.',
     )
+  }
+
+  if (appDirs.length === 1) {
+    const config = await loadSingleApp(appDirs[0], projectDir)
+    if (appDirs[0] !== projectDir) {
+      config.rootDir = projectDir
+    }
+    configCache.set(canonDir, config)
+    lastConfig = config
+    log.info(`Detected ${config.locales.length} locales, ${config.localeDirs.length} locale directories`)
+    return config
   }
 
   log.info(`Discovered ${appDirs.length} Nuxt app(s) with i18n: ${appDirs.map(d => relative(projectDir, d) || '.').join(', ')}`)

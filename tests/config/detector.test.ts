@@ -211,7 +211,7 @@ describe('discoverNuxtApps (real filesystem)', () => {
     expect(apps).toContain(playgroundDir)
   })
 
-  it('does not descend into playground to find app-admin separately', async () => {
+  it('does not descend into playground to find app-admin from project root', async () => {
     const apps = await discoverNuxtApps(monorepoDir)
     expect(apps).not.toContain(appAdminDir)
   })
@@ -223,6 +223,12 @@ describe('discoverNuxtApps (real filesystem)', () => {
 
   it('finds app-admin when given its directory directly (not via parent discovery)', async () => {
     const apps = await discoverNuxtApps(appAdminDir)
+    expect(apps).toContain(appAdminDir)
+  })
+
+  it('finds both root and sub-apps when root itself has a nuxt.config with i18n', async () => {
+    const apps = await discoverNuxtApps(playgroundDir)
+    expect(apps).toContain(playgroundDir)
     expect(apps).toContain(appAdminDir)
   })
 })

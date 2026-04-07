@@ -49,13 +49,13 @@ async function hasI18nConfig(configPath: string): Promise<boolean> {
  */
 export async function discoverNuxtApps(rootDir: string): Promise<string[]> {
   const apps: string[] = []
-  await scanForApps(rootDir, 0, apps)
+  await scanForApps(rootDir, 0, apps, true)
   const root = resolve(rootDir)
   apps.sort((a, b) => relative(root, a).localeCompare(relative(root, b)))
   return apps
 }
 
-async function scanForApps(dir: string, depth: number, results: string[]): Promise<void> {
+async function scanForApps(dir: string, depth: number, results: string[], isRoot = false): Promise<void> {
   if (depth > MAX_DISCOVERY_DEPTH) return
 
   const configFile = findNuxtConfig(dir)
@@ -64,7 +64,7 @@ async function scanForApps(dir: string, depth: number, results: string[]): Promi
     if (await hasI18nConfig(configPath)) {
       results.push(dir)
     }
-    return
+    if (!isRoot) return
   }
 
   let entries: string[]
