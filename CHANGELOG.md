@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/fabkho/nuxt-i18n-mcp/compare/v1.5.0...v1.5.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* discover sub-apps when root has nuxt.config with i18n ([#38](https://github.com/fabkho/nuxt-i18n-mcp/issues/38)) ([5dfbfaf](https://github.com/fabkho/nuxt-i18n-mcp/commit/5dfbfaf800c92024f7e512136b4fdc0010dc1245))
+
 ## [1.5.0](https://github.com/fabkho/nuxt-i18n-mcp/compare/v1.4.1...v1.5.0) (2026-03-25)
 
 
