@@ -71,3 +71,35 @@ describe('discoverNuxtApps returns deterministic order', () => {
     expect(first).toEqual(sorted)
   })
 })
+
+describe('detectI18nConfig when root has nuxt.config with i18n (issue #37)', () => {
+  let config: I18nConfig
+
+  beforeAll(async () => {
+    clearConfigCache()
+    config = await detectI18nConfig(playgroundDir)
+  }, 60_000)
+
+  afterAll(() => {
+    clearConfigCache()
+  })
+
+  it('discovers both root and sub-app locale directories', () => {
+    const layers = config.localeDirs.map(d => d.layer)
+    expect(layers.length).toBeGreaterThanOrEqual(2)
+
+    const hasAppAdmin = config.localeDirs.some(d =>
+      d.path === resolve(appAdminDir, 'i18n/locales'),
+    )
+    const hasPlayground = config.localeDirs.some(d =>
+      d.path === resolve(playgroundDir, 'i18n/locales'),
+    )
+    expect(hasAppAdmin).toBe(true)
+    expect(hasPlayground).toBe(true)
+  })
+
+  it('includes layerRootDirs for both root and sub-app', () => {
+    expect(config.layerRootDirs).toContain(playgroundDir)
+    expect(config.layerRootDirs).toContain(appAdminDir)
+  })
+})
