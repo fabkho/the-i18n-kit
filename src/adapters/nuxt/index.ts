@@ -256,7 +256,16 @@ function extractFallbackLocale(
   i18nOptions: Record<string, unknown>,
 ): Record<string, string[]> {
   const fallback = i18nOptions.fallbackLocale
-  if (fallback && typeof fallback === 'object' && !Array.isArray(fallback)) {
+
+  if (typeof fallback === 'string') {
+    return { default: [fallback] }
+  }
+
+  if (Array.isArray(fallback)) {
+    return { default: (fallback as unknown[]).map(String) }
+  }
+
+  if (fallback && typeof fallback === 'object') {
     const result: Record<string, string[]> = {}
     for (const [key, value] of Object.entries(fallback as Record<string, unknown>)) {
       if (Array.isArray(value)) {
