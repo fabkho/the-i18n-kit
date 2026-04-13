@@ -96,8 +96,9 @@ export const LARAVEL_PATTERNS: ScanPatternSet = {
 // ─── Resolution ─────────────────────────────────────────────────
 
 /**
- * Returns the appropriate scan pattern set for a given locale file format.
- * Defaults to Vue/Nuxt patterns when format is unknown.
+ * Maps locale file format to the appropriate scan pattern set.
+ * 'php-array' → Laravel (PHP translation helpers in Blade/PHP files).
+ * 'json' / undefined → Vue/Nuxt ($t / t calls in Vue/TS/JS files).
  */
 export function getPatternSet(format?: LocaleFileFormat): ScanPatternSet {
   switch (format) {

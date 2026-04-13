@@ -53,6 +53,9 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
         const callee = match[1]
         const key = match[3]
         if (!key) continue
+        // Skip PHP brace-interpolated keys like "msg.{$type}.title" — handled by dynamicKeyPatterns.
+        // Bare $var interpolation (without braces) is intentionally treated as static because
+        // it's indistinguishable from a literal dollar sign without PHP runtime context.
         if (key.includes('{$')) continue
         if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
         usages.push({ key, file: filePath, line: lineNumber, callee })
