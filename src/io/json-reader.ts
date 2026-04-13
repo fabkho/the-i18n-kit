@@ -21,7 +21,7 @@ export function clearFileCacheEntry(filePath: string): void {
  */
 export async function readLocaleFile(filePath: string): Promise<Record<string, unknown>> {
   if (!existsSync(filePath)) {
-    throw new FileIOError(`File not found: ${filePath}`, filePath)
+    throw new FileIOError(`File not found: ${filePath}`, filePath, 'FILE_NOT_FOUND')
   }
 
   try {
@@ -40,7 +40,7 @@ export async function readLocaleFile(filePath: string): Promise<Record<string, u
   } catch (error) {
     if (error instanceof FileIOError) throw error
     if (error instanceof SyntaxError) {
-      throw new FileIOError(`Invalid JSON in file: ${filePath}`, filePath)
+      throw new FileIOError(`Invalid JSON in file: ${filePath}`, filePath, 'INVALID_JSON')
     }
     throw new FileIOError(
       `Failed to read file: ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
@@ -91,7 +91,7 @@ export async function readLocaleFileWithMeta(filePath: string): Promise<{
   trailingNewline: boolean
 }> {
   if (!existsSync(filePath)) {
-    throw new FileIOError(`File not found: ${filePath}`, filePath)
+    throw new FileIOError(`File not found: ${filePath}`, filePath, 'FILE_NOT_FOUND')
   }
 
   try {
@@ -103,7 +103,7 @@ export async function readLocaleFileWithMeta(filePath: string): Promise<{
     return { data, rawContent, indent, trailingNewline }
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw new FileIOError(`Invalid JSON in file: ${filePath}`, filePath)
+      throw new FileIOError(`Invalid JSON in file: ${filePath}`, filePath, 'INVALID_JSON')
     }
     throw new FileIOError(
       `Failed to read file: ${filePath}: ${error instanceof Error ? error.message : String(error)}`,

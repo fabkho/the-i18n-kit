@@ -1,9 +1,10 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { detectI18nConfig, getCachedConfig } from './config/detector.js'
-import type { I18nConfig, ProjectConfig } from './config/types.js'
-import { readLocaleFile } from './io/json-reader.js'
-import { mutateLocaleFile, writeReportFile } from './io/json-writer.js'
+import type { I18nConfig, LocaleDefinition, ProjectConfig } from './config/types.js'
+import type { LocaleFileFormat } from './adapters/types.js'
+import { writeReportFile } from './io/json-writer.js'
+import { readLocaleData, mutateLocaleData, resolveLocaleEntries } from './io/locale-data.js'
 import {
   getNestedValue,
   setNestedValue,
@@ -15,8 +16,8 @@ import {
 } from './io/key-operations.js'
 import { scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes } from './scanner/code-scanner.js'
 import { log } from './utils/logger.js'
-import { FileIOError, ToolError } from './utils/errors.js'
-import { join, resolve } from 'node:path'
+import { ToolError } from './utils/errors.js'
+import { resolve } from 'node:path'
 import { readdir } from 'node:fs/promises'
 
 function resolveOrphanScanDirs(
@@ -103,7 +104,6 @@ async function applyTranslations(
   translations: Record<string, Record<string, string>>,
   mode: 'add' | 'update',
   findLocale: (config: I18nConfig, ref: string) => ReturnType<typeof findLocaleImpl>,
-  resolveLocaleFilePath: (config: I18nConfig, layer: string, file: string | undefined) => string | null,
   dryRun = false,
 ): Promise<{ applied: string[]; skipped: string[]; warnings: string[]; filesWritten: number; preview?: Array<{ locale: string; key: string; value: string }> }> {
   const applied: string[] = []
@@ -112,7 +112,7 @@ async function applyTranslations(
   const filesWritten = new Set<string>()
   const preview: Array<{ locale: string; key: string; value: string }> = []
 
-  const byFile = new Map<string, Array<{ key: string; value: string; localeCode: string }>>()
+  const byLocale = new Map<LocaleDefinition, Array<{ key: string; value: string }>>()
 
   for (const [key, localeValues] of Object.entries(translations)) {
     for (const [localeRef, value] of Object.entries(localeValues)) {
@@ -127,34 +127,17 @@ async function applyTranslations(
         log.warn(`Locale not found: ${localeRef}, skipping`)
         continue
       }
-      const filePath = resolveLocaleFilePath(config, layer, locale.file)
-      if (!filePath) {
-        log.warn(`No locale dir found for layer '${layer}', skipping`)
-        continue
+      if (!byLocale.has(locale)) {
+        byLocale.set(locale, [])
       }
-      if (!byFile.has(filePath)) {
-        byFile.set(filePath, [])
-      }
-      byFile.get(filePath)!.push({ key, value, localeCode: locale.code })
+      byLocale.get(locale)!.push({ key, value })
     }
   }
 
-  for (const [filePath, entries] of byFile) {
+  for (const [locale, entries] of byLocale) {
     if (dryRun) {
-      let data: Record<string, unknown> = {}
-      try {
-        data = await readLocaleFile(filePath)
-      } catch (err) {
-        if (err instanceof FileIOError && err.message.startsWith('File not found')) {
-          // File doesn't exist yet — treat all keys as applicable
-        } else {
-          throw new ToolError(
-            `Failed to read locale file ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
-            'LOCALE_READ_ERROR',
-          )
-        }
-      }
-      for (const { key, value, localeCode } of entries) {
+      const data = await readLocaleData(config, layer, locale)
+      for (const { key, value } of entries) {
         const exists = hasNestedKey(data, key)
         if (mode === 'add' && exists) {
           skipped.push(key)
@@ -162,11 +145,11 @@ async function applyTranslations(
           skipped.push(key)
         } else {
           applied.push(key)
-          preview.push({ locale: localeCode, key, value })
+          preview.push({ locale: locale.code, key, value })
         }
       }
     } else {
-      await mutateLocaleFile(filePath, (data) => {
+      const written = await mutateLocaleData(config, layer, locale, (data) => {
         for (const { key, value } of entries) {
           const exists = hasNestedKey(data, key)
           if (mode === 'add' && exists) {
@@ -179,7 +162,7 @@ async function applyTranslations(
           }
         }
       })
-      filesWritten.add(filePath)
+      for (const f of written) filesWritten.add(f)
     }
   }
 
@@ -202,18 +185,24 @@ async function applyTranslations(
 /**
  * Build a system prompt for translation sampling from project config.
  */
+function placeholderInstruction(format?: LocaleFileFormat): string {
+  if (format === 'php-array') {
+    return 'Preserve all :placeholder parameters exactly as-is.'
+  }
+  return 'Preserve all {placeholder} parameters and @:linked.message references.'
+}
+
 function buildTranslationSystemPrompt(
   projectConfig: ProjectConfig | undefined,
   targetLocaleCode: string,
+  localeFileFormat?: LocaleFileFormat,
 ): string {
   const parts: string[] = []
 
-  // 1. Translation prompt from project config
   if (projectConfig?.translationPrompt) {
     parts.push(projectConfig.translationPrompt)
   }
 
-  // 2. Glossary
   if (projectConfig?.glossary && Object.keys(projectConfig.glossary).length > 0) {
     const glossaryLines = Object.entries(projectConfig.glossary)
       .map(([term, definition]) => `- ${term} → ${definition}`)
@@ -221,12 +210,10 @@ function buildTranslationSystemPrompt(
     parts.push(`GLOSSARY — use these terms consistently:\n${glossaryLines}`)
   }
 
-  // 3. Locale-specific notes
   if (projectConfig?.localeNotes?.[targetLocaleCode]) {
     parts.push(`TARGET LOCALE NOTE (${targetLocaleCode}): ${projectConfig.localeNotes[targetLocaleCode]}`)
   }
 
-  // 4. Examples
   if (projectConfig?.examples && projectConfig.examples.length > 0) {
     const exampleLines = projectConfig.examples
       .map((ex) => {
@@ -242,7 +229,7 @@ function buildTranslationSystemPrompt(
   }
 
   if (parts.length === 0) {
-    return 'You are a professional translator for software UI strings. Preserve all {placeholder} parameters and @:linked.message references. Be concise — UI space is limited.'
+    return `You are a professional translator for software UI strings. ${placeholderInstruction(localeFileFormat)} Be concise — UI space is limited.`
   }
 
   return parts.join('\n\n')
@@ -255,10 +242,11 @@ function buildTranslationUserMessage(
   referenceLocaleCode: string,
   targetLocaleCode: string,
   keysAndValues: Record<string, string>,
+  localeFileFormat?: LocaleFileFormat,
 ): string {
   return [
     `Translate the following i18n key-value pairs from ${referenceLocaleCode} to ${targetLocaleCode}.`,
-    'Preserve all {placeholder} parameters and @:linked.message references.',
+    placeholderInstruction(localeFileFormat),
     'Return ONLY a JSON object mapping keys to translated values. No markdown, no explanation, no code fences.',
     '',
     JSON.stringify(keysAndValues, null, 2),
@@ -314,19 +302,6 @@ export function createServer(): McpServer {
     name: 'nuxt-i18n-mcp',
     version: '0.1.0',
   })
-
-  // Helper: resolve locale file path for a layer + locale file name
-  function resolveLocaleFilePath(config: I18nConfig, layer: string, localeFile: string | undefined): string | null {
-    if (!localeFile) return null
-    const dir = config.localeDirs.find(d => d.layer === layer)
-    if (!dir) return null
-    // If this is an alias, resolve to the aliased layer's dir
-    if (dir.aliasOf) {
-      const aliasDir = config.localeDirs.find(d => d.layer === dir.aliasOf)
-      if (aliasDir) return join(aliasDir.path, localeFile)
-    }
-    return join(dir.path, localeFile)
-  }
 
   // Helper: find locale definition by locale code or file name
   function findLocale(config: I18nConfig, localeRef: string) {
@@ -400,27 +375,45 @@ export function createServer(): McpServer {
             continue
           }
 
-          const files = await readdir(localeDir.path)
-          const jsonFiles = files.filter(f => f.endsWith('.json'))
+          if (config.localeFileFormat === 'php-array') {
+            let subDirs: string[] = []
+            try { subDirs = await readdir(localeDir.path) } catch {}
 
-          // Read first JSON file to get top-level keys
-          let topLevelKeys: string[] = []
-          if (jsonFiles.length > 0) {
-            try {
-              const sampleFile = join(localeDir.path, jsonFiles[0])
-              const data = await readLocaleFile(sampleFile)
-              topLevelKeys = Object.keys(data)
-            } catch {
-              // Ignore errors reading sample file
+            const sampleLocale = config.locales[0]
+            let namespaces: string[] = []
+            if (sampleLocale) {
+              try {
+                const entries = await resolveLocaleEntries(config, localeDir.layer, sampleLocale)
+                namespaces = entries.map(e => e.namespace).filter((n): n is string => n !== null)
+              } catch {}
             }
-          }
 
-          results.push({
-            layer: localeDir.layer,
-            path: localeDir.path,
-            fileCount: jsonFiles.length,
-            topLevelKeys,
-          })
+            results.push({
+              layer: localeDir.layer,
+              path: localeDir.path,
+              fileCount: subDirs.length,
+              namespaces,
+            })
+          } else {
+            const files = await readdir(localeDir.path)
+            const jsonFiles = files.filter(f => f.endsWith('.json'))
+
+            let topLevelKeys: string[] = []
+            if (config.locales.length > 0 && jsonFiles.length > 0) {
+              try {
+                const sampleLocale = config.locales[0]
+                const data = await readLocaleData(config, localeDir.layer, sampleLocale)
+                topLevelKeys = Object.keys(data)
+              } catch {}
+            }
+
+            results.push({
+              layer: localeDir.layer,
+              path: localeDir.path,
+              fileCount: jsonFiles.length,
+              topLevelKeys,
+            })
+          }
         }
 
         return {
@@ -477,14 +470,8 @@ export function createServer(): McpServer {
         const results: Record<string, Record<string, unknown>> = {}
 
         for (const loc of localesToRead) {
-          const filePath = resolveLocaleFilePath(config, layer, loc.file)
-          if (!filePath) {
-            results[loc.code] = Object.fromEntries(keys.map(k => [k, null]))
-            continue
-          }
-
           try {
-            const data = await readLocaleFile(filePath)
+            const data = await readLocaleData(config, layer, loc)
             results[loc.code] = Object.fromEntries(
               keys.map(k => [k, getNestedValue(data, k) ?? null]),
             )
@@ -543,7 +530,7 @@ export function createServer(): McpServer {
         const isDryRun = dryRun ?? false
 
         const { applied, skipped, warnings, filesWritten, preview } = await applyTranslations(
-          config, layer, translations, 'add', findLocale, resolveLocaleFilePath, isDryRun,
+          config, layer, translations, 'add', findLocale, isDryRun,
         )
 
         if (isDryRun) {
@@ -626,7 +613,7 @@ export function createServer(): McpServer {
         const isDryRun = dryRun ?? false
 
         const { applied, skipped, filesWritten, preview } = await applyTranslations(
-          config, layer, translations, 'update', findLocale, resolveLocaleFilePath, isDryRun,
+          config, layer, translations, 'update', findLocale, isDryRun,
         )
 
         if (isDryRun) {
@@ -719,19 +706,14 @@ export function createServer(): McpServer {
         let totalMissing = 0
 
         for (const localeDir of layersToScan) {
-          // Read reference locale file for this layer
-          const refFilePath = resolveLocaleFilePath(config, localeDir.layer, refLocale.file)
-          if (!refFilePath) continue
-
           let refData: Record<string, unknown>
           try {
-            refData = await readLocaleFile(refFilePath)
+            refData = await readLocaleData(config, localeDir.layer, refLocale)
           } catch {
-            // Reference file doesn't exist in this layer, skip
             continue
           }
+          if (Object.keys(refData).length === 0) continue
 
-          // Only consider ref keys that have non-empty values
           const refKeys = getLeafKeys(refData).filter(k => {
             const v = getNestedValue(refData, k)
             return typeof v === 'string' ? v.length > 0 : v !== null && v !== undefined
@@ -739,18 +721,12 @@ export function createServer(): McpServer {
           if (refKeys.length === 0) continue
 
           for (const target of targets) {
-            const targetFilePath = resolveLocaleFilePath(config, localeDir.layer, target.file)
             let targetData: Record<string, unknown> = {}
 
-            if (targetFilePath) {
-              try {
-                targetData = await readLocaleFile(targetFilePath)
-              } catch {
-                // Target file doesn't exist — all ref keys are missing
-              }
-            }
+            try {
+              targetData = await readLocaleData(config, localeDir.layer, target)
+            } catch {}
 
-            // A key is missing if it doesn't exist OR its value is an empty string
             const missing = refKeys.filter(k => {
               const v = getNestedValue(targetData, k)
               return v === undefined || v === '' || v === null
@@ -854,15 +830,13 @@ export function createServer(): McpServer {
 
         for (const localeDir of layersToScan) {
           for (const loc of localesToCheck) {
-            const filePath = resolveLocaleFilePath(config, localeDir.layer, loc.file)
-            if (!filePath) continue
-
             let data: Record<string, unknown>
             try {
-              data = await readLocaleFile(filePath)
+              data = await readLocaleData(config, localeDir.layer, loc)
             } catch {
               continue
             }
+            if (Object.keys(data).length === 0) continue
 
             const leafKeys = getLeafKeys(data)
             const empty = leafKeys.filter(k => getNestedValue(data, k) === '')
@@ -960,16 +934,13 @@ export function createServer(): McpServer {
 
         for (const localeDir of layersToSearch) {
           for (const loc of localesToSearch) {
-            const filePath = resolveLocaleFilePath(config, localeDir.layer, loc.file)
-            if (!filePath) continue
-
             let data: Record<string, unknown>
             try {
-              data = await readLocaleFile(filePath)
+              data = await readLocaleData(config, localeDir.layer, loc)
             } catch {
-              // File doesn't exist in this layer, skip
               continue
             }
+            if (Object.keys(data).length === 0) continue
 
             const leafKeys = getLeafKeys(data)
 
@@ -1053,15 +1024,13 @@ export function createServer(): McpServer {
         const filesWritten = new Set<string>()
 
         for (const locale of config.locales) {
-          const filePath = resolveLocaleFilePath(config, layer, locale.file)
-          if (!filePath) continue
-
           let data: Record<string, unknown>
           try {
-            data = await readLocaleFile(filePath)
+            data = await readLocaleData(config, layer, locale)
           } catch {
             continue
           }
+          if (Object.keys(data).length === 0) continue
 
           if (isDryRun) {
             for (const key of keys) {
@@ -1071,7 +1040,7 @@ export function createServer(): McpServer {
               }
             }
           } else {
-            await mutateLocaleFile(filePath, (fileData) => {
+            const written = await mutateLocaleData(config, layer, locale, (fileData) => {
               for (const key of keys) {
                 if (removeNestedValue(fileData, key)) {
                   removed.push(`${locale.code}:${key}`)
@@ -1080,7 +1049,7 @@ export function createServer(): McpServer {
                 }
               }
             })
-            filesWritten.add(filePath)
+            for (const f of written) filesWritten.add(f)
           }
         }
 
@@ -1169,15 +1138,13 @@ export function createServer(): McpServer {
         const filesWritten = new Set<string>()
 
         for (const locale of config.locales) {
-          const filePath = resolveLocaleFilePath(config, layer, locale.file)
-          if (!filePath) continue
-
           let data: Record<string, unknown>
           try {
-            data = await readLocaleFile(filePath)
+            data = await readLocaleData(config, layer, locale)
           } catch {
             continue
           }
+          if (Object.keys(data).length === 0) continue
 
           const oldValue = getNestedValue(data, oldKey)
           if (oldValue === undefined) {
@@ -1193,11 +1160,11 @@ export function createServer(): McpServer {
           if (isDryRun) {
             preview.push({ locale: locale.code, oldKey, newKey, value: oldValue })
           } else {
-            await mutateLocaleFile(filePath, (fileData) => {
+            const written = await mutateLocaleData(config, layer, locale, (fileData) => {
               renameNestedKey(fileData, oldKey, newKey)
             })
             renamed.push(locale.code)
-            filesWritten.add(filePath)
+            for (const f of written) filesWritten.add(f)
           }
         }
 
@@ -1302,13 +1269,10 @@ export function createServer(): McpServer {
           throw new ToolError(`Reference locale not found: "${refCode}". Available: ${config.locales.map(l => l.code).join(', ')}. Pass a valid locale code as referenceLocale, or omit it to use the project default.`, 'REFERENCE_LOCALE_NOT_FOUND')
         }
 
-        // Read reference locale file
-        const refFilePath = resolveLocaleFilePath(config, layer, refLocale.file)
-        if (!refFilePath) {
-          throw new ToolError(`No locale file found for reference locale "${refCode}" in layer "${layer}". Verify the layer exists and contains a file for this locale using list_locale_dirs.`, 'NO_LOCALE_FILE')
+        const refData = await readLocaleData(config, layer, refLocale)
+        if (Object.keys(refData).length === 0) {
+          throw new ToolError(`No locale data found for reference locale "${refCode}" in layer "${layer}". Verify the layer exists and contains data for this locale using list_locale_dirs.`, 'NO_LOCALE_FILE')
         }
-        const refData = await readLocaleFile(refFilePath)
-        // Only consider ref keys that have non-empty values
         const allRefKeys = getLeafKeys(refData).filter(k => {
           const v = getNestedValue(refData, k)
           return typeof v === 'string' ? v.length > 0 : v !== null && v !== undefined
@@ -1333,16 +1297,11 @@ export function createServer(): McpServer {
         const fallbackContexts: Record<string, Record<string, unknown>> = {}
 
         for (const target of targets) {
-          const targetFilePath = resolveLocaleFilePath(config, layer, target.file)
           let targetData: Record<string, unknown> = {}
 
-          if (targetFilePath) {
-            try {
-              targetData = await readLocaleFile(targetFilePath)
-            } catch {
-              // File doesn't exist yet — all keys are missing
-            }
-          }
+          try {
+            targetData = await readLocaleData(config, layer, target)
+          } catch {}
 
           // A key is missing if it doesn't exist OR its value is an empty string
           const isKeyMissing = (k: string): boolean => {
@@ -1396,11 +1355,12 @@ export function createServer(): McpServer {
               const batch = Object.fromEntries(keyEntries.slice(i, i + maxBatch))
 
               try {
-                const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, target.language || target.code)
+                const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, target.language || target.code, config.localeFileFormat)
                 const userMessage = buildTranslationUserMessage(
                   refLocale.language || refLocale.code,
                   target.language || target.code,
                   batch,
+                  config.localeFileFormat,
                 )
 
                 const samplingResult = await server.server.createMessage({
@@ -1440,9 +1400,8 @@ export function createServer(): McpServer {
               }
             }
 
-            // Single write per locale file after all batches
-            if (targetFilePath && Object.keys(allTranslations).length > 0) {
-              await mutateLocaleFile(targetFilePath, (data) => {
+            if (Object.keys(allTranslations).length > 0) {
+              await mutateLocaleData(config, layer, target, (data) => {
                 for (const [key, value] of Object.entries(allTranslations)) {
                   setNestedValue(data, key, value)
                 }
@@ -1558,18 +1517,15 @@ export function createServer(): McpServer {
           )
         }
 
-        // Collect all translation keys from locale files
-        const allTranslationKeys = new Map<string, string>() // key -> layer
+        const allTranslationKeys = new Map<string, string>()
         for (const localeDir of layersToCheck) {
-          const filePath = resolveLocaleFilePath(config, localeDir.layer, localeDef.file)
-          if (!filePath) continue
-
           let data: Record<string, unknown>
           try {
-            data = await readLocaleFile(filePath)
+            data = await readLocaleData(config, localeDir.layer, localeDef)
           } catch {
             continue
           }
+          if (Object.keys(data).length === 0) continue
 
           const leafKeys = getLeafKeys(data)
           for (const key of leafKeys) {
@@ -1865,18 +1821,15 @@ export function createServer(): McpServer {
           )
         }
 
-        // Collect translation keys per layer
         const keysByLayer = new Map<string, string[]>()
         for (const localeDir of layersToCheck) {
-          const filePath = resolveLocaleFilePath(config, localeDir.layer, localeDef.file)
-          if (!filePath) continue
-
           let data: Record<string, unknown>
           try {
-            data = await readLocaleFile(filePath)
+            data = await readLocaleData(config, localeDir.layer, localeDef)
           } catch {
             continue
           }
+          if (Object.keys(data).length === 0) continue
 
           keysByLayer.set(localeDir.layer, getLeafKeys(data))
         }
@@ -2010,7 +1963,6 @@ export function createServer(): McpServer {
           }
         }
 
-        // Actually remove orphan keys from all locale files in each layer
         const removedByLayer: Record<string, string[]> = {}
         let totalFilesWritten = 0
 
@@ -2019,16 +1971,13 @@ export function createServer(): McpServer {
           if (localeDir.aliasOf) continue
 
           for (const localeDef2 of config.locales) {
-            const filePath = resolveLocaleFilePath(config, layerName, localeDef2.file)
-            if (!filePath) continue
-
             try {
-              await mutateLocaleFile(filePath, (fileData) => {
+              const written = await mutateLocaleData(config, layerName, localeDef2, (fileData) => {
                 for (const key of orphans) {
                   removeNestedValue(fileData, key)
                 }
               })
-              totalFilesWritten++
+              totalFilesWritten += written.size
             } catch {
               continue
             }
@@ -2078,7 +2027,7 @@ export function createServer(): McpServer {
 
   server.registerResource(
     'locale-file',
-    new ResourceTemplate('i18n:///{layer}/{file}', {
+    new ResourceTemplate('i18n:///{layer}/{locale}', {
       list: async () => {
         const config = getCachedConfig()
         if (!config) {
@@ -2095,8 +2044,8 @@ export function createServer(): McpServer {
           if (localeDir.aliasOf) continue
           for (const locale of config.locales) {
             resources.push({
-              uri: `i18n:///${localeDir.layer}/${locale.file}`,
-              name: `${localeDir.layer}/${locale.file}`,
+              uri: `i18n:///${localeDir.layer}/${locale.code}`,
+              name: `${localeDir.layer}/${locale.code}`,
               description: `${locale.name ?? locale.code} translations for ${localeDir.layer} layer`,
               mimeType: 'application/json',
             })
@@ -2110,16 +2059,16 @@ export function createServer(): McpServer {
       description: 'Locale translation file for a specific layer and locale',
       mimeType: 'application/json',
     },
-    async (uri, { layer, file }) => {
+    async (uri, { layer, locale }) => {
       const config = getCachedConfig()
       if (!config) {
         throw new Error('No i18n config detected yet. Call detect_i18n_config first.')
       }
-      const filePath = resolveLocaleFilePath(config, layer as string, file as string)
-      if (!filePath) {
-        throw new Error(`Locale file not found: ${layer}/${file}`)
+      const localeDef = findLocale(config, locale as string)
+      if (!localeDef) {
+        throw new Error(`Locale not found: ${locale}`)
       }
-      const data = await readLocaleFile(filePath)
+      const data = await readLocaleData(config, layer as string, localeDef)
       return {
         contents: [
           {

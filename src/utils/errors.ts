@@ -7,11 +7,13 @@ export class ConfigError extends Error {
 
 export class FileIOError extends Error {
   public readonly filePath: string
+  public readonly code: string
 
-  constructor(message: string, filePath: string) {
+  constructor(message: string, filePath: string, code = 'FILE_IO_ERROR') {
     super(message)
     this.name = 'FileIOError'
     this.filePath = filePath
+    this.code = code
   }
 }
 

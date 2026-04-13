@@ -15,7 +15,7 @@ export function clearPhpFileCacheEntry(filePath: string): void {
 
 export async function readPhpLocaleFile(filePath: string): Promise<Record<string, unknown>> {
   if (!existsSync(filePath)) {
-    throw new FileIOError(`File not found: ${filePath}`, filePath)
+    throw new FileIOError(`File not found: ${filePath}`, filePath, 'FILE_NOT_FOUND')
   }
 
   try {
