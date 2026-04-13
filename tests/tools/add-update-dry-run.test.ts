@@ -9,7 +9,7 @@ import {
   setNestedValue,
 } from '../../src/io/key-operations.js'
 
-const playgroundDir = resolve(import.meta.dirname, '../../playground')
+const playgroundDir = resolve(import.meta.dirname, '../fixtures/nuxt-project')
 const playgroundRootLocales = resolve(playgroundDir, 'i18n/locales')
 
 const tmpDir = resolve(import.meta.dirname, '../../.tmp-add-update')

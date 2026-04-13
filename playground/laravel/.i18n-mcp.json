@@ -1,0 +1,24 @@
+{
+  "$schema": "../../schema.json",
+  "context": "Laravel playground for testing the-i18n-mcp Laravel adapter. A SaaS booking platform backend with PHP array locale files.",
+  "glossary": {
+    "Buchung": "Booking (never 'Reservation')",
+    "Ressource": "Resource (a bookable entity like a room, desk, or person)",
+    "Termin": "Appointment"
+  },
+  "translationPrompt": "Use professional but approachable tone. Preserve all :placeholders. Keep translations concise.",
+  "localeNotes": {
+    "de": "German. Primary language of the platform.",
+    "en": "English.",
+    "fr": "French.",
+    "es": "Spanish."
+  },
+  "examples": [
+    {
+      "key": "common.actions.save",
+      "de": "Speichern",
+      "en": "Save",
+      "note": "Concise, imperative"
+    }
+  ]
+}

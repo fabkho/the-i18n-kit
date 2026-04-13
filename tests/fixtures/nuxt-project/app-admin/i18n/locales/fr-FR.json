@@ -1,0 +1,13 @@
+{
+  "admin": {
+    "dashboard": {
+      "title": "Tableau de bord",
+      "welcome": "Bienvenue, {name} !"
+    },
+    "users": {
+      "list": "Liste des utilisateurs",
+      "create": "Créer un utilisateur",
+      "edit": ""
+    }
+  }
+}

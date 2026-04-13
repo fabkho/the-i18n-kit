@@ -4,7 +4,7 @@ import { detectI18nConfig, clearConfigCache, discoverNuxtApps } from '../../src/
 import type { I18nConfig } from '../../src/config/types.js'
 
 const projectRootDir = resolve(import.meta.dirname, '../..')
-const playgroundDir = resolve(projectRootDir, 'playground')
+const playgroundDir = resolve(import.meta.dirname, '../fixtures/nuxt-project')
 const appAdminDir = resolve(playgroundDir, 'app-admin')
 
 describe('detectI18nConfig real monorepo merge (no mock)', () => {
@@ -25,12 +25,12 @@ describe('detectI18nConfig real monorepo merge (no mock)', () => {
 
   it('discovers playground as a Nuxt app via real loadNuxt', () => {
     const layers = config.localeDirs.map(d => d.layer)
-    expect(layers).toContain('playground')
+    expect(layers).toContain('nuxt-project')
   })
 
   it('merges locale directories from discovered apps', () => {
     expect(config.localeDirs.length).toBeGreaterThanOrEqual(1)
-    const playgroundLocaleDir = config.localeDirs.find(d => d.layer === 'playground')
+    const playgroundLocaleDir = config.localeDirs.find(d => d.layer === 'nuxt-project')
     expect(playgroundLocaleDir).toBeDefined()
     expect(playgroundLocaleDir!.path).toBe(resolve(playgroundDir, 'i18n/locales'))
   })

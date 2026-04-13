@@ -1,0 +1,13 @@
+{
+  "admin": {
+    "dashboard": {
+      "title": "Dashboard",
+      "welcome": "Welcome, {name}!"
+    },
+    "users": {
+      "list": "User list",
+      "create": "Create user",
+      "edit": "Edit user"
+    }
+  }
+}

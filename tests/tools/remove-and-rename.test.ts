@@ -11,7 +11,7 @@ import {
   renameNestedKey,
 } from '../../src/io/key-operations.js'
 
-const playgroundDir = resolve(import.meta.dirname, '../../playground')
+const playgroundDir = resolve(import.meta.dirname, '../fixtures/nuxt-project')
 
 // We use temp copies of just the locale directories so we can safely mutate files
 // (copying the whole playground fails due to node_modules symlinks)

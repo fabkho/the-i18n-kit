@@ -1,0 +1,8 @@
+{
+  "admin": {
+    "dashboard": {
+      "title": "Panel de control",
+      "welcome": "Bienvenido, {name}!"
+    }
+  }
+}

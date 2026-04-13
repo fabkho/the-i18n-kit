@@ -1,0 +1,19 @@
+{
+  "common": {
+    "actions": {
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "save": "Save"
+    },
+    "messages": {
+      "loading": "Loading...",
+      "noData": "No data available",
+      "success": "Successfully saved"
+    },
+    "navigation": {
+      "back": "Back",
+      "home": "Home",
+      "settings": "Settings"
+    }
+  }
+}

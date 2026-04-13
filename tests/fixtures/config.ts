@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import type { I18nConfig } from '../../src/config/types.js'
 
 export const projectRootDir = resolve(import.meta.dirname, '../..')
-const playgroundDir = resolve(projectRootDir, 'playground')
+const playgroundDir = resolve(import.meta.dirname, 'nuxt-project')
 const appAdminDir = resolve(playgroundDir, 'app-admin')
 
 const locales = [
@@ -14,7 +14,7 @@ const locales = [
 
 const projectConfig = {
   context:
-    'This is the anny playground project. It demonstrates a Nuxt app with i18n support, featuring a root layer with shared translations and an app-admin layer with admin-specific translations.',
+    'This is the test fixture project. It demonstrates a Nuxt app with i18n support, featuring a root layer with shared translations and an app-admin layer with admin-specific translations.',
   layerRules: [
     {
       layer: 'root',

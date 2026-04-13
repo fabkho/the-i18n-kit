@@ -246,7 +246,7 @@ For IDE autocompletion, point to the schema:
 }
 ```
 
-See [`playground/.i18n-mcp.json`](playground/.i18n-mcp.json) for a working example.
+See [`playground/nuxt/.i18n-mcp.json`](playground/nuxt/.i18n-mcp.json) for a working example.
 
 ## Features
 
