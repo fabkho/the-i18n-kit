@@ -1,5 +1,10 @@
+import { createRequire } from 'node:module'
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+
+const require = createRequire(import.meta.url)
+const { version } = require('../package.json') as { version: string }
+
 import { detectI18nConfig, getCachedConfig } from './config/detector.js'
 import type { I18nConfig, LocaleDefinition, ProjectConfig } from './config/types.js'
 import type { LocaleFileFormat } from './adapters/types.js'
@@ -301,7 +306,7 @@ function findLocaleImpl(config: I18nConfig, localeRef: string) {
 export function createServer(): McpServer {
   const server = new McpServer({
     name: 'the-i18n-mcp',
-    version: '2.0.0',
+    version,
   })
 
   // Helper: find locale definition by locale code or file name
