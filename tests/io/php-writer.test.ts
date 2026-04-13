@@ -111,6 +111,54 @@ return [
     const content = await readFile(filePath, 'utf-8')
     expect(content).toContain('    "key" => "value"')
   })
+
+  it('serializes null as unquoted null literal', async () => {
+    const filePath = join(tempDir, 'nulls.php')
+    await writePhpLocaleFile(filePath, { empty: null })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content).toContain('"empty" => null,')
+  })
+
+  it('serializes booleans as unquoted true/false literals', async () => {
+    const filePath = join(tempDir, 'bools.php')
+    await writePhpLocaleFile(filePath, { active: true, deleted: false })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content).toContain('"active" => true,')
+    expect(content).toContain('"deleted" => false,')
+  })
+
+  it('serializes numbers as unquoted numeric literals', async () => {
+    const filePath = join(tempDir, 'numbers.php')
+    await writePhpLocaleFile(filePath, { count: 42, rate: 3.14 })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content).toContain('"count" => 42,')
+    expect(content).toContain('"rate" => 3.14,')
+  })
+
+  it('serializes arrays as PHP indexed arrays', async () => {
+    const filePath = join(tempDir, 'arrays.php')
+    await writePhpLocaleFile(filePath, { tags: ['admin', 'user'] })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content).toContain('"tags" => [')
+    expect(content).toContain('        "admin",')
+    expect(content).toContain('        "user",')
+  })
+
+  it('serializes mixed-type arrays correctly', async () => {
+    const filePath = join(tempDir, 'mixed.php')
+    await writePhpLocaleFile(filePath, { items: ['text', 42, true, null] })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content).toContain('"items" => [')
+    expect(content).toContain('        "text",')
+    expect(content).toContain('        42,')
+    expect(content).toContain('        true,')
+    expect(content).toContain('        null,')
+  })
 })
 
 describe('detectPhpStyle', () => {
@@ -140,8 +188,20 @@ describe('detectPhpStyle', () => {
 
   it('defaults to double quotes + 4-space indent for empty content', () => {
     const style = detectPhpStyle('')
-    expect(style.quoteStyle).toBe('single')
+    expect(style.quoteStyle).toBe('double')
     expect(style.indent).toBe('    ')
+  })
+
+  it('detects quote style for keys containing non-word characters', () => {
+    const content = `<?php\n\nreturn [\n    'validation.email' => 'Invalid email',\n    'auth-failed' => 'Auth failed',\n];\n`
+    const style = detectPhpStyle(content)
+    expect(style.quoteStyle).toBe('single')
+  })
+
+  it('defaults to double when single and double counts are tied', () => {
+    const content = `<?php\n\nreturn [\n    'key1' => 'v1',\n    "key2" => "v2",\n];\n`
+    const style = detectPhpStyle(content)
+    expect(style.quoteStyle).toBe('double')
   })
 })
 

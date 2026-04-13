@@ -113,4 +113,35 @@ return [
     await expect(readPhpLocaleFile(filePath)).rejects.toThrow(FileIOError)
     await expect(readPhpLocaleFile(filePath)).rejects.toThrow(/Failed to read PHP locale file/)
   })
+
+  it('returns empty object when PHP returns a scalar (php-array-reader limitation)', async () => {
+    const filePath = join(tempDir, 'scalar.php')
+    await writeFile(filePath, `<?php\n\nreturn 'just a string';\n`)
+
+    const data = await readPhpLocaleFile(filePath)
+    expect(data).toEqual({})
+  })
+
+  it('throws FileIOError when PHP returns a numeric indexed array', async () => {
+    const filePath = join(tempDir, 'indexed.php')
+    await writeFile(filePath, `<?php\n\nreturn ['apple', 'banana', 'cherry'];\n`)
+
+    await expect(readPhpLocaleFile(filePath)).rejects.toThrow(FileIOError)
+    await expect(readPhpLocaleFile(filePath)).rejects.toThrow(/did not return an associative array/)
+  })
+
+  it('does not cache invalid parsed results', async () => {
+    const filePath = join(tempDir, 'no-cache.php')
+    await writeFile(filePath, `<?php\n\nreturn ['apple', 'banana'];\n`)
+
+    await expect(readPhpLocaleFile(filePath)).rejects.toThrow(FileIOError)
+
+    await writeFile(filePath, `<?php\nreturn ['key' => 'value'];\n`)
+    const future = new Date(Date.now() + 2000)
+    const { utimes } = await import('node:fs/promises')
+    await utimes(filePath, future, future)
+
+    const data = await readPhpLocaleFile(filePath)
+    expect(data).toEqual({ key: 'value' })
+  })
 })

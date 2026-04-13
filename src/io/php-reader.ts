@@ -28,7 +28,16 @@ export async function readPhpLocaleFile(filePath: string): Promise<Record<string
     }
 
     const content = await readFile(filePath, 'utf-8')
-    const data = fromString(content) as Record<string, unknown>
+    const parsed = fromString(content)
+
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new FileIOError(
+        `PHP locale file did not return an associative array: ${filePath}`,
+        filePath,
+      )
+    }
+
+    const data = parsed as Record<string, unknown>
     fileCache.set(filePath, { data: structuredClone(data), mtime })
     return data
   }
