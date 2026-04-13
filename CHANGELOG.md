@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.6.0](https://github.com/fabkho/nuxt-i18n-mcp/compare/v1.5.1...v1.6.0) (2026-04-13)
+
+
+### Features
+
+* add laravel adapter for detection, discovery, and config resolution ([#50](https://github.com/fabkho/nuxt-i18n-mcp/issues/50)) ([0713b00](https://github.com/fabkho/nuxt-i18n-mcp/commit/0713b00829eaf157dac2c95a240f4ff787abda61))
+* extend code scanner to support Laravel Blade/PHP translation patterns ([#52](https://github.com/fabkho/nuxt-i18n-mcp/issues/52)) ([877a045](https://github.com/fabkho/nuxt-i18n-mcp/commit/877a04591371ed44eee9e26e0d9c8181fd8a67d6))
+* PHP array locale file reader, writer, and unified IO dispatch ([#48](https://github.com/fabkho/nuxt-i18n-mcp/issues/48)) ([0afa652](https://github.com/fabkho/nuxt-i18n-mcp/commit/0afa6521b51c4fc5d6c718468f10a55a3bf3ceb3))
+* wire unified locale IO into all MCP tools for Laravel support ([#51](https://github.com/fabkho/nuxt-i18n-mcp/issues/51)) ([bb60238](https://github.com/fabkho/nuxt-i18n-mcp/commit/bb60238e58e4c446de8e3621e2ed94eae1f284fd))
+
 ## [1.5.1](https://github.com/fabkho/nuxt-i18n-mcp/compare/v1.5.0...v1.5.1) (2026-04-07)
 
 
