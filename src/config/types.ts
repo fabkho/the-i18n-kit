@@ -31,6 +31,8 @@ export interface LocaleDir {
  * All fields are optional — the server passes them to the agent as-is.
  */
 export interface ProjectConfig {
+  /** Framework hint to bypass auto-detection (e.g., 'nuxt', 'laravel') */
+  framework?: string
   /** Free-form project background for the agent */
   context?: string
   /** Rules for deciding which layer a key belongs to */
