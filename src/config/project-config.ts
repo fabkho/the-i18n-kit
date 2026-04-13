@@ -68,7 +68,10 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
 
   const config = parsed as Record<string, unknown>
 
-  // Validate context
+  if ('framework' in config && typeof config.framework !== 'string') {
+    throw new ConfigError(`${CONFIG_FILENAME}: "framework" must be a string`)
+  }
+
   if ('context' in config && typeof config.context !== 'string') {
     throw new ConfigError(`${CONFIG_FILENAME}: "context" must be a string`)
   }
@@ -189,6 +192,7 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
   log.debug(`Project config loaded successfully from ${configPath}`)
 
   return {
+    framework: config.framework as string | undefined,
     context: config.context as string | undefined,
     layerRules: config.layerRules as ProjectConfig['layerRules'],
     glossary: config.glossary as Record<string, string> | undefined,
