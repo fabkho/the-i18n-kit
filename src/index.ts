@@ -4,13 +4,13 @@ import { createServer } from './server.js'
 import { log } from './utils/logger.js'
 
 async function main() {
-  log.info('Starting nuxt-i18n-mcp server...')
+  log.info('Starting the-i18n-mcp server...')
 
   const server = createServer()
   const transport = new StdioServerTransport()
   await server.connect(transport)
 
-  log.info('nuxt-i18n-mcp server running on stdio')
+  log.info('the-i18n-mcp server running on stdio')
 }
 
 main().catch((error) => {

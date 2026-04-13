@@ -25,8 +25,11 @@ export async function loadKit(rootDir: string): Promise<NuxtKit> {
     const message = String(e)
     if (message.includes("Cannot find module '@nuxt/kit'")) {
       throw new Error(
-        'nuxt-i18n-mcp requires @nuxt/kit to be installed in your project. '
-        + 'Make sure you have nuxt v3+ installed.',
+        '@nuxt/kit is required for Nuxt projects but was not found. '
+        + 'Install it with: npm install --save-dev @nuxt/kit\n'
+        + 'Laravel projects do not need @nuxt/kit — if this is a Laravel project, '
+        + 'check that your .i18n-mcp.json has "framework": "laravel" or that '
+        + 'your project structure is detected correctly.',
       )
     }
     throw e

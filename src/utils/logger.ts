@@ -1,4 +1,4 @@
-const PREFIX = '[nuxt-i18n-mcp]'
+const PREFIX = '[the-i18n-mcp]'
 
 function formatMessage(level: string, message: string): string {
   return `${PREFIX} [${level}] ${message}`
