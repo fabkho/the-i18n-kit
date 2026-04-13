@@ -13,34 +13,36 @@ export class LaravelAdapter implements FrameworkAdapter {
   readonly localeFileFormat: LocaleFileFormat = 'php-array'
 
   async detect(projectDir: string): Promise<number> {
-    // Certain: artisan file is the hallmark of a Laravel project
+    let score = 0
+
+    // Strong signal: artisan file is the hallmark of a Laravel project
     if (existsSync(join(projectDir, 'artisan'))) {
-      return 2
+      score += 2
     }
 
-    // Certain: composer.json with laravel/framework dependency
+    // Strong signal: composer.json with laravel/framework dependency
     try {
       const raw = await readFile(join(projectDir, 'composer.json'), 'utf-8')
       const composer = JSON.parse(raw) as Record<string, unknown>
       const require = composer.require as Record<string, unknown> | undefined
       if (require && 'laravel/framework' in require) {
-        return 2
+        score += 2
       }
     }
     catch {
-      // fall through
+      // composer.json missing or malformed — skip
     }
 
-    // Possible: lang/ directory with locale subdirectories
+    // Weak signal: lang/ directory with locale subdirectories
     const langDir = findLangDir(projectDir)
     if (langDir) {
       const localeSubdirs = await findLocaleSubdirs(langDir)
       if (localeSubdirs.length > 0) {
-        return 1
+        score += 1
       }
     }
 
-    return 0
+    return score
   }
 
   async resolve(projectDir: string): Promise<I18nConfig> {

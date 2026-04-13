@@ -124,6 +124,28 @@ describe('LaravelAdapter.detect', () => {
     const adapter = new LaravelAdapter()
     expect(await adapter.detect(tempDir)).toBe(0)
   })
+
+  it('accumulates confidence from multiple signals', async () => {
+    createLaravelProject(tempDir, {
+      artisan: true,
+      composer: { require: { 'laravel/framework': '^11.0' } },
+      locales: ['en'],
+    })
+    const adapter = new LaravelAdapter()
+    // artisan (2) + composer (2) + lang/ with .php (1) = 5
+    expect(await adapter.detect(tempDir)).toBe(5)
+  })
+
+  it('accumulates artisan + lang/ without composer', async () => {
+    createLaravelProject(tempDir, {
+      artisan: true,
+      composer: null,
+      locales: ['en'],
+    })
+    const adapter = new LaravelAdapter()
+    // artisan (2) + lang/ with .php (1) = 3
+    expect(await adapter.detect(tempDir)).toBe(3)
+  })
 })
 
 describe('LaravelAdapter.resolve', () => {
