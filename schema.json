@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/fabkho/nuxt-i18n-mcp/main/schema.json",
-  "title": "nuxt-i18n-mcp project configuration",
-  "description": "Configuration file for the nuxt-i18n-mcp MCP server. Place as .i18n-mcp.json at your Nuxt project root (next to nuxt.config.ts). All fields are optional — the server passes them to the AI agent as context for translation workflows.",
+  "$id": "https://raw.githubusercontent.com/fabkho/the-i18n-mcp/main/schema.json",
+  "title": "the-i18n-mcp project configuration",
+  "description": "Configuration file for the-i18n-mcp MCP server. Place as .i18n-mcp.json at your project root (next to nuxt.config.ts or artisan). All fields are optional — the server passes them to the AI agent as context for translation workflows.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -16,7 +16,7 @@
     },
     "layerRules": {
       "type": "array",
-      "description": "Rules that help the agent decide which Nuxt layer a new translation key belongs to. The agent interprets the natural-language 'when' field.",
+      "description": "Rules that help the agent decide which layer a new translation key belongs to. The agent interprets the natural-language 'when' field.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -28,7 +28,7 @@
         "properties": {
           "layer": {
             "type": "string",
-            "description": "Layer name as it appears in the Nuxt config (e.g., 'root', 'app-admin', 'app-shop')."
+            "description": "Layer name (e.g., 'root', 'app-admin', 'app-shop', 'lang')."
           },
           "description": {
             "type": "string",

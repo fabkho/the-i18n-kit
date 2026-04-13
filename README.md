@@ -1,12 +1,22 @@
-# nuxt-i18n-mcp
+# the-i18n-mcp
 
 [![npm version][npm-version-src]][npm-version-href]
 [![npm downloads][npm-downloads-src]][npm-downloads-href]
 [![License][license-src]][license-href]
-[![Nuxt][nuxt-src]][nuxt-href]
 [![CI][ci-src]][ci-href]
 
-MCP server for managing i18n translations in Nuxt projects. Provides 14 tools for the full translation lifecycle: read, write, search, rename, remove, find missing, auto-translate, and detect unused keys — all without loading entire locale files into context. Supports monorepos, Nuxt layers, and per-project configuration (glossary, tone, layer rules). Works with any MCP host (VS Code, Cursor, Zed, Claude Desktop).
+MCP server for managing i18n translations in **Nuxt** and **Laravel** projects. Provides 14 tools for the full translation lifecycle: read, write, search, rename, remove, find missing, auto-translate, and detect unused keys — all without loading entire locale files into context. Auto-detects your framework, supports monorepos and layers, and works with any MCP host (VS Code, Cursor, Zed, Claude Desktop).
+
+> **Migrating from `nuxt-i18n-mcp`?** The old package name still works — both `npx the-i18n-mcp` and `npx nuxt-i18n-mcp` point to the same server. No breaking changes for existing Nuxt users.
+
+## Supported Frameworks
+
+| Framework | Locale Format | Auto-Detection | Config Source |
+|-----------|--------------|----------------|---------------|
+| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` | `@nuxt/kit` (optional peer dep) |
+| **Laravel** (9+) | PHP arrays | `artisan`, `composer.json`, `lang/` directory | Built-in |
+
+The server detects your framework automatically based on project structure. You can also force it via `"framework": "laravel"` or `"framework": "nuxt"` in `.i18n-mcp.json`.
 
 ## Quick Start
 
@@ -22,10 +32,10 @@ Add to `.vscode/mcp.json`:
 ```json
 {
   "servers": {
-    "nuxt-i18n-mcp": {
+    "the-i18n-mcp": {
       "type": "stdio",
       "command": "npx",
-      "args": ["nuxt-i18n-mcp@latest"]
+      "args": ["the-i18n-mcp@latest"]
     }
   }
 }
@@ -41,9 +51,9 @@ Add to `.zed/settings.json`:
 ```json
 {
   "context_servers": {
-    "nuxt-i18n-mcp": {
+    "the-i18n-mcp": {
       "command": "npx",
-      "args": ["nuxt-i18n-mcp@latest"]
+      "args": ["the-i18n-mcp@latest"]
     }
   }
 }
@@ -59,9 +69,9 @@ Add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "nuxt-i18n-mcp": {
+    "the-i18n-mcp": {
       "command": "npx",
-      "args": ["nuxt-i18n-mcp@latest"]
+      "args": ["the-i18n-mcp@latest"]
     }
   }
 }
@@ -71,7 +81,7 @@ Add to `claude_desktop_config.json`:
 
 ### 2. Ask your agent
 
-That's it — no configuration needed. The server auto-detects your Nuxt config, layers, locales, and directory structure via `@nuxt/kit`. Just ask:
+That's it — no configuration needed. The server auto-detects your project structure, locales, and layers. Just ask:
 
 > *"Add a 'save changes' button translation in all locales"*
 >
@@ -95,11 +105,11 @@ Always call `detect_i18n_config` first — all other tools depend on the detecte
 
 ## Tools
 
-Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`). Use `list_locale_dirs` to discover available layers.
+Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`, `"lang"`). Use `list_locale_dirs` to discover available layers.
 
 | Tool | Description |
 |------|-------------|
-| `detect_i18n_config` | Loads Nuxt config, returns locales, layers, directories, and project config. **Call first.** |
+| `detect_i18n_config` | Auto-detects framework (Nuxt or Laravel), returns locales, layers, directories, and project config. **Call first.** |
 | `list_locale_dirs` | Lists locale directories grouped by layer, with file counts and top-level key namespaces |
 | `get_translations` | Reads values for dot-path keys from a locale/layer. Use `"*"` as locale for all locales |
 | `add_translations` | Adds new keys to a **layer** across locales. Fails if key already exists. Supports `dryRun` |
@@ -110,7 +120,7 @@ Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`). U
 | `find_empty_translations` | Finds keys with empty string values. Checks each locale independently |
 | `search_translations` | Searches by key pattern or value substring across layers and locales |
 | `translate_missing` | Auto-translates via MCP sampling, or returns context for inline translation when sampling unavailable |
-| `find_orphan_keys` | Finds keys in JSON not referenced in any Vue/TS source code |
+| `find_orphan_keys` | Finds keys not referenced in source code. Scans Vue/TS for Nuxt, Blade/PHP for Laravel |
 | `scan_code_usage` | Shows where keys are used — file paths, line numbers, call patterns |
 | `cleanup_unused_translations` | Finds orphan keys + removes them in one step. Dry-run by default |
 
@@ -127,7 +137,25 @@ Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`). U
 |----------|-------------|
 | `i18n:///{layer}/{file}` | Browse locale files directly (e.g., `i18n:///root/en-US.json`) |
 
-## Monorepo Support
+## Framework-Specific Details
+
+### Nuxt
+
+- Auto-detects `nuxt.config.ts` with `@nuxtjs/i18n` via `@nuxt/kit`
+- Supports monorepos: discovers all Nuxt apps under the given `projectDir`
+- Supports Nuxt layers: each layer's locale directory becomes a separate layer
+- Requires `@nuxt/kit` as a peer dependency (already present in Nuxt projects)
+- Scans `.vue`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.mts` for `$t()`, `t()`, `this.$t()`
+
+### Laravel
+
+- Auto-detects Laravel projects via `artisan`, `composer.json`, or `lang/` directory
+- Supports both `lang/` (Laravel 9+) and `resources/lang/` (legacy) layouts
+- Reads and writes PHP array locale files (`return ['key' => 'value'];`)
+- No additional dependencies required — works out of the box
+- Scans `.blade.php` and `.php` for `__()`, `trans()`, `trans_choice()`, `Lang::get()`, `@lang()`
+
+## Monorepo Support (Nuxt)
 
 The server discovers all Nuxt apps with i18n configuration under the given `projectDir`. Pass the monorepo root and it walks the directory tree, finds every `nuxt.config.ts` with i18n settings, loads each app via `@nuxt/kit`, and merges the results. Each app's locale directories become separate layers.
 
@@ -147,13 +175,13 @@ Discovery stops descending into a directory once it finds a `nuxt.config` — ne
 
 ## Project Config
 
-Optionally drop a `.i18n-mcp.json` at your project root to give the agent project-specific context. Everything is optional — the server passes it to the agent, which interprets the natural-language rules. The server walks up from `projectDir` to find the nearest config file (like ESLint or tsconfig resolution).
+Optionally drop a `.i18n-mcp.json` at your project root to give the agent project-specific context. Everything is optional — the server passes them to the agent, which interprets the natural-language rules. The server walks up from `projectDir` to find the nearest config file (like ESLint or tsconfig resolution).
 
 For IDE autocompletion, point to the schema:
 
 ```json
 {
-  "$schema": "node_modules/nuxt-i18n-mcp/schema.json"
+  "$schema": "node_modules/the-i18n-mcp/schema.json"
 }
 ```
 
@@ -172,7 +200,7 @@ For IDE autocompletion, point to the schema:
 
 ```json
 {
-  "$schema": "node_modules/nuxt-i18n-mcp/schema.json",
+  "$schema": "node_modules/the-i18n-mcp/schema.json",
   "context": "B2B SaaS booking platform. Professional but approachable tone.",
   "layerRules": [
     {
@@ -222,22 +250,23 @@ See [`playground/.i18n-mcp.json`](playground/.i18n-mcp.json) for a working examp
 
 ## Features
 
-- **Zero config** — reads `nuxt.config.ts` (including layers) automatically via `@nuxt/kit`. Works in monorepos.
+- **Multi-framework** — auto-detects Nuxt and Laravel projects. `@nuxt/kit` is only needed for Nuxt.
+- **Zero config** — reads `nuxt.config.ts` or Laravel `lang/` directory automatically. Works in monorepos.
 - **Safe writes** — atomic file I/O (temp file + rename), indentation preservation, alphabetical key sorting, `{placeholder}` and `@:linked` ref validation.
 - **Full lifecycle** — add, update, remove, rename, search, find missing, auto-translate, and clean up unused keys.
-- **Code analysis** — find orphan keys not referenced in Vue/TS source, scan usage locations (file + line), bulk cleanup.
+- **Code analysis** — find orphan keys not referenced in source (Vue/TS for Nuxt, Blade/PHP for Laravel), scan usage locations, bulk cleanup.
 - **Project-aware** — optional `.i18n-mcp.json` for glossary, tone, layer rules, locale-specific instructions, and few-shot examples.
 - **Caching** — config detection and file reads are cached (mtime-based). Writes invalidate automatically.
 - **Sampling support** — `translate_missing` uses MCP sampling when available (VS Code). Falls back to returning context for inline translation (Zed, others).
 
 ## Roadmap
 
-- [ ] `find_hardcoded_strings` — detect user-facing strings not wrapped in `$t()`
+- [ ] `find_hardcoded_strings` — detect user-facing strings not wrapped in translation calls
 - [ ] `move_translations` — move keys between layers (e.g., promote to shared)
 - [ ] Glossary validation — check translations against glossary terms
 - [ ] Flat JSON support — `flatJson: true` in vue-i18n config
-- [ ] Pluralization support — vue-i18n plural forms
-- [ ] Plain vue-i18n support — extract core into a monorepo, add a Vue/Vite adapter alongside the Nuxt one
+- [ ] Pluralization support — vue-i18n plural forms and Laravel `trans_choice`
+- [ ] Plain vue-i18n support (without Nuxt)
 
 ## Development
 
@@ -256,17 +285,14 @@ pnpm inspect        # Open MCP Inspector for manual testing
 [MIT](./LICENSE)
 
 <!-- Badges -->
-[npm-version-src]: https://img.shields.io/npm/v/nuxt-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
-[npm-version-href]: https://npmjs.com/package/nuxt-i18n-mcp
+[npm-version-src]: https://img.shields.io/npm/v/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
+[npm-version-href]: https://npmjs.com/package/the-i18n-mcp
 
-[npm-downloads-src]: https://img.shields.io/npm/dm/nuxt-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
-[npm-downloads-href]: https://npmjs.com/package/nuxt-i18n-mcp
+[npm-downloads-src]: https://img.shields.io/npm/dm/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
+[npm-downloads-href]: https://npmjs.com/package/the-i18n-mcp
 
-[license-src]: https://img.shields.io/npm/l/nuxt-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
-[license-href]: https://github.com/fabkho/nuxt-i18n-mcp/blob/main/LICENSE
+[license-src]: https://img.shields.io/npm/l/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
+[license-href]: https://github.com/fabkho/the-i18n-mcp/blob/main/LICENSE
 
-[nuxt-src]: https://img.shields.io/badge/Nuxt-18181B?logo=nuxt.js&logoColor=4fc08d
-[nuxt-href]: https://nuxt.com
-
-[ci-src]: https://github.com/fabkho/nuxt-i18n-mcp/actions/workflows/ci.yml/badge.svg
-[ci-href]: https://github.com/fabkho/nuxt-i18n-mcp/actions/workflows/ci.yml
+[ci-src]: https://github.com/fabkho/the-i18n-mcp/actions/workflows/ci.yml/badge.svg
+[ci-href]: https://github.com/fabkho/the-i18n-mcp/actions/workflows/ci.yml

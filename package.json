@@ -1,24 +1,26 @@
 {
-  "name": "nuxt-i18n-mcp",
-  "version": "1.5.1",
-  "mcpName": "io.github.fabkho/nuxt-i18n-mcp",
-  "description": "MCP server for managing i18n translation files in Nuxt projects",
+  "name": "the-i18n-mcp",
+  "version": "2.0.0",
+  "mcpName": "io.github.fabkho/the-i18n-mcp",
+  "description": "MCP server for managing i18n translation files — supports Nuxt and Laravel out of the box",
   "author": "Fabian Kirchhoff",
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fabkho/nuxt-i18n-mcp.git"
+    "url": "git+https://github.com/fabkho/the-i18n-mcp.git"
   },
-  "homepage": "https://github.com/fabkho/nuxt-i18n-mcp#readme",
+  "homepage": "https://github.com/fabkho/the-i18n-mcp#readme",
   "bugs": {
-    "url": "https://github.com/fabkho/nuxt-i18n-mcp/issues"
+    "url": "https://github.com/fabkho/the-i18n-mcp/issues"
   },
   "keywords": [
     "mcp",
     "i18n",
     "nuxt",
     "vue",
+    "laravel",
+    "php",
     "translations",
     "model-context-protocol",
     "ai",
@@ -26,6 +28,7 @@
     "internationalization"
   ],
   "bin": {
+    "the-i18n-mcp": "./dist/index.js",
     "nuxt-i18n-mcp": "./dist/index.js"
   },
   "main": "./dist/index.js",
@@ -56,7 +59,7 @@
   },
   "peerDependenciesMeta": {
     "@nuxt/kit": {
-      "optional": false
+      "optional": true
     }
   },
   "devDependencies": {
