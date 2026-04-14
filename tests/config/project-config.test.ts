@@ -4,16 +4,16 @@ import { writeFile, unlink, mkdir, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { loadProjectConfig, findConfigFile } from '../../src/config/project-config.js'
 
-const playgroundDir = resolve(import.meta.dirname, '../../playground')
+const playgroundDir = resolve(import.meta.dirname, '../fixtures/nuxt-project')
 const tmpDir = resolve(import.meta.dirname, '../../.tmp-test')
 const traversalDir = resolve(import.meta.dirname, '../../.tmp-traversal')
 
 describe('loadProjectConfig', () => {
   // Test 1: loads config from playground (we just created the file above)
-  it('loads .i18n-mcp.json from playground', async () => {
+  it('loads .i18n-mcp.json from fixture', async () => {
     const config = await loadProjectConfig(playgroundDir)
     expect(config).not.toBeNull()
-    expect(config!.context).toContain('playground')
+    expect(config!.context).toContain('test fixture')
     expect(config!.layerRules).toHaveLength(2)
     expect(config!.glossary).toBeDefined()
     expect(config!.glossary!['Buchung']).toContain('Booking')

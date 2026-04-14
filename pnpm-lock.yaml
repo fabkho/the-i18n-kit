@@ -52,7 +52,7 @@ importers:
         specifier: ^3.2.0
         version: 3.2.4(@types/node@22.19.15)(jiti@2.6.1)(terser@5.46.1)(yaml@2.8.2)
 
-  playground:
+  playground/nuxt:
     dependencies:
       '@nuxtjs/i18n':
         specifier: ^10.2.3

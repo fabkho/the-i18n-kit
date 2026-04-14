@@ -1,0 +1,9 @@
+{
+  "name": "the-i18n-mcp/playground-laravel",
+  "description": "Laravel playground for testing the-i18n-mcp Laravel adapter",
+  "type": "project",
+  "require": {
+    "php": "^8.2",
+    "laravel/framework": "^11.0"
+  }
+}

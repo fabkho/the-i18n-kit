@@ -4,7 +4,7 @@ import { createPlaygroundConfig, createAppAdminConfig, createMonorepoConfig, pro
 import type { I18nConfig } from '../../src/config/types.js'
 
 export const monorepoDir = projectRootDir
-export const playgroundDir = resolve(projectRootDir, 'playground')
+export const playgroundDir = resolve(import.meta.dirname, 'nuxt-project')
 export const appAdminDir = resolve(playgroundDir, 'app-admin')
 
 /**

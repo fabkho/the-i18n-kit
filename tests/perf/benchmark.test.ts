@@ -13,8 +13,8 @@ import {
   hasNestedKey,
 } from '../../src/io/key-operations.js'
 
-const playgroundDir = resolve(import.meta.dirname, '../../playground')
-const appAdminDir = resolve(import.meta.dirname, '../../playground/app-admin')
+const playgroundDir = resolve(import.meta.dirname, '../fixtures/nuxt-project')
+const appAdminDir = resolve(import.meta.dirname, '../fixtures/nuxt-project/app-admin')
 const tmpDir = resolve(import.meta.dirname, '../../.tmp-perf')
 
 // ─── Helpers ──────────────────────────────────────────────────────

@@ -1,0 +1,3 @@
+#!/usr/bin/env php
+<?php
+// Stub artisan file for Laravel adapter detection
