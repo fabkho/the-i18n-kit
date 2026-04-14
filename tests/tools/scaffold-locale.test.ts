@@ -303,5 +303,35 @@ describe('scaffoldLocale (Laravel)', () => {
 
     expect(result.created.length).toBe(2)
     expect(result.created.map(f => f.file).sort()).toEqual([svAuthFile, svCommonFile].sort())
+    expect(result.created.map(f => f.namespace).sort()).toEqual(['auth', 'common'])
+  })
+
+  it('reports per-file skipped entries when locale directory already exists', async () => {
+    const config = createLaravelConfig(laravelLocales)
+
+    const result = await scaffoldLocale(config, { locales: ['de'] })
+
+    expect(result.created).toEqual([])
+    expect(result.skipped.length).toBe(2)
+    expect(result.skipped.map(f => f.namespace).sort()).toEqual(['auth', 'common'])
+    expect(result.skipped.every(f => f.locale === 'de')).toBe(true)
+    expect(result.skipped.every(f => f.keys > 0)).toBe(true)
+  })
+
+  it('skips individual files that exist and creates missing ones', async () => {
+    const svLocale: LocaleDefinition = { code: 'sv', language: 'sv-SE' }
+    const config = createLaravelConfig([...laravelLocales, svLocale])
+
+    // Create sv directory with only auth.php
+    const svDir = join(tmpLangDir, 'sv')
+    await mkdir(svDir, { recursive: true })
+    await writeFile(join(svDir, 'auth.php'), `<?php\n\nreturn [\n    "failed" => "",\n];\n`)
+
+    const result = await scaffoldLocale(config, { locales: ['sv'] })
+
+    expect(result.created.length).toBe(1)
+    expect(result.created[0].namespace).toBe('common')
+    expect(result.skipped.length).toBe(1)
+    expect(result.skipped[0].namespace).toBe('auth')
   })
 })

@@ -16,6 +16,7 @@ export interface ScaffoldedFile {
   layer: string
   file: string
   keys: number
+  namespace?: string
 }
 
 export interface ScaffoldLocaleResult {
@@ -119,15 +120,20 @@ async function scaffoldPhpLayer(
 
   for (const target of targets) {
     const targetDir = join(dir.path, target.code)
-    if (existsSync(targetDir)) {
-      const totalKeys = await countPhpKeys(refEntries)
-      skipped.push({ locale: target.code, layer: dir.layer, file: targetDir, keys: totalKeys })
-      continue
-    }
+    const dirExists = existsSync(targetDir)
 
     for (const refEntry of refEntries) {
       const fileName = basename(refEntry.path)
+      const namespace = fileName.replace(/\.php$/, '')
       const targetPath = join(targetDir, fileName)
+
+      if (dirExists && existsSync(targetPath)) {
+        const refData = await readLocale(refEntry.path)
+        const keyCount = getLeafKeys(refData).length
+        skipped.push({ locale: target.code, layer: dir.layer, file: targetPath, keys: keyCount, namespace })
+        continue
+      }
+
       const refData = await readLocale(refEntry.path)
       const emptyData = buildEmptyStructure(refData)
       const keyCount = getLeafKeys(refData).length
@@ -135,18 +141,9 @@ async function scaffoldPhpLayer(
       if (!dryRun) {
         await writeLocale(targetPath, emptyData)
       }
-      created.push({ locale: target.code, layer: dir.layer, file: targetPath, keys: keyCount })
+      created.push({ locale: target.code, layer: dir.layer, file: targetPath, keys: keyCount, namespace })
     }
   }
-}
-
-async function countPhpKeys(entries: Array<{ path: string }>): Promise<number> {
-  let total = 0
-  for (const entry of entries) {
-    const data = await readLocale(entry.path)
-    total += getLeafKeys(data).length
-  }
-  return total
 }
 
 function findNewLocales(config: I18nConfig, layers: I18nConfig['localeDirs']): LocaleDefinition[] {

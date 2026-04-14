@@ -2057,14 +2057,16 @@ export function createServer(): McpServer {
           created: result.created.map(f => ({
             locale: f.locale,
             layer: f.layer,
-            file: toRelativePath(config.rootDir, f.file),
+            file: toRelativePath(f.file, config.rootDir),
             keys: f.keys,
+            ...(f.namespace ? { namespace: f.namespace } : {}),
           })),
           skipped: result.skipped.map(f => ({
             locale: f.locale,
             layer: f.layer,
-            file: toRelativePath(config.rootDir, f.file),
+            file: toRelativePath(f.file, config.rootDir),
             keys: f.keys,
+            ...(f.namespace ? { namespace: f.namespace } : {}),
           })),
           dryRun: dryRun ?? false,
         }
