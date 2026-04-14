@@ -268,6 +268,30 @@ describe('LaravelAdapter.resolve', () => {
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en', 'fr', 'zh'])
   })
+
+  it('includes locales from config/app.php that have no directory on disk', async () => {
+    createLaravelProject(tempDir, {
+      locales: ['en', 'de'],
+      configAppPhp: `<?php\nreturn [\n    'locale' => 'de',\n    'fallback_locale' => 'en',\n    'locales' => ['de', 'en', 'sv', 'el'],\n];\n`,
+    })
+
+    const adapter = new LaravelAdapter()
+    const config = await adapter.resolve(tempDir)
+
+    expect(config.locales.map(l => l.code)).toEqual(['de', 'el', 'en', 'sv'])
+  })
+
+  it('does not duplicate locales that exist on both disk and config', async () => {
+    createLaravelProject(tempDir, {
+      locales: ['en', 'de'],
+      configAppPhp: `<?php\nreturn [\n    'locale' => 'de',\n    'fallback_locale' => 'en',\n    'locales' => ['de', 'en'],\n];\n`,
+    })
+
+    const adapter = new LaravelAdapter()
+    const config = await adapter.resolve(tempDir)
+
+    expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
+  })
 })
 
 describe('Adapter registry: Laravel vs Nuxt', () => {

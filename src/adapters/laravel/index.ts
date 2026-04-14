@@ -64,9 +64,11 @@ export class LaravelAdapter implements FrameworkAdapter {
       )
     }
 
-    const { defaultLocale, fallbackLocale } = await extractLocaleConfig(projectDir)
+    const { defaultLocale, fallbackLocale, configLocales } = await extractLocaleConfig(projectDir)
 
-    const locales: LocaleDefinition[] = localeSubdirs.map(code => ({
+    const allCodes = mergeLocaleCodes(localeSubdirs, configLocales)
+
+    const locales: LocaleDefinition[] = allCodes.map(code => ({
       code,
       language: code,
     }))
@@ -79,7 +81,7 @@ export class LaravelAdapter implements FrameworkAdapter {
 
     log.info(
       `Discovered ${locales.length} locale(s) in ${langDir}: `
-      + `${localeSubdirs.join(', ')}`,
+      + `${allCodes.join(', ')}`,
     )
 
     return {
@@ -142,6 +144,7 @@ async function findLocaleSubdirs(langDir: string): Promise<string[]> {
 async function extractLocaleConfig(projectDir: string): Promise<{
   defaultLocale: string
   fallbackLocale: Record<string, string[]>
+  configLocales: string[]
 }> {
   const configPath = join(projectDir, 'config', 'app.php')
 
@@ -154,17 +157,20 @@ async function extractLocaleConfig(projectDir: string): Promise<{
     return {
       defaultLocale: 'en',
       fallbackLocale: { default: ['en'] },
+      configLocales: [],
     }
   }
 
   const defaultLocale = extractPhpConfigValue(content, 'locale') ?? 'en'
   const fallbackValue = extractPhpConfigValue(content, 'fallback_locale') ?? defaultLocale
+  const configLocales = extractPhpArrayValue(content, 'locales')
 
-  log.debug(`Extracted locale config: locale=${defaultLocale}, fallback=${fallbackValue}`)
+  log.debug(`Extracted locale config: locale=${defaultLocale}, fallback=${fallbackValue}, config locales=${configLocales.length}`)
 
   return {
     defaultLocale,
     fallbackLocale: { default: [fallbackValue] },
+    configLocales,
   }
 }
 
@@ -195,4 +201,32 @@ function extractPhpConfigValue(content: string, key: string): string | null {
   }
 
   return null
+}
+
+function extractPhpArrayValue(content: string, key: string): string[] {
+  const pattern = new RegExp(
+    `['"]${key}['"]\\s*=>\\s*\\[([^\\]]*)]`,
+  )
+  const match = content.match(pattern)
+  if (!match) return []
+
+  const itemPattern = /['"]([^'"]+)['"]/g
+  const items: string[] = []
+  let itemMatch: RegExpExecArray | null
+  while ((itemMatch = itemPattern.exec(match[1])) !== null) {
+    items.push(itemMatch[1])
+  }
+  return items
+}
+
+function mergeLocaleCodes(filesystemCodes: string[], configCodes: string[]): string[] {
+  const seen = new Set(filesystemCodes)
+  const merged = [...filesystemCodes]
+  for (const code of configCodes) {
+    if (!seen.has(code)) {
+      seen.add(code)
+      merged.push(code)
+    }
+  }
+  return merged.sort()
 }

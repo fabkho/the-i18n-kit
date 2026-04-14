@@ -5,7 +5,7 @@ import { z } from 'zod'
 const require = createRequire(import.meta.url)
 const { version } = require('../package.json') as { version: string }
 
-import { detectI18nConfig, getCachedConfig } from './config/detector.js'
+import { detectI18nConfig, getCachedConfig, clearConfigCache } from './config/detector.js'
 import type { I18nConfig, LocaleDefinition, ProjectConfig } from './config/types.js'
 import type { LocaleFileFormat } from './adapters/types.js'
 import { writeReportFile } from './io/json-writer.js'
@@ -25,6 +25,7 @@ import { log } from './utils/logger.js'
 import { ToolError } from './utils/errors.js'
 import { resolve } from 'node:path'
 import { readdir } from 'node:fs/promises'
+import { scaffoldLocale } from './tools/scaffold-locale.js'
 
 function resolveOrphanScanDirs(
   config: I18nConfig,
@@ -332,6 +333,7 @@ export function createServer(): McpServer {
     async ({ projectDir }) => {
       try {
         const dir = projectDir ?? process.cwd()
+        clearConfigCache()
         const config = await detectI18nConfig(dir)
         return {
           content: [
@@ -2029,6 +2031,60 @@ export function createServer(): McpServer {
     },
   )
 
+  // ─── Tool: scaffold_locale ──────────────────────────────────────
+
+  server.registerTool(
+    'scaffold_locale',
+    {
+      title: 'Scaffold Locale',
+      description:
+        'Create empty locale files for new languages. Copies the key structure from the default locale with all values set to empty strings. Supports both JSON (Nuxt) and PHP (Laravel) formats. Does NOT modify framework config — the agent must add the locale to the framework config before calling this tool.',
+      inputSchema: {
+        locales: z.array(z.string()).optional().describe('Locale codes to scaffold (e.g., ["sv", "ja"]). If omitted, auto-detects locales in config that are missing files.'),
+        layer: z.string().optional().describe('Scope to a single layer (e.g., "root", "app-admin"). If omitted, scaffolds across all layers.'),
+        dryRun: z.boolean().optional().describe('If true, return what would be created without writing files. Defaults to false.'),
+        projectDir: z.string().optional().describe('Absolute path to the project root. Defaults to server cwd.'),
+      },
+    },
+    async ({ locales, layer, dryRun, projectDir }) => {
+      try {
+        const dir = projectDir ?? process.cwd()
+        const config = await detectI18nConfig(dir)
+
+        const result = await scaffoldLocale(config, { locales, layer, dryRun })
+
+        const summary = {
+          created: result.created.map(f => ({
+            locale: f.locale,
+            layer: f.layer,
+            file: toRelativePath(f.file, config.rootDir),
+            keys: f.keys,
+            ...(f.namespace ? { namespace: f.namespace } : {}),
+          })),
+          skipped: result.skipped.map(f => ({
+            locale: f.locale,
+            layer: f.layer,
+            file: toRelativePath(f.file, config.rootDir),
+            keys: f.keys,
+            ...(f.namespace ? { namespace: f.namespace } : {}),
+          })),
+          dryRun: dryRun ?? false,
+        }
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(summary, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        return toolErrorResponse('scaffolding locale', error)
+      }
+    },
+  )
+
   // ─── Resources ────────────────────────────────────────────────
 
   server.registerResource(
@@ -2212,6 +2268,73 @@ Follow these steps:
 3. For each locale with missing keys, call \`translate_missing\` to auto-fill gaps using the reference locale.
    - If auto-translation is not available, translate the keys yourself using the glossary and style guidelines above, then call \`add_translations\`.
 4. Report a summary of what was translated, organized by layer and locale.`
+
+      return {
+        messages: [
+          {
+            role: 'user' as const,
+            content: { type: 'text' as const, text: promptText },
+          },
+        ],
+      }
+    },
+  )
+
+  server.registerPrompt(
+    'add-language',
+    {
+      title: 'Add Language',
+      description: 'Add a new language to the project: update framework config, scaffold empty locale files, then translate all keys.',
+      argsSchema: {
+        language: z.string().describe('Language to add (e.g., "Swedish", "sv", "sv-SE")'),
+        projectDir: z.string().optional().describe('Absolute path to the project root. Defaults to server cwd.'),
+      },
+    },
+    async ({ language, projectDir }) => {
+      const dir = projectDir ?? process.cwd()
+      let configSection = ''
+
+      try {
+        const config = await detectI18nConfig(dir)
+        configSection += `\nDETECTED FRAMEWORK: ${config.framework ?? 'unknown'}`
+        configSection += `\nDEFAULT LOCALE: ${config.defaultLocale}`
+        configSection += `\nEXISTING LOCALES: ${config.locales.map(l => `${l.code} (${l.language})`).join(', ')}`
+        configSection += `\nLAYERS: ${config.localeDirs.filter(d => !d.aliasOf).map(d => d.layer).join(', ')}`
+
+        const pc = config.projectConfig
+        if (pc?.translationPrompt) {
+          configSection += `\nTRANSLATION STYLE: ${pc.translationPrompt}`
+        }
+        if (pc?.glossary && Object.keys(pc.glossary).length > 0) {
+          configSection += '\nGLOSSARY:'
+          for (const [term, definition] of Object.entries(pc.glossary)) {
+            configSection += `\n- ${term} → ${definition}`
+          }
+        }
+        if (pc?.localeNotes) {
+          configSection += '\nLOCALE NOTES:'
+          for (const [locale, note] of Object.entries(pc.localeNotes)) {
+            configSection += `\n- ${locale}: ${note}`
+          }
+        }
+      } catch {
+        configSection += '\nConfig detection failed — you will need to call detect_i18n_config manually.'
+      }
+
+      const promptText = `Add "${language}" as a new language to this project.
+${configSection}
+
+Follow these steps:
+
+1. Call \`detect_i18n_config\` to understand the current project setup.
+2. Add the new locale to the framework configuration:
+   - **Nuxt**: Add the locale entry to \`i18n.locales\` in \`nuxt.config.ts\` (code, language, file).
+   - **Laravel**: Add the locale code to the \`available_locales\` array in \`config/app.php\`.
+3. Call \`scaffold_locale\` with the new locale code to create empty locale files in all layers.
+4. Call \`translate_missing\` for each layer to auto-translate all keys from the default locale.
+   - If auto-translation is unavailable, use \`get_translations\` to read the default locale, translate the keys yourself, then call \`update_translations\`.
+5. Call \`get_missing_translations\` to verify the new locale has zero missing keys in every layer.
+6. Report a summary: locale code added, files created, keys translated per layer.`
 
       return {
         messages: [
