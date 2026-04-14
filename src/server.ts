@@ -1301,7 +1301,7 @@ export function createServer(): McpServer {
         const clientCapabilities = server.server.getClientCapabilities()
         const samplingSupported = !!clientCapabilities?.sampling
 
-        const results: Record<string, { translated: string[]; failed: string[]; samplingUsed: boolean }> = {}
+        const results: Record<string, { translated: string[]; failed: string[]; samplingUsed: boolean; writeError?: string }> = {}
         const fallbackContexts: Record<string, Record<string, unknown>> = {}
 
         for (const target of targets) {
@@ -1421,11 +1421,19 @@ export function createServer(): McpServer {
             }
 
             if (Object.keys(allTranslations).length > 0) {
-              await mutateLocaleData(config, layer, target, (data) => {
-                for (const [key, value] of Object.entries(allTranslations)) {
-                  setNestedValue(data, key, value)
-                }
-              })
+              try {
+                await mutateLocaleData(config, layer, target, (data) => {
+                  for (const [key, value] of Object.entries(allTranslations)) {
+                    setNestedValue(data, key, value)
+                  }
+                })
+              } catch (error) {
+                log.warn(`Failed to write translations for ${target.code}: ${error instanceof Error ? error.message : String(error)}`)
+                failed.push(...translated)
+                translated.length = 0
+                results[target.code] = { translated: [], failed: [...Object.keys(keysAndValues)], samplingUsed: true, writeError: error instanceof Error ? error.message : String(error) }
+                continue
+              }
             }
 
             results[target.code] = { translated, failed, samplingUsed: true }

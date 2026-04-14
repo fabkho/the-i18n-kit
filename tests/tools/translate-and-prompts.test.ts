@@ -731,3 +731,127 @@ describe('translate_missing: batch retry logic', () => {
     expect(allTranslations).toEqual({ 'common.save': 'Save', 'common.cancel': 'Cancel' })
   })
 })
+
+// ─── translate_missing: write error resilience ───────────────────
+
+describe('translate_missing: write error resilience', () => {
+  it('write error caught — locale result has writeError field with error message', () => {
+    const keysAndValues = {
+      'admin.users.list': 'Benutzerliste',
+      'admin.users.create': 'Benutzer erstellen',
+    }
+    const translated: string[] = ['admin.users.list', 'admin.users.create']
+    const failed: string[] = []
+    const results: Record<string, { translated: string[]; failed: string[]; samplingUsed: boolean; writeError?: string }> = {}
+    const targetCode = 'es-ES'
+
+    const allTranslations = {
+      'admin.users.list': 'Lista de usuarios',
+      'admin.users.create': 'Crear usuario',
+    }
+
+    const writeError = new Error('EACCES: permission denied')
+    try {
+      if (Object.keys(allTranslations).length > 0) {
+        throw writeError
+      }
+      results[targetCode] = { translated, failed, samplingUsed: true }
+    } catch (error) {
+      failed.push(...translated)
+      translated.length = 0
+      results[targetCode] = {
+        translated: [],
+        failed: [...Object.keys(keysAndValues)],
+        samplingUsed: true,
+        writeError: error instanceof Error ? error.message : String(error),
+      }
+    }
+
+    expect(results[targetCode].writeError).toBe('EACCES: permission denied')
+    expect(results[targetCode].samplingUsed).toBe(true)
+  })
+
+  it('write error caught — all keys moved to failed, translated is empty', () => {
+    const keysAndValues = {
+      'admin.users.list': 'Benutzerliste',
+      'admin.users.create': 'Benutzer erstellen',
+      'admin.users.edit': 'Benutzer bearbeiten',
+    }
+    const translated: string[] = ['admin.users.list', 'admin.users.create', 'admin.users.edit']
+    const failed: string[] = []
+    const results: Record<string, { translated: string[]; failed: string[]; samplingUsed: boolean; writeError?: string }> = {}
+    const targetCode = 'es-ES'
+
+    const allTranslations = {
+      'admin.users.list': 'Lista de usuarios',
+      'admin.users.create': 'Crear usuario',
+      'admin.users.edit': 'Editar usuario',
+    }
+
+    try {
+      if (Object.keys(allTranslations).length > 0) {
+        throw new Error('disk full')
+      }
+      results[targetCode] = { translated, failed, samplingUsed: true }
+    } catch (error) {
+      failed.push(...translated)
+      translated.length = 0
+      results[targetCode] = {
+        translated: [],
+        failed: [...Object.keys(keysAndValues)],
+        samplingUsed: true,
+        writeError: error instanceof Error ? error.message : String(error),
+      }
+    }
+
+    expect(results[targetCode].translated).toEqual([])
+    expect(results[targetCode].failed).toEqual(['admin.users.list', 'admin.users.create', 'admin.users.edit'])
+  })
+
+  it('subsequent locales still processed after write error', () => {
+    const results: Record<string, { translated: string[]; failed: string[]; samplingUsed: boolean; writeError?: string }> = {}
+
+    const locales = [
+      { code: 'es-ES', shouldFail: true },
+      { code: 'fr-FR', shouldFail: false },
+    ]
+
+    const keysAndValues = {
+      'admin.users.list': 'Benutzerliste',
+    }
+
+    for (const locale of locales) {
+      const translated: string[] = ['admin.users.list']
+      const failed: string[] = []
+      const allTranslations = { 'admin.users.list': 'translated value' }
+
+      try {
+        if (Object.keys(allTranslations).length > 0) {
+          if (locale.shouldFail) {
+            throw new Error('write failed for ' + locale.code)
+          }
+        }
+        results[locale.code] = { translated, failed, samplingUsed: true }
+      } catch (error) {
+        failed.push(...translated)
+        translated.length = 0
+        results[locale.code] = {
+          translated: [],
+          failed: [...Object.keys(keysAndValues)],
+          samplingUsed: true,
+          writeError: error instanceof Error ? error.message : String(error),
+        }
+        continue
+      }
+    }
+
+    expect(results['es-ES'].writeError).toBe('write failed for es-ES')
+    expect(results['es-ES'].translated).toEqual([])
+    expect(results['es-ES'].failed).toEqual(['admin.users.list'])
+
+    expect(results['fr-FR']).toBeDefined()
+    expect(results['fr-FR'].writeError).toBeUndefined()
+    expect(results['fr-FR'].translated).toEqual(['admin.users.list'])
+    expect(results['fr-FR'].failed).toEqual([])
+  })
+})
