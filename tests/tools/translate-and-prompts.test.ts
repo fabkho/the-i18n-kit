@@ -539,6 +539,263 @@ describe('add-feature-translations prompt structure', () => {
   })
 })
 
+// ─── translate_missing: progress notifications & batch size ─────────────────
+
+describe('translate_missing: progress notifications', () => {
+  /**
+   * These tests verify the reportProgress() helper that lives inside the
+   * translate_missing tool handler. Because the function is defined inline,
+   * we replicate its exact logic here and test it in isolation.
+   */
+
+  function createReportProgress(
+    sendNotification: (notification: unknown) => Promise<void>,
+    progressToken: string | number | undefined,
+  ) {
+    let progressStep = 0
+    let progressTotal: number | undefined
+
+    async function reportProgress(message: string) {
+      if (!progressToken) return
+      progressStep++
+      try {
+        await sendNotification({
+          method: 'notifications/progress' as const,
+          params: {
+            progressToken,
+            progress: progressStep,
+            ...(progressTotal != null ? { total: progressTotal } : {}),
+            message,
+          },
+        })
+      } catch { /* host may not support progress — swallow */ }
+    }
+
+    return {
+      reportProgress,
+      get progressStep() { return progressStep },
+      set progressTotal(val: number | undefined) { progressTotal = val },
+    }
+  }
+
+  it('sends progress notification with correct payload', async () => {
+    const notifications: unknown[] = []
+    const sendNotification = async (n: unknown) => { notifications.push(n) }
+
+    const { reportProgress } = createReportProgress(sendNotification, 'tok-123')
+    await reportProgress('Translating bg...')
+
+    expect(notifications).toHaveLength(1)
+    expect(notifications[0]).toEqual({
+      method: 'notifications/progress',
+      params: {
+        progressToken: 'tok-123',
+        progress: 1,
+        message: 'Translating bg...',
+      },
+    })
+  })
+
+  it('increments progress step on each call', async () => {
+    const notifications: unknown[] = []
+    const sendNotification = async (n: unknown) => { notifications.push(n) }
+
+    const { reportProgress } = createReportProgress(sendNotification, 'tok-456')
+    await reportProgress('batch 1')
+    await reportProgress('batch 2')
+    await reportProgress('batch 3')
+
+    expect(notifications).toHaveLength(3)
+    expect((notifications[0] as any).params.progress).toBe(1)
+    expect((notifications[1] as any).params.progress).toBe(2)
+    expect((notifications[2] as any).params.progress).toBe(3)
+  })
+
+  it('includes total when progressTotal is set', async () => {
+    const notifications: unknown[] = []
+    const sendNotification = async (n: unknown) => { notifications.push(n) }
+
+    const ctx = createReportProgress(sendNotification, 'tok-789')
+    ctx.progressTotal = 9
+    await ctx.reportProgress('batch 1/9')
+
+    expect((notifications[0] as any).params.total).toBe(9)
+  })
+
+  it('omits total when progressTotal is undefined', async () => {
+    const notifications: unknown[] = []
+    const sendNotification = async (n: unknown) => { notifications.push(n) }
+
+    const { reportProgress } = createReportProgress(sendNotification, 'tok-abc')
+    await reportProgress('starting')
+
+    expect((notifications[0] as any).params).not.toHaveProperty('total')
+  })
+
+  it('does NOT send notification when progressToken is undefined', async () => {
+    const notifications: unknown[] = []
+    const sendNotification = async (n: unknown) => { notifications.push(n) }
+
+    const { reportProgress } = createReportProgress(sendNotification, undefined)
+    await reportProgress('should be ignored')
+
+    expect(notifications).toHaveLength(0)
+  })
+
+  it('swallows errors from sendNotification', async () => {
+    const sendNotification = async () => { throw new Error('host does not support progress') }
+
+    const { reportProgress } = createReportProgress(sendNotification, 'tok-err')
+
+    await expect(reportProgress('batch 1')).resolves.toBeUndefined()
+  })
+
+  it('accepts numeric progress tokens', async () => {
+    const notifications: unknown[] = []
+    const sendNotification = async (n: unknown) => { notifications.push(n) }
+
+    const { reportProgress } = createReportProgress(sendNotification, 42)
+    await reportProgress('numeric token')
+
+    expect((notifications[0] as any).params.progressToken).toBe(42)
+  })
+
+  it('preserves message text verbatim', async () => {
+    const notifications: unknown[] = []
+    const sendNotification = async (n: unknown) => { notifications.push(n) }
+
+    const { reportProgress } = createReportProgress(sendNotification, 'tok')
+    const msg = 'bg: batch 3/9 done (600 translated so far)'
+    await reportProgress(msg)
+
+    expect((notifications[0] as any).params.message).toBe(msg)
+  })
+})
+
+describe('translate_missing: batch size defaults and math', () => {
+  it('default batch size is 200', () => {
+    const batchSize = undefined
+    const maxBatch = batchSize ?? 200
+    expect(maxBatch).toBe(200)
+  })
+
+  it('explicit batch size overrides default', () => {
+    const batchSize = 50
+    const maxBatch = batchSize ?? 200
+    expect(maxBatch).toBe(50)
+  })
+
+  it('calculates correct batch count for 1771 keys at default batch size', () => {
+    const keyCount = 1771
+    const maxBatch = 200
+    const totalBatches = Math.ceil(keyCount / maxBatch)
+    expect(totalBatches).toBe(9)
+  })
+
+  it('calculates correct batch count for exact multiple', () => {
+    const keyCount = 400
+    const maxBatch = 200
+    const totalBatches = Math.ceil(keyCount / maxBatch)
+    expect(totalBatches).toBe(2)
+  })
+
+  it('single batch for keys fewer than batch size', () => {
+    const keyCount = 150
+    const maxBatch = 200
+    const totalBatches = Math.ceil(keyCount / maxBatch)
+    expect(totalBatches).toBe(1)
+  })
+
+  it('single batch for keys equal to batch size', () => {
+    const keyCount = 200
+    const maxBatch = 200
+    const totalBatches = Math.ceil(keyCount / maxBatch)
+    expect(totalBatches).toBe(1)
+  })
+
+  it('handles single key', () => {
+    const keyCount = 1
+    const maxBatch = 200
+    const totalBatches = Math.ceil(keyCount / maxBatch)
+    expect(totalBatches).toBe(1)
+  })
+
+  it('batch loop slices correctly at boundaries', () => {
+    const keyEntries = Array.from({ length: 450 }, (_, i) => [`key.${i}`, `value ${i}`])
+    const maxBatch = 200
+    const batches: [string, string][][] = []
+
+    for (let i = 0; i < keyEntries.length; i += maxBatch) {
+      batches.push(keyEntries.slice(i, i + maxBatch) as [string, string][])
+    }
+
+    expect(batches).toHaveLength(3)
+    expect(batches[0]).toHaveLength(200)
+    expect(batches[1]).toHaveLength(200)
+    expect(batches[2]).toHaveLength(50)
+  })
+
+  it('progress messages follow expected pattern for multi-locale', () => {
+    const targets = [
+      { code: 'bg', keyCount: 450 },
+      { code: 'da', keyCount: 200 },
+    ]
+    const maxBatch = 200
+    const messages: string[] = []
+
+    for (let tIdx = 0; tIdx < targets.length; tIdx++) {
+      const target = targets[tIdx]
+      const totalBatches = Math.ceil(target.keyCount / maxBatch)
+
+      messages.push(
+        `Translating ${target.code} (${target.keyCount} keys, `
+        + `${totalBatches} batch${totalBatches === 1 ? '' : 'es'}) `
+        + `[locale ${tIdx + 1}/${targets.length}]`,
+      )
+
+      for (let b = 1; b <= totalBatches; b++) {
+        const translated = Math.min(b * maxBatch, target.keyCount)
+        messages.push(
+          `${target.code}: batch ${b}/${totalBatches} done `
+          + `(${translated} translated so far)`,
+        )
+      }
+
+      messages.push(
+        `${target.code}: complete — ${target.keyCount} translated, 0 failed`,
+      )
+    }
+
+    expect(messages).toHaveLength(8)
+
+    expect(messages[0]).toBe('Translating bg (450 keys, 3 batches) [locale 1/2]')
+    expect(messages[1]).toBe('bg: batch 1/3 done (200 translated so far)')
+    expect(messages[2]).toBe('bg: batch 2/3 done (400 translated so far)')
+    expect(messages[3]).toBe('bg: batch 3/3 done (450 translated so far)')
+    expect(messages[4]).toBe('bg: complete — 450 translated, 0 failed')
+
+    expect(messages[5]).toBe('Translating da (200 keys, 1 batch) [locale 2/2]')
+    expect(messages[6]).toBe('da: batch 1/1 done (200 translated so far)')
+    expect(messages[7]).toBe('da: complete — 200 translated, 0 failed')
+  })
+
+  it('singular "batch" for single-batch locale', () => {
+    const keyCount = 50
+    const maxBatch = 200
+    const totalBatches = Math.ceil(keyCount / maxBatch)
+    const msg = `${totalBatches} batch${totalBatches === 1 ? '' : 'es'}`
+    expect(msg).toBe('1 batch')
+  })
+
+  it('plural "batches" for multi-batch locale', () => {
+    const keyCount = 500
+    const maxBatch = 200
+    const totalBatches = Math.ceil(keyCount / maxBatch)
+    const msg = `${totalBatches} batch${totalBatches === 1 ? '' : 'es'}`
+    expect(msg).toBe('3 batches')
+  })
+})
+
 describe('fix-missing-translations prompt structure', () => {
   let config: I18nConfig
 

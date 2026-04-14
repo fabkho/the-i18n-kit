@@ -1249,17 +1249,38 @@ export function createServer(): McpServer {
         referenceLocale: z.string().optional().describe('Reference locale code. Defaults to the project default locale.'),
         targetLocales: z.array(z.string()).optional().describe('Locale codes to translate into. Defaults to all locales except the reference.'),
         keys: z.array(z.string()).optional().describe('Specific keys to translate. If omitted, translates all missing keys.'),
-        batchSize: z.number().optional().describe('Max keys per sampling request. Default: 50.'),
+        batchSize: z.number().optional().describe('Max keys per sampling request. Default: 200.'),
         dryRun: z.boolean().optional().describe('If true, return what would be translated without writing. Default: false.'),
         projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
       },
     },
-    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, projectDir }) => {
+    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, projectDir }, extra) => {
       try {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
         const isDryRun = dryRun ?? false
-        const maxBatch = batchSize ?? 50
+        const maxBatch = batchSize ?? 200
+
+        // Progress tracking via MCP notifications/progress
+        const progressToken = extra._meta?.progressToken
+        let progressStep = 0
+        let progressTotal: number | undefined
+
+        async function reportProgress(message: string) {
+          if (!progressToken) return
+          progressStep++
+          try {
+            await extra.sendNotification({
+              method: 'notifications/progress' as const,
+              params: {
+                progressToken,
+                progress: progressStep,
+                ...(progressTotal != null ? { total: progressTotal } : {}),
+                message,
+              },
+            })
+          } catch { /* host may not support progress — swallow */ }
+        }
 
         // Validate layer
         const localeDir = config.localeDirs.find(d => d.layer === layer)
@@ -1304,7 +1325,8 @@ export function createServer(): McpServer {
         const results: Record<string, { translated: string[]; failed: string[]; samplingUsed: boolean }> = {}
         const fallbackContexts: Record<string, Record<string, unknown>> = {}
 
-        for (const target of targets) {
+        for (let tIdx = 0; tIdx < targets.length; tIdx++) {
+          const target = targets[tIdx]
           let targetData: Record<string, unknown> = {}
 
           try {
@@ -1354,12 +1376,20 @@ export function createServer(): McpServer {
             const translated: string[] = []
             const failed: string[] = []
             const keyEntries = Object.entries(keysAndValues)
+            const totalBatches = Math.ceil(keyEntries.length / maxBatch)
 
             // Accumulate all translations across batches, write once at the end
             const allTranslations: Record<string, string> = {}
 
+            await reportProgress(
+              `Translating ${target.code} (${keyEntries.length} keys, `
+              + `${totalBatches} batch${totalBatches === 1 ? '' : 'es'}) `
+              + `[locale ${tIdx + 1}/${targets.length}]`,
+            )
+
             // Process in batches
             for (let i = 0; i < keyEntries.length; i += maxBatch) {
+              const batchNum = Math.floor(i / maxBatch) + 1
               const batch = Object.fromEntries(keyEntries.slice(i, i + maxBatch))
 
               try {
@@ -1405,6 +1435,11 @@ export function createServer(): McpServer {
                     translated.push(key)
                   }
                 }
+
+                await reportProgress(
+                  `${target.code}: batch ${batchNum}/${totalBatches} done `
+                  + `(${translated.length} translated so far)`,
+                )
               } catch (error) {
                 log.warn(`Sampling failed for batch in ${target.code}: ${error instanceof Error ? error.message : String(error)}`)
                 failed.push(...Object.keys(batch))
@@ -1418,6 +1453,11 @@ export function createServer(): McpServer {
                 }
               })
             }
+
+            await reportProgress(
+              `${target.code}: complete — ${translated.length} translated, `
+              + `${failed.length} failed`,
+            )
 
             results[target.code] = { translated, failed, samplingUsed: true }
           } else {
