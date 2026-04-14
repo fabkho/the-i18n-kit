@@ -1,0 +1,167 @@
+import { existsSync } from 'node:fs'
+import { basename, join } from 'node:path'
+import type { I18nConfig, LocaleDefinition } from '../config/types'
+import { readLocaleData, resolveLocaleEntries } from '../io/locale-data'
+import { readLocale, writeLocale } from '../io/locale-io'
+import { getLeafKeys } from '../io/key-operations'
+
+export interface ScaffoldLocaleOptions {
+  locales?: string[]
+  layer?: string
+  dryRun?: boolean
+}
+
+export interface ScaffoldedFile {
+  locale: string
+  layer: string
+  file: string
+  keys: number
+}
+
+export interface ScaffoldLocaleResult {
+  created: ScaffoldedFile[]
+  skipped: ScaffoldedFile[]
+}
+
+export function buildEmptyStructure(data: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'string') {
+      result[key] = ''
+    } else if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      result[key] = buildEmptyStructure(value as Record<string, unknown>)
+    } else {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+export async function scaffoldLocale(
+  config: I18nConfig,
+  options: ScaffoldLocaleOptions = {},
+): Promise<ScaffoldLocaleResult> {
+  const { locales: localeCodes, layer: layerFilter, dryRun } = options
+
+  const layers = layerFilter
+    ? config.localeDirs.filter(d => d.layer === layerFilter)
+    : config.localeDirs.filter(d => !d.aliasOf)
+
+  const refLocale = config.locales.find(l => l.code === config.defaultLocale)
+  if (!refLocale) {
+    throw new Error(`Default locale "${config.defaultLocale}" not found in config`)
+  }
+
+  const targetLocales = localeCodes
+    ? localeCodes.map((code) => {
+        const loc = config.locales.find(l => l.code === code)
+        if (!loc) throw new Error(`Locale "${code}" not found in config`)
+        return loc
+      })
+    : findNewLocales(config, layers)
+
+  const created: ScaffoldedFile[] = []
+  const skipped: ScaffoldedFile[] = []
+
+  for (const dir of layers) {
+    if (config.localeFileFormat === 'php-array') {
+      await scaffoldPhpLayer(config, dir, refLocale, targetLocales, dryRun, created, skipped)
+    } else {
+      await scaffoldJsonLayer(config, dir, refLocale, targetLocales, dryRun, created, skipped)
+    }
+  }
+
+  return { created, skipped }
+}
+
+async function scaffoldJsonLayer(
+  config: I18nConfig,
+  dir: I18nConfig['localeDirs'][0],
+  refLocale: LocaleDefinition,
+  targets: LocaleDefinition[],
+  dryRun: boolean | undefined,
+  created: ScaffoldedFile[],
+  skipped: ScaffoldedFile[],
+): Promise<void> {
+  const refData = await readLocaleData(config, dir.layer, refLocale)
+  if (Object.keys(refData).length === 0) return
+
+  const emptyData = buildEmptyStructure(refData)
+  const keyCount = getLeafKeys(refData).length
+
+  for (const target of targets) {
+    const entries = await resolveLocaleEntries(config, dir.layer, target)
+    const targetPath = entries.length > 0 ? entries[0].path : join(dir.path, target.file ?? `${target.code}.json`)
+
+    if (existsSync(targetPath)) {
+      skipped.push({ locale: target.code, layer: dir.layer, file: targetPath, keys: keyCount })
+      continue
+    }
+
+    if (!dryRun) {
+      await writeLocale(targetPath, emptyData)
+    }
+    created.push({ locale: target.code, layer: dir.layer, file: targetPath, keys: keyCount })
+  }
+}
+
+async function scaffoldPhpLayer(
+  config: I18nConfig,
+  dir: I18nConfig['localeDirs'][0],
+  refLocale: LocaleDefinition,
+  targets: LocaleDefinition[],
+  dryRun: boolean | undefined,
+  created: ScaffoldedFile[],
+  skipped: ScaffoldedFile[],
+): Promise<void> {
+  const refEntries = await resolveLocaleEntries(config, dir.layer, refLocale)
+  if (refEntries.length === 0) return
+
+  for (const target of targets) {
+    const targetDir = join(dir.path, target.code)
+    if (existsSync(targetDir)) {
+      const totalKeys = await countPhpKeys(refEntries)
+      skipped.push({ locale: target.code, layer: dir.layer, file: targetDir, keys: totalKeys })
+      continue
+    }
+
+    for (const refEntry of refEntries) {
+      const fileName = basename(refEntry.path)
+      const targetPath = join(targetDir, fileName)
+      const refData = await readLocale(refEntry.path)
+      const emptyData = buildEmptyStructure(refData)
+      const keyCount = getLeafKeys(refData).length
+
+      if (!dryRun) {
+        await writeLocale(targetPath, emptyData)
+      }
+      created.push({ locale: target.code, layer: dir.layer, file: targetPath, keys: keyCount })
+    }
+  }
+}
+
+async function countPhpKeys(entries: Array<{ path: string }>): Promise<number> {
+  let total = 0
+  for (const entry of entries) {
+    const data = await readLocale(entry.path)
+    total += getLeafKeys(data).length
+  }
+  return total
+}
+
+function findNewLocales(config: I18nConfig, layers: I18nConfig['localeDirs']): LocaleDefinition[] {
+  if (config.localeFileFormat === 'php-array') {
+    return config.locales.filter((locale) => {
+      return layers.some((dir) => {
+        return !existsSync(join(dir.path, locale.code))
+      })
+    })
+  }
+
+  return config.locales.filter((locale) => {
+    return layers.some((dir) => {
+      const filePath = join(dir.path, locale.file ?? `${locale.code}.json`)
+      return !existsSync(filePath)
+    })
+  })
+}
