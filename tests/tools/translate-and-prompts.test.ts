@@ -584,3 +584,150 @@ describe('fix-missing-translations prompt structure', () => {
     expect(promptText).toContain('translate_missing')
   })
 })
+
+// ─── translate_missing: batch retry logic ────────────────────────────────────
+
+type SamplingFn = (batch: Record<string, string>) => Promise<Record<string, string>>
+type WarnFn = (msg: string) => void
+
+async function runBatchWithRetry(
+  batch: Record<string, string>,
+  batchNum: number,
+  localeCode: string,
+  doSampling: SamplingFn,
+  warn: WarnFn,
+): Promise<{ translations: Record<string, string> | null }> {
+  let batchTranslations: Record<string, string> | null = null
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      batchTranslations = await doSampling(batch)
+      break // success — stop retrying
+    }
+    catch (error) {
+      if (attempt === 0) {
+        warn(`Sampling failed for batch ${batchNum} in ${localeCode}, retrying: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      else {
+        warn(`Sampling retry failed for batch ${batchNum} in ${localeCode}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+  }
+
+  return { translations: batchTranslations }
+}
+
+describe('translate_missing: batch retry logic', () => {
+  it('returns translations on first attempt without retrying', async () => {
+    const batch = { 'common.save': 'Speichern' }
+    const expected = { 'common.save': 'Save' }
+    let callCount = 0
+
+    const doSampling: SamplingFn = async () => {
+      callCount++
+      return expected
+    }
+
+    const warnings: string[] = []
+    const { translations } = await runBatchWithRetry(batch, 1, 'en-US', doSampling, w => warnings.push(w))
+
+    expect(translations).toEqual(expected)
+    expect(callCount).toBe(1)
+    expect(warnings).toHaveLength(0)
+  })
+
+  it('retries once and returns translations when second attempt succeeds', async () => {
+    const batch = { 'common.save': 'Speichern' }
+    const expected = { 'common.save': 'Save' }
+    let callCount = 0
+
+    const doSampling: SamplingFn = async () => {
+      callCount++
+      if (callCount === 1) throw new Error('timeout')
+      return expected
+    }
+
+    const warnings: string[] = []
+    const { translations } = await runBatchWithRetry(batch, 2, 'en-US', doSampling, w => warnings.push(w))
+
+    expect(translations).toEqual(expected)
+    expect(callCount).toBe(2)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('retrying')
+    expect(warnings[0]).toContain('batch 2')
+    expect(warnings[0]).toContain('en-US')
+    expect(warnings[0]).toContain('timeout')
+  })
+
+  it('returns null and logs both warnings when both attempts fail', async () => {
+    const batch = { 'common.save': 'Speichern', 'common.cancel': 'Abbrechen' }
+    let callCount = 0
+
+    const doSampling: SamplingFn = async () => {
+      callCount++
+      throw new Error(`network error attempt ${callCount}`)
+    }
+
+    const warnings: string[] = []
+    const { translations } = await runBatchWithRetry(batch, 3, 'fr-FR', doSampling, w => warnings.push(w))
+
+    expect(translations).toBeNull()
+    expect(callCount).toBe(2)
+    expect(warnings).toHaveLength(2)
+    expect(warnings[0]).toContain('retrying')
+    expect(warnings[0]).toContain('batch 3')
+    expect(warnings[0]).toContain('fr-FR')
+    expect(warnings[1]).toContain('retry failed')
+    expect(warnings[1]).toContain('batch 3')
+    expect(warnings[1]).toContain('fr-FR')
+  })
+
+  it('keys from a failed batch go to failed array (double failure)', async () => {
+    const batch = { 'admin.users.list': 'Benutzerliste', 'admin.users.edit': 'Benutzer bearbeiten' }
+
+    const doSampling: SamplingFn = async () => {
+      throw new Error('JSON parse error')
+    }
+
+    const failed: string[] = []
+    const { translations } = await runBatchWithRetry(batch, 1, 'es-ES', doSampling, () => {})
+
+    if (translations === null) {
+      failed.push(...Object.keys(batch))
+    }
+
+    expect(translations).toBeNull()
+    expect(failed).toEqual(['admin.users.list', 'admin.users.edit'])
+  })
+
+  it('translations accumulate normally after successful retry', async () => {
+    const batch1 = { 'common.save': 'Speichern' }
+    const batch2 = { 'common.cancel': 'Abbrechen' }
+    let batch1Calls = 0
+
+    const makeSampling = (successResult: Record<string, string>, failFirstTime: boolean): SamplingFn => {
+      let calls = 0
+      return async () => {
+        calls++
+        if (failFirstTime && calls === 1) throw new Error('transient error')
+        return successResult
+      }
+    }
+
+    const allTranslations: Record<string, string> = {}
+
+    for (const [batch, sampling] of [
+      [batch1, makeSampling({ 'common.save': 'Save' }, true)],
+      [batch2, makeSampling({ 'common.cancel': 'Cancel' }, false)],
+    ] as Array<[Record<string, string>, SamplingFn]>) {
+      const { translations } = await runBatchWithRetry(batch, ++batch1Calls, 'en-US', sampling, () => {})
+      if (translations !== null) {
+        for (const [key, value] of Object.entries(translations)) {
+          if (typeof value === 'string') allTranslations[key] = value
+        }
+      }
+    }
+
+    expect(allTranslations).toEqual({ 'common.save': 'Save', 'common.cancel': 'Cancel' })
+  })
+})

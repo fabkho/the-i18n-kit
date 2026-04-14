@@ -1360,50 +1360,62 @@ export function createServer(): McpServer {
 
             // Process in batches
             for (let i = 0; i < keyEntries.length; i += maxBatch) {
+              const batchNum = Math.floor(i / maxBatch) + 1
               const batch = Object.fromEntries(keyEntries.slice(i, i + maxBatch))
+              let batchTranslations: Record<string, string> | null = null
 
-              try {
-                const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, target.language || target.code, config.localeFileFormat)
-                const userMessage = buildTranslationUserMessage(
-                  refLocale.language || refLocale.code,
-                  target.language || target.code,
-                  batch,
-                  config.localeFileFormat,
-                )
+              for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                  const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, target.language || target.code, config.localeFileFormat)
+                  const userMessage = buildTranslationUserMessage(
+                    refLocale.language || refLocale.code,
+                    target.language || target.code,
+                    batch,
+                    config.localeFileFormat,
+                  )
 
-                const samplingResult = await server.server.createMessage({
-                  messages: [
-                    {
-                      role: 'user',
-                      content: { type: 'text', text: userMessage },
-                    },
-                  ],
-                  systemPrompt,
-                  maxTokens: 4096,
-                  includeContext: 'none',
-                })
+                  const samplingResult = await server.server.createMessage({
+                    messages: [
+                      {
+                        role: 'user',
+                        content: { type: 'text', text: userMessage },
+                      },
+                    ],
+                    systemPrompt,
+                    maxTokens: 4096,
+                    includeContext: 'none',
+                  })
 
-                // Parse the response
-                const responseText = samplingResult.content.type === 'text'
-                  ? samplingResult.content.text
-                  : ''
+                  // Parse the response
+                  const responseText = samplingResult.content.type === 'text'
+                    ? samplingResult.content.text
+                    : ''
 
-                // Try to extract JSON from the response (handle potential markdown fencing)
-                let cleanJson = responseText.trim()
-                if (cleanJson.startsWith('```')) {
-                  cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+                  // Try to extract JSON from the response (handle potential markdown fencing)
+                  let cleanJson = responseText.trim()
+                  if (cleanJson.startsWith('```')) {
+                    cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
+                  }
+
+                  batchTranslations = JSON.parse(cleanJson) as Record<string, string>
+                  break // success — stop retrying
+                } catch (error) {
+                  if (attempt === 0) {
+                    log.warn(`Sampling failed for batch ${batchNum} in ${target.code}, retrying: ${error instanceof Error ? error.message : String(error)}`)
+                  } else {
+                    log.warn(`Sampling retry failed for batch ${batchNum} in ${target.code}: ${error instanceof Error ? error.message : String(error)}`)
+                  }
                 }
+              }
 
-                const translations = JSON.parse(cleanJson) as Record<string, string>
-
-                for (const [key, value] of Object.entries(translations)) {
+              if (batchTranslations !== null) {
+                for (const [key, value] of Object.entries(batchTranslations)) {
                   if (typeof value === 'string') {
                     allTranslations[key] = value
                     translated.push(key)
                   }
                 }
-              } catch (error) {
-                log.warn(`Sampling failed for batch in ${target.code}: ${error instanceof Error ? error.message : String(error)}`)
+              } else {
                 failed.push(...Object.keys(batch))
               }
             }
