@@ -13,6 +13,7 @@ import {
 } from '../../src/io/key-operations.js'
 import { loadProjectConfig } from '../../src/config/project-config.js'
 import { registerDetectorMock, playgroundDir, appAdminDir } from '../fixtures/mock-detector.js'
+import { computeProgressTotal } from '../../src/server.js'
 
 // Register the shared detector mock (vi.mock is hoisted by Vitest)
 registerDetectorMock()
@@ -853,5 +854,56 @@ describe('translate_missing: write error resilience', () => {
     expect(results['fr-FR'].writeError).toBeUndefined()
     expect(results['fr-FR'].translated).toEqual(['admin.users.list'])
     expect(results['fr-FR'].failed).toEqual([])
+  })
+})
+
+// ─── translate_missing: progressTotal computation ────────────────
+
+describe('translate_missing: progressTotal computation', () => {
+  it('correctly computes total for 2 locales with different missing key counts', () => {
+    const missingKeyCounts = [10, 60]
+    const maxBatch = 50
+    const total = computeProgressTotal(missingKeyCounts, maxBatch)
+    // locale 1: ceil(10/50) + 2 = 1 + 2 = 3
+    // locale 2: ceil(60/50) + 2 = 2 + 2 = 4
+    // total = 7
+    expect(total).toBe(7)
+  })
+
+  it('excludes locales with 0 missing keys from the total', () => {
+    const missingKeyCounts = [5, 0, 3]
+    const maxBatch = 50
+    const total = computeProgressTotal(missingKeyCounts, maxBatch)
+    // locale 1: ceil(5/50) + 2 = 1 + 2 = 3
+    // locale 2: 0 missing keys — excluded
+    // locale 3: ceil(3/50) + 2 = 1 + 2 = 3
+    // total = 6
+    expect(total).toBe(6)
+  })
+
+  it('formula matches sum(ceil(keys/batch) + 2) per locale with missing keys', () => {
+    const missingKeyCounts = [50, 100, 150]
+    const maxBatch = 50
+    const total = computeProgressTotal(missingKeyCounts, maxBatch)
+    // locale 1: ceil(50/50) + 2 = 1 + 2 = 3
+    // locale 2: ceil(100/50) + 2 = 2 + 2 = 4
+    // locale 3: ceil(150/50) + 2 = 3 + 2 = 5
+    // total = 12
+    expect(total).toBe(12)
+  })
+
+  it('single locale computes correctly', () => {
+    const missingKeyCounts = [75]
+    const maxBatch = 50
+    const total = computeProgressTotal(missingKeyCounts, maxBatch)
+    // ceil(75/50) + 2 = 2 + 2 = 4
+    expect(total).toBe(4)
+  })
+
+  it('all locales with 0 missing keys results in progressTotal of 0', () => {
+    const missingKeyCounts = [0, 0, 0]
+    const maxBatch = 50
+    const total = computeProgressTotal(missingKeyCounts, maxBatch)
+    expect(total).toBe(0)
   })
 })

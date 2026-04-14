@@ -108,6 +108,24 @@ function findLayerOrThrow(config: I18nConfig, layer: string): LocaleDir {
 }
 
 /**
+ * Compute the total number of progress steps for translate_missing.
+ *
+ * Formula: sum(ceil(missingKeyCount / maxBatch) + 2) for each locale with > 0 missing keys.
+ * The +2 accounts for 1 "starting" + 1 "complete" notification per locale.
+ * Locales with 0 missing keys are excluded (they contribute 0 steps).
+ *
+ * @param missingKeyCounts - Array of missing key counts per locale (0 counts are ignored)
+ * @param maxBatch - Maximum keys per sampling batch
+ * @returns Total number of expected progress steps, or 0 if no locales have missing keys
+ */
+export function computeProgressTotal(missingKeyCounts: number[], maxBatch: number): number {
+  return missingKeyCounts.reduce((sum, count) => {
+    if (count <= 0) return sum
+    return sum + Math.ceil(count / maxBatch) + 2
+  }, 0)
+}
+
+/**
  * Format a caught error into an MCP tool error response.
  */
 function toolErrorResponse(context: string, error: unknown) {
@@ -1340,7 +1358,7 @@ export function createServer(): McpServer {
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
       },
     },
-    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, projectDir }) => {
+    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, projectDir }, extra) => {
       try {
         const dir = projectDir ?? process.cwd()
         const config = await detectI18nConfig(dir)
@@ -1380,6 +1398,42 @@ export function createServer(): McpServer {
             })
           : config.locales.filter(l => l.code !== refLocale.code)
 
+        // Pre-scan: count missing keys per target locale to compute progressTotal.
+        // readLocaleData uses mtime-based caching so the second read inside the loop is free.
+        const preScanCounts: number[] = []
+        for (const target of targets) {
+          let scanData: Record<string, unknown> = {}
+          try {
+            scanData = await readLocaleData(config, layer, target)
+          } catch {}
+          const countMissing = (k: string): boolean => {
+            const v = getNestedValue(scanData, k)
+            return v === undefined || v === '' || v === null
+          }
+          const count = keys
+            ? keys.filter(k => countMissing(k) && allRefKeys.includes(k)).length
+            : allRefKeys.filter(k => countMissing(k)).length
+          preScanCounts.push(count)
+        }
+
+        const progressTotal = computeProgressTotal(preScanCounts, maxBatch)
+        const progressToken = extra._meta?.progressToken
+        let progressCurrent = 0
+
+        const reportProgress = async (message: string) => {
+          if (!progressToken) return
+          progressCurrent++
+          await extra.sendNotification({
+            method: 'notifications/progress',
+            params: {
+              progressToken,
+              progress: progressCurrent,
+              total: progressTotal > 0 ? progressTotal : undefined,
+              message,
+            },
+          })
+        }
+
         // Check sampling support
         const clientCapabilities = server.server.getClientCapabilities()
         const samplingSupported = !!clientCapabilities?.sampling
@@ -1414,6 +1468,8 @@ export function createServer(): McpServer {
             continue
           }
 
+          await reportProgress(`Starting ${target.code}: ${missingKeys.length} missing keys`)
+
           // Build key-value pairs from reference
           const keysAndValues: Record<string, string> = {}
           for (const key of missingKeys) {
@@ -1429,6 +1485,7 @@ export function createServer(): McpServer {
               failed: [],
               samplingUsed: samplingSupported,
             }
+            await reportProgress(`Complete ${target.code} (dry run)`)
             continue
           }
 
@@ -1445,6 +1502,7 @@ export function createServer(): McpServer {
             for (let i = 0; i < keyEntries.length; i += maxBatch) {
               const batchNum = Math.floor(i / maxBatch) + 1
               const batch = Object.fromEntries(keyEntries.slice(i, i + maxBatch))
+              const totalBatches = Math.ceil(keyEntries.length / maxBatch)
               let batchTranslations: Record<string, string> | null = null
 
               for (let attempt = 0; attempt < 2; attempt++) {
@@ -1469,12 +1527,10 @@ export function createServer(): McpServer {
                     includeContext: 'none',
                   })
 
-                  // Parse the response
                   const responseText = samplingResult.content.type === 'text'
                     ? samplingResult.content.text
                     : ''
 
-                  // Try to extract JSON from the response (handle potential markdown fencing)
                   let cleanJson = responseText.trim()
                   if (cleanJson.startsWith('```')) {
                     cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
@@ -1501,6 +1557,8 @@ export function createServer(): McpServer {
               } else {
                 failed.push(...Object.keys(batch))
               }
+
+              await reportProgress(`${target.code}: batch ${batchNum}/${totalBatches}`)
             }
 
             if (Object.keys(allTranslations).length > 0) {
@@ -1534,6 +1592,8 @@ export function createServer(): McpServer {
               samplingUsed: false,
             }
           }
+
+          await reportProgress(`Complete ${target.code}`)
         }
 
         const totalTranslated = Object.values(results).reduce((sum, r) => sum + r.translated.length, 0)
