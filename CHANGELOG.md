@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.0.0](https://github.com/fabkho/the-i18n-mcp/compare/v1.5.1...v2.0.0) (2026-04-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* package name changed from nuxt-i18n-mcp to the-i18n-mcp. The old bin entry is preserved for backwards compat.
+
+### Features
+
+* add laravel adapter for detection, discovery, and config resolution ([#50](https://github.com/fabkho/the-i18n-mcp/issues/50)) ([0713b00](https://github.com/fabkho/the-i18n-mcp/commit/0713b00829eaf157dac2c95a240f4ff787abda61))
+* extend code scanner to support Laravel Blade/PHP translation patterns ([#52](https://github.com/fabkho/the-i18n-mcp/issues/52)) ([877a045](https://github.com/fabkho/the-i18n-mcp/commit/877a04591371ed44eee9e26e0d9c8181fd8a67d6))
+* PHP array locale file reader, writer, and unified IO dispatch ([#48](https://github.com/fabkho/the-i18n-mcp/issues/48)) ([0afa652](https://github.com/fabkho/the-i18n-mcp/commit/0afa6521b51c4fc5d6c718468f10a55a3bf3ceb3))
+* wire unified locale IO into all MCP tools for Laravel support ([#51](https://github.com/fabkho/the-i18n-mcp/issues/51)) ([bb60238](https://github.com/fabkho/the-i18n-mcp/commit/bb60238e58e4c446de8e3621e2ed94eae1f284fd))
+
+
+### Bug Fixes
+
+* read MCP server version from package.json at runtime ([2bc52a4](https://github.com/fabkho/the-i18n-mcp/commit/2bc52a4f6eaeb7fdc8c19637bedf0f08491caa0b))
+* set MCP server version to 2.0.0 ([50a2e0b](https://github.com/fabkho/the-i18n-mcp/commit/50a2e0bbdf5a5f5becafdd3a4e521450a2269b19))
+* skip no-op locale writes and expose framework in config ([#56](https://github.com/fabkho/the-i18n-mcp/issues/56)) ([16211e1](https://github.com/fabkho/the-i18n-mcp/commit/16211e16939eecd19c3205597c485cfb866b6470))
+
+
+### Miscellaneous Chores
+
+* rename package to the-i18n-mcp v2.0.0 ([#53](https://github.com/fabkho/the-i18n-mcp/issues/53)) ([f124eb9](https://github.com/fabkho/the-i18n-mcp/commit/f124eb92011c8dd757914f74dd936e8fb4ccad6b))
+
 ## [1.5.1](https://github.com/fabkho/nuxt-i18n-mcp/compare/v1.5.0...v1.5.1) (2026-04-07)
 
 
