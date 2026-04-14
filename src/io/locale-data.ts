@@ -106,21 +106,26 @@ export async function mutateLocaleData(
   mutate: (data: Record<string, unknown>) => void,
 ): Promise<Set<string>> {
   const data = await readLocaleData(config, layer, locale)
-  const snapshot = JSON.stringify(data)
-  mutate(data)
 
   const filesWritten = new Set<string>()
-
-  // Skip write if mutation was a no-op (e.g., key didn't exist)
-  if (JSON.stringify(data) === snapshot) {
-    return filesWritten
-  }
 
   if (config.localeFileFormat === 'php-array') {
     const localeDir = resolveLayerDir(config, layer)
     if (!localeDir) return filesWritten
 
     const localePath = join(localeDir, locale.code)
+
+    const preSnapshots = new Map<string, string>()
+    for (const [ns, nsData] of Object.entries(data)) {
+      preSnapshots.set(ns, JSON.stringify(nsData))
+    }
+    const mergedSnapshot = JSON.stringify(data)
+
+    mutate(data)
+
+    if (JSON.stringify(data) === mergedSnapshot) {
+      return filesWritten
+    }
 
     if (!existsSync(localePath)) {
       await mkdir(localePath, { recursive: true })
@@ -131,9 +136,11 @@ export async function mutateLocaleData(
         log.warn(`Skipping non-object namespace '${namespace}' for locale '${locale.code}'`)
         continue
       }
-      const filePath = join(localePath, `${namespace}.php`)
-      await writeLocale(filePath, nsData as Record<string, unknown>)
-      filesWritten.add(filePath)
+      if (JSON.stringify(nsData) !== preSnapshots.get(namespace)) {
+        const filePath = join(localePath, `${namespace}.php`)
+        await writeLocale(filePath, nsData as Record<string, unknown>)
+        filesWritten.add(filePath)
+      }
     }
 
     const expectedFiles = new Set(
@@ -152,6 +159,13 @@ export async function mutateLocaleData(
     catch {}
   }
   else {
+    const snapshot = JSON.stringify(data)
+    mutate(data)
+
+    if (JSON.stringify(data) === snapshot) {
+      return filesWritten
+    }
+
     const entries = await resolveLocaleEntries(config, layer, locale)
     if (entries.length === 0) return filesWritten
 

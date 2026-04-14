@@ -217,7 +217,7 @@ describe('mutateLocaleData', () => {
     expect((result.auth as Record<string, string>).login).toBe('Login')
   })
 
-  it('mutates Laravel namespace and writes per-file', async () => {
+  it('mutates Laravel namespace and writes only changed namespaces', async () => {
     await setupLaravelLocales()
     const config = makeLaravelConfig()
     const locale = config.locales[0]
@@ -227,7 +227,9 @@ describe('mutateLocaleData', () => {
       ;(data.auth as Record<string, string>).newKey = 'added'
     })
 
-    expect(written.size).toBe(2)
+    expect(written.size).toBe(1)
+    expect(written.has(join(tempDir, 'lang', 'en', 'auth.php'))).toBe(true)
+    expect(written.has(join(tempDir, 'lang', 'en', 'validation.php'))).toBe(false)
 
     clearPhpFileCache()
     const result = await readLocaleData(config, 'root', locale)
@@ -299,5 +301,57 @@ describe('mutateLocaleData', () => {
     const { existsSync } = await import('node:fs')
     expect(existsSync(join(tempDir, 'lang', 'en', 'auth.php'))).toBe(true)
     expect(existsSync(join(tempDir, 'lang', 'en', 'validation.php'))).toBe(false)
+  })
+
+  it('returns empty set when no namespace changed', async () => {
+    await setupLaravelLocales()
+    const config = makeLaravelConfig()
+    const locale = config.locales[0]
+
+    const written = await mutateLocaleData(config, 'root', locale, () => {})
+    expect(written.size).toBe(0)
+  })
+
+  it('writes only 2 of 3 namespaces when 2 changed', async () => {
+    const langDir = join(tempDir, 'lang', 'en')
+    await mkdir(langDir, { recursive: true })
+    await writeFile(join(langDir, 'auth.php'), `<?php\nreturn ['failed' => 'Invalid credentials'];\n`)
+    await writeFile(join(langDir, 'validation.php'), `<?php\nreturn ['required' => 'Required'];\n`)
+    await writeFile(join(langDir, 'passwords.php'), `<?php\nreturn ['reset' => 'Reset'];\n`)
+
+    const config = makeLaravelConfig()
+    const locale = config.locales[0]
+
+    const written = await mutateLocaleData(config, 'root', locale, (data) => {
+      ;(data.auth as Record<string, string>).failed = 'Bad creds'
+      ;(data.passwords as Record<string, string>).reset = 'Password reset'
+    })
+
+    expect(written.size).toBe(2)
+    expect(written.has(join(tempDir, 'lang', 'en', 'auth.php'))).toBe(true)
+    expect(written.has(join(tempDir, 'lang', 'en', 'passwords.php'))).toBe(true)
+    expect(written.has(join(tempDir, 'lang', 'en', 'validation.php'))).toBe(false)
+  })
+
+  it('JSON write path is unaffected by per-namespace changes', async () => {
+    await setupNuxtLocales()
+    const config = makeNuxtConfig()
+    const locale = config.locales[0]
+
+    const written = await mutateLocaleData(config, 'root', locale, (data) => {
+      ;(data.common as Record<string, string>).save = 'Save Changes'
+    })
+
+    expect(written.size).toBe(1)
+    expect(written.has(join(tempDir, 'locales', 'en.json'))).toBe(true)
+  })
+
+  it('JSON write path returns empty set on no-op mutation', async () => {
+    await setupNuxtLocales()
+    const config = makeNuxtConfig()
+    const locale = config.locales[0]
+
+    const written = await mutateLocaleData(config, 'root', locale, () => {})
+    expect(written.size).toBe(0)
   })
 })
