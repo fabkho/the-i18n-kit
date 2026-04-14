@@ -1371,6 +1371,7 @@ export function createServer(): McpServer {
                   config.localeFileFormat,
                 )
 
+                const SAMPLING_TIMEOUT_MS = 120_000 // 2 minutes per batch
                 const samplingResult = await server.server.createMessage({
                   messages: [
                     {
@@ -1381,6 +1382,8 @@ export function createServer(): McpServer {
                   systemPrompt,
                   maxTokens: 4096,
                   includeContext: 'none',
+                }, {
+                  timeout: SAMPLING_TIMEOUT_MS,
                 })
 
                 // Parse the response
@@ -2053,7 +2056,13 @@ export function createServer(): McpServer {
 
         const result = await scaffoldLocale(config, { locales, layer, dryRun })
 
+        const layersUsed = [...new Set([
+          ...result.created.map(f => f.layer),
+          ...result.skipped.map(f => f.layer),
+        ])]
+
         const summary = {
+          layers: layersUsed,
           created: result.created.map(f => ({
             locale: f.locale,
             layer: f.layer,
