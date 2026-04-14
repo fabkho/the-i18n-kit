@@ -32,6 +32,7 @@ export async function detectI18nConfig(projectDir: string): Promise<I18nConfig> 
   log.info(`Detected framework: ${adapter.label}`)
 
   const config = await adapter.resolve(projectDir)
+  config.framework = adapter.name
   configCache.set(canonDir, config)
   lastConfig = config
 

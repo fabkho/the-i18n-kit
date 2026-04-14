@@ -66,6 +66,8 @@ export interface ProjectConfig {
  * The fully resolved i18n configuration for a Nuxt project.
  */
 export interface I18nConfig {
+  /** Detected framework name (e.g., 'nuxt', 'laravel'). Set by the detector. */
+  framework?: string
   /** Absolute path to the project root */
   rootDir: string
   /** Default locale code */

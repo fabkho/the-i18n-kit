@@ -106,9 +106,15 @@ export async function mutateLocaleData(
   mutate: (data: Record<string, unknown>) => void,
 ): Promise<Set<string>> {
   const data = await readLocaleData(config, layer, locale)
+  const snapshot = JSON.stringify(data)
   mutate(data)
 
   const filesWritten = new Set<string>()
+
+  // Skip write if mutation was a no-op (e.g., key didn't exist)
+  if (JSON.stringify(data) === snapshot) {
+    return filesWritten
+  }
 
   if (config.localeFileFormat === 'php-array') {
     const localeDir = resolveLayerDir(config, layer)
