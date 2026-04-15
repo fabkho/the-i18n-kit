@@ -13,7 +13,7 @@ import {
 } from '../../src/io/key-operations.js'
 import { loadProjectConfig } from '../../src/config/project-config.js'
 import { registerDetectorMock, playgroundDir, appAdminDir } from '../fixtures/mock-detector.js'
-import { computeProgressTotal, resolveSamplingPreferences, DEFAULT_SAMPLING_PREFERENCES } from '../../src/server.js'
+import { computeProgressTotal, resolveSamplingPreferences, DEFAULT_SAMPLING_PREFERENCES, buildTranslationSystemPrompt, buildTranslationUserMessage, extractJsonFromResponse, computeMaxTokens } from '../../src/server.js'
 
 // Register the shared detector mock (vi.mock is hoisted by Vitest)
 registerDetectorMock()
@@ -967,5 +967,163 @@ describe('resolveSamplingPreferences', () => {
       samplingPreferences: { hints: [] },
     })
     expect(result.hints).toEqual([])
+  })
+})
+
+describe('buildTranslationSystemPrompt', () => {
+  it('includes role framing with no project config', () => {
+    const result = buildTranslationSystemPrompt(undefined, 'de')
+    expect(result).toContain('You are a professional translator')
+    expect(result).toContain('{placeholder}')
+    expect(result).toContain('Return ONLY a JSON object')
+  })
+
+  it('includes role framing even with translationPrompt set', () => {
+    const result = buildTranslationSystemPrompt({ translationPrompt: 'Be formal.' }, 'de')
+    expect(result).toContain('You are a professional translator')
+    expect(result).toContain('Be formal.')
+    expect(result).toContain('Return ONLY a JSON object')
+  })
+
+  it('includes glossary when provided', () => {
+    const result = buildTranslationSystemPrompt({
+      glossary: { Booking: 'Buchung', Resource: 'Ressource' },
+    }, 'de')
+    expect(result).toContain('GLOSSARY')
+    expect(result).toContain('Booking → Buchung')
+    expect(result).toContain('Resource → Ressource')
+  })
+
+  it('includes locale note for the target locale', () => {
+    const result = buildTranslationSystemPrompt({
+      localeNotes: { de: 'Informal German', fr: 'Formal French' },
+    }, 'de')
+    expect(result).toContain('TARGET LOCALE NOTE (de): Informal German')
+    expect(result).not.toContain('Formal French')
+  })
+
+  it('includes examples when provided', () => {
+    const result = buildTranslationSystemPrompt({
+      examples: [{ key: 'save', de: 'Speichern', note: 'imperative' }],
+    }, 'de')
+    expect(result).toContain('STYLE EXAMPLES')
+    expect(result).toContain('save')
+    expect(result).toContain('Speichern')
+    expect(result).toContain('imperative')
+  })
+
+  it('includes all fields in correct order when all are set', () => {
+    const result = buildTranslationSystemPrompt({
+      translationPrompt: 'Keep it short.',
+      glossary: { Save: 'Speichern' },
+      localeNotes: { de: 'Use du.' },
+      examples: [{ key: 'ok', de: 'OK' }],
+    }, 'de')
+    const roleIdx = result.indexOf('You are a professional translator')
+    const promptIdx = result.indexOf('Keep it short.')
+    const glossaryIdx = result.indexOf('GLOSSARY')
+    const noteIdx = result.indexOf('TARGET LOCALE NOTE')
+    const examplesIdx = result.indexOf('STYLE EXAMPLES')
+    const formatIdx = result.indexOf('Return ONLY a JSON object')
+    expect(roleIdx).toBeLessThan(promptIdx)
+    expect(promptIdx).toBeLessThan(glossaryIdx)
+    expect(glossaryIdx).toBeLessThan(noteIdx)
+    expect(noteIdx).toBeLessThan(examplesIdx)
+    expect(examplesIdx).toBeLessThan(formatIdx)
+  })
+
+  it('uses :placeholder instruction for php-array format', () => {
+    const result = buildTranslationSystemPrompt(undefined, 'de', 'php-array')
+    expect(result).toContain(':placeholder')
+    expect(result).not.toContain('{placeholder}')
+  })
+})
+
+describe('buildTranslationUserMessage', () => {
+  it('includes reference and target locale codes', () => {
+    const result = buildTranslationUserMessage('en', 'de', { hello: 'Hello' })
+    expect(result).toContain('from en to de')
+  })
+
+  it('uses compact JSON without indentation', () => {
+    const result = buildTranslationUserMessage('en', 'de', { hello: 'Hello', bye: 'Goodbye' })
+    expect(result).toContain('{"hello":"Hello","bye":"Goodbye"}')
+    expect(result).not.toContain('  "hello"')
+  })
+
+  it('does not include format instruction', () => {
+    const result = buildTranslationUserMessage('en', 'de', { hello: 'Hello' })
+    expect(result).not.toContain('Return ONLY')
+  })
+
+  it('includes placeholder instruction', () => {
+    const result = buildTranslationUserMessage('en', 'de', { hello: 'Hello' })
+    expect(result).toContain('{placeholder}')
+  })
+
+  it('uses :placeholder instruction for php-array format', () => {
+    const result = buildTranslationUserMessage('en', 'de', { hello: 'Hello' }, 'php-array')
+    expect(result).toContain(':placeholder')
+  })
+})
+
+describe('extractJsonFromResponse', () => {
+  it('parses clean JSON directly', () => {
+    const result = extractJsonFromResponse('{"key":"value"}')
+    expect(result).toEqual({ key: 'value' })
+  })
+
+  it('strips markdown code fences', () => {
+    const result = extractJsonFromResponse('```json\n{"key":"value"}\n```')
+    expect(result).toEqual({ key: 'value' })
+  })
+
+  it('strips bare code fences without language tag', () => {
+    const result = extractJsonFromResponse('```\n{"key":"value"}\n```')
+    expect(result).toEqual({ key: 'value' })
+  })
+
+  it('extracts JSON from prose-prefixed response', () => {
+    const result = extractJsonFromResponse('Here are your translations:\n{"key":"value"}')
+    expect(result).toEqual({ key: 'value' })
+  })
+
+  it('handles nested objects in values', () => {
+    const input = 'Some text {"a":"1","b":"val with } brace"} trailing'
+    const result = extractJsonFromResponse(input)
+    expect(result).toEqual({ a: '1', b: 'val with } brace' })
+  })
+
+  it('extracts first JSON object when multiple exist', () => {
+    const result = extractJsonFromResponse('{"first":"1"}\n{"second":"2"}')
+    expect(result).toEqual({ first: '1' })
+  })
+
+  it('throws when no JSON is present', () => {
+    expect(() => extractJsonFromResponse('No JSON here at all')).toThrow('No valid JSON object')
+  })
+
+  it('handles whitespace around JSON', () => {
+    const result = extractJsonFromResponse('  \n  {"key":"value"}  \n  ')
+    expect(result).toEqual({ key: 'value' })
+  })
+})
+
+describe('computeMaxTokens', () => {
+  it('returns 552 for 1 key', () => {
+    expect(computeMaxTokens(1)).toBe(552)
+  })
+
+  it('returns 2512 for 50 keys', () => {
+    expect(computeMaxTokens(50)).toBe(2512)
+  })
+
+  it('returns 8512 for 200 keys', () => {
+    expect(computeMaxTokens(200)).toBe(8512)
+  })
+
+  it('caps at 16384 for very large batches', () => {
+    expect(computeMaxTokens(500)).toBe(16384)
+    expect(computeMaxTokens(1000)).toBe(16384)
   })
 })
