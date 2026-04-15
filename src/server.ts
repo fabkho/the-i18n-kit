@@ -46,6 +46,14 @@ export function resolveSamplingPreferences(projectConfig?: ProjectConfig): Model
   }
 }
 
+/**
+ * Compute maxTokens for a sampling request based on batch key count.
+ * Scales linearly (40 tokens per key + 512 base) capped at 16384.
+ */
+export function computeMaxTokens(batchKeyCount: number): number {
+  return Math.min(16384, batchKeyCount * 40 + 512)
+}
+
 function resolveOrphanScanDirs(
   config: I18nConfig,
   layer: string | undefined,
@@ -1524,16 +1532,19 @@ export function createServer(): McpServer {
               const totalBatches = Math.ceil(keyEntries.length / maxBatch)
               let batchTranslations: Record<string, string> | null = null
 
-              for (let attempt = 0; attempt < 2; attempt++) {
-                try {
-                  const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, target.language || target.code, config.localeFileFormat)
-                  const userMessage = buildTranslationUserMessage(
-                    refLocale.language || refLocale.code,
-                    target.language || target.code,
-                    batch,
-                    config.localeFileFormat,
-                  )
+              const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, target.language || target.code, config.localeFileFormat)
+              const userMessage = buildTranslationUserMessage(
+                refLocale.language || refLocale.code,
+                target.language || target.code,
+                batch,
+                config.localeFileFormat,
+              )
 
+              for (let attempt = 0; attempt < 2; attempt++) {
+                if (attempt > 0) {
+                  await new Promise(r => setTimeout(r, 2000))
+                }
+                try {
                   const SAMPLING_TIMEOUT_MS = 120_000 // 2 minutes per batch
                   const samplingResult = await server.server.createMessage({
                     messages: [
@@ -1543,7 +1554,8 @@ export function createServer(): McpServer {
                       },
                     ],
                     systemPrompt,
-                    maxTokens: 4096,
+                    maxTokens: computeMaxTokens(Object.keys(batch).length),
+                    temperature: 0,
                     includeContext: 'none',
                     modelPreferences: resolveSamplingPreferences(config.projectConfig),
                   }, {
