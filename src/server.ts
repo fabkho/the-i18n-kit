@@ -261,12 +261,14 @@ function placeholderInstruction(format?: LocaleFileFormat): string {
   return 'Preserve all {placeholder} parameters and @:linked.message references.'
 }
 
-function buildTranslationSystemPrompt(
+export function buildTranslationSystemPrompt(
   projectConfig: ProjectConfig | undefined,
   targetLocaleCode: string,
   localeFileFormat?: LocaleFileFormat,
 ): string {
-  const parts: string[] = []
+  const parts: string[] = [
+    `You are a professional translator for software UI strings. ${placeholderInstruction(localeFileFormat)} Be concise — UI space is limited.`,
+  ]
 
   if (projectConfig?.translationPrompt) {
     parts.push(projectConfig.translationPrompt)
@@ -297,9 +299,7 @@ function buildTranslationSystemPrompt(
     parts.push(`STYLE EXAMPLES:\n${exampleLines}`)
   }
 
-  if (parts.length === 0) {
-    return `You are a professional translator for software UI strings. ${placeholderInstruction(localeFileFormat)} Be concise — UI space is limited.`
-  }
+  parts.push('Return ONLY a JSON object mapping keys to translated values. No markdown, no explanation, no code fences.')
 
   return parts.join('\n\n')
 }
@@ -307,7 +307,7 @@ function buildTranslationSystemPrompt(
 /**
  * Build the user message for a translation sampling request.
  */
-function buildTranslationUserMessage(
+export function buildTranslationUserMessage(
   referenceLocaleCode: string,
   targetLocaleCode: string,
   keysAndValues: Record<string, string>,
@@ -316,9 +316,8 @@ function buildTranslationUserMessage(
   return [
     `Translate the following i18n key-value pairs from ${referenceLocaleCode} to ${targetLocaleCode}.`,
     placeholderInstruction(localeFileFormat),
-    'Return ONLY a JSON object mapping keys to translated values. No markdown, no explanation, no code fences.',
     '',
-    JSON.stringify(keysAndValues, null, 2),
+    JSON.stringify(keysAndValues),
   ].join('\n')
 }
 
