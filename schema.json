@@ -10,6 +10,11 @@
       "type": "string",
       "description": "Path or URL to the JSON schema for IDE autocompletion."
     },
+    "framework": {
+      "type": "string",
+      "enum": ["nuxt", "laravel"],
+      "description": "Force framework detection instead of auto-detecting from project structure."
+    },
     "context": {
       "type": "string",
       "description": "Free-form project background for the agent — business domain, user base, brand voice, anything that helps the agent understand the project."

@@ -5,9 +5,26 @@
 [![License][license-src]][license-href]
 [![CI][ci-src]][ci-href]
 
-MCP server for managing i18n translations in **Nuxt** and **Laravel** projects. Provides 14 tools for the full translation lifecycle: read, write, search, rename, remove, find missing, auto-translate, and detect unused keys — all without loading entire locale files into context. Auto-detects your framework, supports monorepos and layers, and works with any MCP host (VS Code, Cursor, Zed, Claude Desktop).
+An MCP server that gives your AI agent full control over your app's translations — without dumping entire locale files into context.
 
-> **Migrating from `nuxt-i18n-mcp`?** The old package name still works — both `npx the-i18n-mcp` and `npx nuxt-i18n-mcp` point to the same server. No breaking changes for existing Nuxt users.
+Point it at a Nuxt or Laravel project and your agent can read, write, search, rename, and remove translation keys across all locales and layers. It auto-detects your framework, discovers monorepo structures, and handles the file I/O so the agent never has to parse JSON or PHP arrays manually.
+
+### Why this exists
+
+Managing translations with an AI agent sounds simple until you have 30 locales, 6 layers, and 4,000 keys. Pasting locale files into chat doesn't scale. This server exposes 15 purpose-built tools that let the agent work surgically — touching only the keys it needs.
+
+### What you get out of the box
+
+- **Auto-translate entire locales** — `translate_missing` batches keys to an LLM via MCP sampling, writes results back, and shows a progress bar. 1,000+ keys across 13 locales in minutes, not hours.
+- **Add a new language in one shot** — the `add-language` prompt walks your agent through config updates, file scaffolding, and bulk translation end-to-end.
+- **Safe, atomic writes** — every file write goes through a temp file + rename cycle. Indentation is preserved, keys are kept alphabetically sorted, and `{placeholders}` / `@:linked` refs are validated before writing.
+- **Smart caching** — config detection and file reads are mtime-cached. Writes invalidate automatically. Repeated tool calls are fast.
+- **Monorepo & layer-aware** — discovers all Nuxt apps and layers under a project root. Each layer's locale directory is a first-class citizen with its own tools scope.
+- **Framework-agnostic tooling** — same 15 tools work for both Nuxt (JSON) and Laravel (PHP arrays). Auto-detection means zero config for most projects.
+- **Project-aware translations** — drop a `.i18n-mcp.json` with your glossary, tone rules, and per-locale notes. The agent uses them in every translation request.
+- **Dead key cleanup** — find orphan keys not referenced in source code, see exactly where keys are used, and bulk-remove unused translations in one step.
+
+> **Migrating from `nuxt-i18n-mcp`?** The old package name still works — both `npx the-i18n-mcp` and `npx nuxt-i18n-mcp` point to the same server. No breaking changes.
 
 ## Supported Frameworks
 
@@ -88,8 +105,12 @@ That's it — no configuration needed. The server auto-detects your project stru
 > *"Find and fix all missing translations in the admin layer"*
 >
 > *"Rename `common.actions.delete` to `common.actions.remove` across all locales"*
+>
+> *"Add Swedish as a new language and translate everything"*
 
-## Typical Workflow
+## Typical Workflows
+
+### Day-to-day translation maintenance
 
 ```
 1. detect_i18n_config        → understand project structure, locales, layers
@@ -102,6 +123,19 @@ That's it — no configuration needed. The server auto-detects your project stru
 ```
 
 Always call `detect_i18n_config` first — all other tools depend on the detected config.
+
+### Adding a new language
+
+Use the `add-language` prompt for a guided workflow, or do it manually:
+
+```
+1. Add the locale to your framework config (nuxt.config.ts or config/app.php)
+2. scaffold_locale            → create empty locale files with key structure from default locale
+3. translate_missing          → auto-translate all keys from the reference locale
+4. get_missing_translations   → verify zero gaps remain
+```
+
+`scaffold_locale` copies every key from your default locale and sets all values to `""`. This gives `translate_missing` the complete key set to work with.
 
 ## Tools
 
@@ -119,10 +153,11 @@ Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`, `"
 | `get_missing_translations` | Finds keys present in reference locale but missing/empty in targets. `""` counts as missing |
 | `find_empty_translations` | Finds keys with empty string values. Checks each locale independently |
 | `search_translations` | Searches by key pattern or value substring across layers and locales |
-| `translate_missing` | Auto-translates via MCP sampling, or returns context for inline translation when sampling unavailable |
+| `translate_missing` | Auto-translates via MCP sampling (batches of 200 keys by default), or returns context for inline translation when sampling is unavailable. Supports `batchSize` override |
 | `find_orphan_keys` | Finds keys not referenced in source code. Scans Vue/TS for Nuxt, Blade/PHP for Laravel |
 | `scan_code_usage` | Shows where keys are used — file paths, line numbers, call patterns |
-| `cleanup_unused_translations` | Finds orphan keys + removes them in one step. Dry-run by default |
+| `cleanup_unused_translations` | Finds orphan keys + removes them in one step. **Dry-run by default** (`dryRun: true`) — pass `dryRun: false` to actually delete |
+| `scaffold_locale` | Creates empty locale files for new languages. Copies key structure from default locale with all values set to `""`. Supports JSON (Nuxt) and PHP (Laravel) |
 
 ### Prompts
 
@@ -130,12 +165,13 @@ Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`, `"
 |--------|-------------|
 | `add-feature-translations` | Guided workflow for adding translations when building a new feature. Accepts optional `layer` and `namespace` |
 | `fix-missing-translations` | Find and fix all missing translations across the project. Accepts optional `layer` |
+| `add-language` | Add a new language end-to-end: update framework config, scaffold locale files, translate all keys, and verify. Requires `language` (e.g., `"Swedish"`, `"sv"`) |
 
 ### Resources
 
 | Resource | Description |
 |----------|-------------|
-| `i18n:///{layer}/{file}` | Browse locale files directly (e.g., `i18n:///root/en-US.json`) |
+| `i18n:///{layer}/{locale}` | Read a locale's translations for a specific layer (e.g., `i18n:///root/en-US`) |
 
 ## Framework-Specific Details
 
@@ -154,6 +190,7 @@ Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`, `"
 - Reads and writes PHP array locale files (`return ['key' => 'value'];`)
 - No additional dependencies required — works out of the box
 - Scans `.blade.php` and `.php` for `__()`, `trans()`, `trans_choice()`, `Lang::get()`, `@lang()`
+- Uses `:placeholder` syntax (not `{placeholder}`) — reflect this in your `translationPrompt` and `examples`
 
 ## Monorepo Support (Nuxt)
 
@@ -171,11 +208,13 @@ monorepo/
 └── package.json
 ```
 
-Discovery stops descending into a directory once it finds a `nuxt.config` — nested Nuxt layers are loaded by `@nuxt/kit` automatically.
+Flat layouts work too — `app-shop/` and `app-admin/` at the project root are discovered the same way. Discovery stops descending into a directory once it finds a `nuxt.config` — nested Nuxt layers are loaded by `@nuxt/kit` automatically.
 
 ## Model Selection for Translations
 
 `translate_missing` uses [MCP sampling](https://modelcontextprotocol.io/docs/concepts/sampling) — the host (VS Code, Cursor, Claude Desktop) picks which LLM fulfills the request. The server sends `modelPreferences` hinting toward fast, cheap models since translation is high-volume and doesn't require frontier reasoning.
+
+**How batching works:** each batch sends up to 200 keys (configurable via `batchSize`) and translates them into ALL target locales simultaneously. So 50 missing keys across 13 locales = 1 batch, not 13. A progress bar tracks completion across all locales and batches.
 
 **Built-in defaults** (used when no `samplingPreferences` in `.i18n-mcp.json`):
 
@@ -194,7 +233,7 @@ Override via `samplingPreferences` in [`.i18n-mcp.json`](#project-config) if nee
 2. Restrict to your preferred model (e.g., only Gemini 2.5 Flash)
 3. Your main chat/agent session continues using whatever model you chose — the restriction only applies to sampling requests from this MCP server
 
-> **Tip:** For large translation runs (1000+ keys), restricting to a fast model like Gemini 2.5 Flash significantly reduces wall-clock time. The model access restriction is per-MCP-server and independent from your agent's model.
+> **Tip:** For large translation runs (1,000+ keys), restricting to a fast model like Gemini 2.5 Flash significantly reduces wall-clock time. A batch of 200 keys typically completes in 30–40s with Flash. Keep `batchSize` at or below 200 — larger batches risk hitting the host's request timeout.
 
 ## Project Config
 
@@ -210,13 +249,14 @@ For IDE autocompletion, point to the schema:
 
 | Field | Purpose |
 |-------|---------|
+| `framework` | Force framework detection: `"nuxt"` or `"laravel"`. Normally auto-detected from project structure |
 | `context` | Free-form project background (business domain, user base, brand voice) |
 | `layerRules` | Rules for which layer a new key belongs to, with natural-language `when` conditions |
 | `glossary` | Term dictionary for consistent translations |
 | `translationPrompt` | System prompt prepended to all translation requests |
-| `localeNotes` | Per-locale instructions (e.g., `"de-DE-formal": "Use 'Sie', not 'du'"`) |
+| `localeNotes` | Per-locale instructions — terminology constraints, formality, regional conventions. **Keys must match your locale codes exactly** (case-sensitive) |
 | `examples` | Few-shot translation examples demonstrating project style |
-| `orphanScan` | Per-layer config for orphan detection: `scanDirs` (overrides auto-discovered dirs) and `ignorePatterns` (glob) |
+| `orphanScan` | Per-layer config for orphan detection: `scanDirs` (overrides auto-discovered dirs) and `ignorePatterns` (glob). Keys are layer names from `list_locale_dirs` |
 | `reportOutput` | `true` for default `.i18n-reports/` dir, or a string for a custom path. Diagnostic tools write full output to disk and return only a summary in the MCP response |
 | `samplingPreferences` | Override model preferences for `translate_missing` sampling. See [Model Selection](#model-selection-for-translations) |
 
@@ -243,18 +283,26 @@ For IDE autocompletion, point to the schema:
     "Ressource": "Resource (a bookable entity like a room, desk, or person)",
     "Termin": "Appointment"
   },
-  "translationPrompt": "Use professional but approachable tone. Preserve all {placeholders}. Keep translations concise.",
+  "translationPrompt": "Use professional but approachable tone. Preserve all {placeholders} and @:linked references exactly. Keep translations concise — button labels should be 1-2 words.",
   "localeNotes": {
-    "de-DE-formal": "Formal German using 'Sie'. Used by enterprise customers.",
-    "en-US": "American English.",
-    "en-GB": "British English. Use 'colour' not 'color'."
+    "de": "Informal German (du). Standard business tone.",
+    "de-formal": "Formal German (Sie). Used by enterprise customers.",
+    "en-us": "American English. Default reference locale.",
+    "nl": "Dutch (je/jij). Informal. Resource = 'Resource' (NEVER 'Middel'). Booking = 'Boeking'.",
+    "fr": "French. Use inclusive writing where practical."
   },
   "examples": [
     {
       "key": "common.actions.save",
-      "de-DE": "Speichern",
-      "en-US": "Save",
+      "de": "Speichern",
+      "en-us": "Save",
       "note": "Concise, imperative"
+    },
+    {
+      "key": "bookings.status.checked_in",
+      "de": "Eingecheckt",
+      "en-us": "Checked in",
+      "note": "Past participle, not imperative"
     }
   ],
   "orphanScan": {
@@ -278,17 +326,6 @@ For IDE autocompletion, point to the schema:
 
 See [`playground/nuxt/.i18n-mcp.json`](playground/nuxt/.i18n-mcp.json) for a working example.
 
-## Features
-
-- **Multi-framework** — auto-detects Nuxt and Laravel projects. `@nuxt/kit` is only needed for Nuxt.
-- **Zero config** — reads `nuxt.config.ts` or Laravel `lang/` directory automatically. Works in monorepos.
-- **Safe writes** — atomic file I/O (temp file + rename), indentation preservation, alphabetical key sorting, `{placeholder}` and `@:linked` ref validation.
-- **Full lifecycle** — add, update, remove, rename, search, find missing, auto-translate, and clean up unused keys.
-- **Code analysis** — find orphan keys not referenced in source (Vue/TS for Nuxt, Blade/PHP for Laravel), scan usage locations, bulk cleanup.
-- **Project-aware** — optional `.i18n-mcp.json` for glossary, tone, layer rules, locale-specific instructions, and few-shot examples.
-- **Caching** — config detection and file reads are cached (mtime-based). Writes invalidate automatically.
-- **Sampling support** — `translate_missing` uses MCP sampling when available (VS Code). Falls back to returning context for inline translation (Zed, others).
-
 ## Roadmap
 
 - [ ] `find_hardcoded_strings` — detect user-facing strings not wrapped in translation calls
@@ -309,6 +346,8 @@ pnpm typecheck      # tsc --noEmit
 pnpm start          # Start the server on stdio
 pnpm inspect        # Open MCP Inspector for manual testing
 ```
+
+Set `DEBUG=1` to enable verbose logging to stderr.
 
 ## License
 
