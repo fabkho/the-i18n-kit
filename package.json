@@ -1,6 +1,6 @@
 {
   "name": "the-i18n-mcp",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "mcpName": "io.github.fabkho/the-i18n-mcp",
   "description": "MCP server for managing i18n translation files — supports Nuxt and Laravel out of the box",
   "author": "Fabian Kirchhoff",
