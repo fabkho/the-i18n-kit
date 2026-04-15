@@ -153,7 +153,7 @@ Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`, `"
 | `get_missing_translations` | Finds keys present in reference locale but missing/empty in targets. `""` counts as missing |
 | `find_empty_translations` | Finds keys with empty string values. Checks each locale independently |
 | `search_translations` | Searches by key pattern or value substring across layers and locales |
-| `translate_missing` | Auto-translates via MCP sampling (batches of 200 keys by default), or returns context for inline translation when sampling is unavailable. Supports `batchSize` override |
+| `translate_missing` | Auto-translates via MCP sampling (batches of 50 keys by default), or returns context for inline translation when sampling is unavailable. Supports `batchSize` override. Each locale writes to its own file — parallel calls targeting different locales are safe |
 | `find_orphan_keys` | Finds keys not referenced in source code. Scans Vue/TS for Nuxt, Blade/PHP for Laravel |
 | `scan_code_usage` | Shows where keys are used — file paths, line numbers, call patterns |
 | `cleanup_unused_translations` | Finds orphan keys + removes them in one step. **Dry-run by default** (`dryRun: true`) — pass `dryRun: false` to actually delete |
@@ -214,7 +214,7 @@ Flat layouts work too — `app-shop/` and `app-admin/` at the project root are d
 
 `translate_missing` uses [MCP sampling](https://modelcontextprotocol.io/docs/concepts/sampling) — the host (VS Code, Cursor, Claude Desktop) picks which LLM fulfills the request. The server sends `modelPreferences` hinting toward fast, cheap models since translation is high-volume and doesn't require frontier reasoning.
 
-**How batching works:** each batch sends up to 200 keys (configurable via `batchSize`) and translates them into ALL target locales simultaneously. So 50 missing keys across 13 locales = 1 batch, not 13. A progress bar tracks completion across all locales and batches.
+**How batching works:** each batch sends up to 50 keys (configurable via `batchSize`) to the host LLM. Locales are processed sequentially within a single call — but since each locale writes to its own file, you can call `translate_missing` once per locale in parallel for faster throughput. A progress bar tracks completion across all locales and batches.
 
 **Built-in defaults** (used when no `samplingPreferences` in `.i18n-mcp.json`):
 
@@ -233,7 +233,7 @@ Override via `samplingPreferences` in [`.i18n-mcp.json`](#project-config) if nee
 2. Restrict to your preferred model (e.g., only Gemini 2.5 Flash)
 3. Your main chat/agent session continues using whatever model you chose — the restriction only applies to sampling requests from this MCP server
 
-> **Tip:** For large translation runs (1,000+ keys), restricting to a fast model like Gemini 2.5 Flash significantly reduces wall-clock time. A batch of 200 keys typically completes in 30–40s with Flash. Keep `batchSize` at or below 200 — larger batches risk hitting the host's request timeout.
+> **Tip:** For large translation runs (1,000+ keys), restricting to a fast model like Gemini 2.5 Flash significantly reduces wall-clock time. A batch of 50 keys typically completes in 10–20s with Flash. You can increase `batchSize` up to 200 for fewer round trips, but larger batches risk hitting the host's request timeout. For maximum throughput, call `translate_missing` once per locale in parallel — each locale writes to its own file, so concurrent calls are safe.
 
 ## Project Config
 

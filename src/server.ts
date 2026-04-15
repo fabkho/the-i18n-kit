@@ -1342,7 +1342,7 @@ export function createServer(): McpServer {
     {
       title: 'Translate Missing',
       description:
-        'Find keys missing in target locales and translate them. Uses the host LLM via MCP sampling if available, otherwise returns context for the agent to translate inline. Uses project config (glossary, translation prompt, locale notes, examples) if available.',
+        'Find keys missing in target locales and translate them. Uses the host LLM via MCP sampling if available, otherwise returns context for the agent to translate inline. Uses project config (glossary, translation prompt, locale notes, examples) if available. Each locale writes to its own file — parallel calls targeting different locales are safe.',
       annotations: {
         title: 'Translate Missing Translations',
         readOnlyHint: false,
@@ -2506,7 +2506,7 @@ Follow these steps:
 
 1. Call \`detect_i18n_config\` to load the project config and understand the locale setup.
 2. Call \`get_missing_translations\` to find all gaps across ${layer ? `the "${layer}" layer` : 'all layers'}.
-3. For each locale with missing keys, call \`translate_missing\` to auto-fill gaps using the reference locale.
+3. For each locale with missing keys, call \`translate_missing\` to auto-fill gaps using the reference locale. You may invoke these in parallel as separate tool calls for faster completion — each locale writes to its own file, so concurrent calls are safe.
    - If auto-translation is not available, translate the keys yourself using the glossary and style guidelines above, then call \`add_translations\`.
 4. Report a summary of what was translated, organized by layer and locale.`
 
@@ -2572,7 +2572,7 @@ Follow these steps:
    - **Nuxt**: Add the locale entry to \`i18n.locales\` in \`nuxt.config.ts\` (code, language, file).
    - **Laravel**: Add the locale code to the \`available_locales\` array in \`config/app.php\`.
 3. Call \`scaffold_locale\` with the new locale code to create empty locale files in all layers.
-4. Call \`translate_missing\` for each layer to auto-translate all keys from the default locale.
+4. Call \`translate_missing\` for each layer to auto-translate all keys from the default locale. You may call multiple layers in parallel as separate tool calls — each locale has its own file, so concurrent calls are safe. If parallel calls cause errors, fall back to sequential.
    - If auto-translation is unavailable, use \`get_translations\` to read the default locale, translate the keys yourself, then call \`update_translations\`.
 5. Call \`get_missing_translations\` to verify the new locale has zero missing keys in every layer.
 6. Report a summary: locale code added, files created, keys translated per layer.`
