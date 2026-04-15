@@ -237,6 +237,32 @@ Override via `samplingPreferences` in [`.i18n-mcp.json`](#project-config) if nee
 
 > **Tip:** For large translation runs (1,000+ keys), restricting to a fast model like Gemini 2.5 Flash significantly reduces wall-clock time. A batch of 50 keys typically completes in 10–20s with Flash. You can increase `batchSize` up to 200 for fewer round trips, but larger batches risk hitting the host's request timeout. For maximum throughput, call `translate_missing` once per locale in parallel — each locale writes to its own file, so concurrent calls are safe.
 
+### Recommended workflow for large projects
+
+A single `translate_missing` call processes locales sequentially. On a project with many locales and layers, this adds up. The fastest approach is to split locales across parallel calls and tackle layers in order of size.
+
+**Step 1 — Start with your largest layer.** Split the target locales across 3–4 parallel `translate_missing` calls:
+
+```
+Call 1: layer "app-admin", targetLocales ["bg-BG", "da-DK", "el-GR"]
+Call 2: layer "app-admin", targetLocales ["et-EE", "fi-FI", "ga-IE"]
+Call 3: layer "app-admin", targetLocales ["hr-HR", "lt-LT", "lv-LV"]
+Call 4: layer "app-admin", targetLocales ["mt-MT", "sk-SK", "sl-SI", "sv-SE"]
+```
+
+Each call runs independently — different locales, different files, no conflicts.
+
+**Step 2 — Move to smaller layers.** Once the large layer finishes, translate the remaining layers. Small layers can run concurrently since each layer writes to its own directory:
+
+```
+Call 1: layer "app-shop",   targetLocales [all 13 locales]
+Call 2: layer "app-panels", targetLocales [all 13 locales]
+```
+
+**Step 3 — Verify.** Run `get_missing_translations` across all layers to confirm zero gaps.
+
+This pattern lets you translate thousands of keys across dozens of locales in minutes instead of waiting for one sequential run.
+
 ## Project Config
 
 Optionally drop a `.i18n-mcp.json` at your project root to give the agent project-specific context. Everything is optional — the server passes them to the agent, which interprets the natural-language rules. The server walks up from `projectDir` to find the nearest config file (like ESLint or tsconfig resolution).
