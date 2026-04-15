@@ -13,7 +13,7 @@ import {
 } from '../../src/io/key-operations.js'
 import { loadProjectConfig } from '../../src/config/project-config.js'
 import { registerDetectorMock, playgroundDir, appAdminDir } from '../fixtures/mock-detector.js'
-import { computeProgressTotal } from '../../src/server.js'
+import { computeProgressTotal, resolveSamplingPreferences, DEFAULT_SAMPLING_PREFERENCES } from '../../src/server.js'
 
 // Register the shared detector mock (vi.mock is hoisted by Vitest)
 registerDetectorMock()
@@ -905,5 +905,67 @@ describe('translate_missing: progressTotal computation', () => {
     const maxBatch = 50
     const total = computeProgressTotal(missingKeyCounts, maxBatch)
     expect(total).toBe(0)
+  })
+})
+
+// ─── resolveSamplingPreferences ──────────────────────────────────
+
+describe('resolveSamplingPreferences', () => {
+  it('returns built-in defaults when no project config is provided', () => {
+    const result = resolveSamplingPreferences(undefined)
+    expect(result).toEqual(DEFAULT_SAMPLING_PREFERENCES)
+  })
+
+  it('returns built-in defaults when project config has no samplingPreferences', () => {
+    const result = resolveSamplingPreferences({ context: 'some project' })
+    expect(result).toEqual(DEFAULT_SAMPLING_PREFERENCES)
+  })
+
+  it('maps string hints to ModelHint objects', () => {
+    const result = resolveSamplingPreferences({
+      samplingPreferences: { hints: ['sonnet', 'gpt-4o'] },
+    })
+    expect(result.hints).toEqual([{ name: 'sonnet' }, { name: 'gpt-4o' }])
+  })
+
+  it('overrides individual priority fields while keeping defaults for unset fields', () => {
+    const result = resolveSamplingPreferences({
+      samplingPreferences: { intelligencePriority: 0.9 },
+    })
+    expect(result.intelligencePriority).toBe(0.9)
+    expect(result.costPriority).toBe(DEFAULT_SAMPLING_PREFERENCES.costPriority)
+    expect(result.speedPriority).toBe(DEFAULT_SAMPLING_PREFERENCES.speedPriority)
+    expect(result.hints).toEqual(DEFAULT_SAMPLING_PREFERENCES.hints)
+  })
+
+  it('overrides all fields when fully specified', () => {
+    const result = resolveSamplingPreferences({
+      samplingPreferences: {
+        hints: ['claude'],
+        costPriority: 0.1,
+        speedPriority: 0.2,
+        intelligencePriority: 0.95,
+      },
+    })
+    expect(result).toEqual({
+      hints: [{ name: 'claude' }],
+      costPriority: 0.1,
+      speedPriority: 0.2,
+      intelligencePriority: 0.95,
+    })
+  })
+
+  it('falls back to default hints when hints array is undefined', () => {
+    const result = resolveSamplingPreferences({
+      samplingPreferences: { costPriority: 0.5 },
+    })
+    expect(result.hints).toEqual(DEFAULT_SAMPLING_PREFERENCES.hints)
+  })
+
+  it('handles empty hints array', () => {
+    const result = resolveSamplingPreferences({
+      samplingPreferences: { hints: [] },
+    })
+    expect(result.hints).toEqual([])
   })
 })
