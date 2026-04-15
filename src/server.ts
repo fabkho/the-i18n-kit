@@ -1438,6 +1438,7 @@ export function createServer(): McpServer {
         const progressTotal = computeProgressTotal(preScanCounts, maxBatch)
         const progressToken = extra._meta?.progressToken
         let progressCurrent = 0
+        let samplingModelLogged = false
 
         const reportProgress = async (message: string) => {
           if (!progressToken) return
@@ -1554,8 +1555,9 @@ export function createServer(): McpServer {
                     ? samplingResult.content.text
                     : ''
 
-                  if (attempt === 0 && batchNum === 1) {
+                  if (!samplingModelLogged) {
                     log.info(`Sampling model: ${samplingResult.model}`)
+                    samplingModelLogged = true
                   }
 
                   let cleanJson = responseText.trim()
