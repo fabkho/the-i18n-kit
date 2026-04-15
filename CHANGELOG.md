@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.2.0](https://github.com/fabkho/the-i18n-mcp/compare/v2.1.0...v2.2.0) (2026-04-15)
+
+
+### Features
+
+* add modelPreferences to translate_missing sampling requests ([#77](https://github.com/fabkho/the-i18n-mcp/issues/77)) ([d656369](https://github.com/fabkho/the-i18n-mcp/commit/d65636952db12f71c6d56774de4369b18adf5fd1))
+* compute progressTotal for global progress bar in translate_missing ([#76](https://github.com/fabkho/the-i18n-mcp/issues/76)) ([e20ee68](https://github.com/fabkho/the-i18n-mcp/commit/e20ee68c601d661a970feff11ff1062eea6a1c16)), closes [#66](https://github.com/fabkho/the-i18n-mcp/issues/66)
+* log which model the MCP host picks for sampling ([#81](https://github.com/fabkho/the-i18n-mcp/issues/81)) ([ae55a17](https://github.com/fabkho/the-i18n-mcp/commit/ae55a173d9cd07f59ece0f71a820660a069fc384))
+
+
+### Bug Fixes
+
+* accept 'locales' as alias for 'targetLocales' in translate_missing and get_missing_translations ([#83](https://github.com/fabkho/the-i18n-mcp/issues/83)) ([47fdc05](https://github.com/fabkho/the-i18n-mcp/commit/47fdc0522bca378b602bb0ed11f95ddeb5542d0b))
+* add .describe() to all tool schemas and layer name fuzzy matching ([#74](https://github.com/fabkho/the-i18n-mcp/issues/74)) ([ed3f608](https://github.com/fabkho/the-i18n-mcp/commit/ed3f608571e2487b998d78b07d559ed43455bcc3))
+* ancestor-based layer dedup for aliased Nuxt apps ([#75](https://github.com/fabkho/the-i18n-mcp/issues/75)) ([35024f3](https://github.com/fabkho/the-i18n-mcp/commit/35024f32d0d9c05ef7b3e1e806ff7e3bbbafc888))
+* harden JSON response parsing with balanced bracket extraction and key filtering ([#92](https://github.com/fabkho/the-i18n-mcp/issues/92)) ([7dc29b6](https://github.com/fabkho/the-i18n-mcp/commit/7dc29b6b0b7c572bd7c7aa76ae81816068ee7672)), closes [#87](https://github.com/fabkho/the-i18n-mcp/issues/87)
+* harden translation prompts with role framing, format instruction, and compact JSON ([#90](https://github.com/fabkho/the-i18n-mcp/issues/90)) ([50ed4ae](https://github.com/fabkho/the-i18n-mcp/commit/50ed4ae71890c3070fecbd964e848043437684be)), closes [#85](https://github.com/fabkho/the-i18n-mcp/issues/85)
+* improve sampling reliability with temperature, dynamic maxTokens, and retry backoff ([#91](https://github.com/fabkho/the-i18n-mcp/issues/91)) ([3809519](https://github.com/fabkho/the-i18n-mcp/commit/38095195eece8c41deb51040e7671a7e3309a4ea)), closes [#86](https://github.com/fabkho/the-i18n-mcp/issues/86)
+* log sampling model on first success regardless of retry ([#82](https://github.com/fabkho/the-i18n-mcp/issues/82)) ([8ff7fba](https://github.com/fabkho/the-i18n-mcp/commit/8ff7fba21bf63b8235e73af2e4648471c476102f))
+* per-namespace dirty tracking for PHP locale writes ([#73](https://github.com/fabkho/the-i18n-mcp/issues/73)) ([6b9bf14](https://github.com/fabkho/the-i18n-mcp/commit/6b9bf140c53527d2ffaad46b2b1a6951db3ba095))
+* retry failed sampling batches once in translate_missing ([#71](https://github.com/fabkho/the-i18n-mcp/issues/71)) ([b8ef8ca](https://github.com/fabkho/the-i18n-mcp/commit/b8ef8cae6500122d5e28dcf95a7dc4fa98070329)), closes [#65](https://github.com/fabkho/the-i18n-mcp/issues/65)
+* wrap mutateLocaleData in try/catch for write resilience in translate_missing ([#72](https://github.com/fabkho/the-i18n-mcp/issues/72)) ([71e0f4c](https://github.com/fabkho/the-i18n-mcp/commit/71e0f4c93ce0bc123eff0b16a07678f2d15c7d0a)), closes [#67](https://github.com/fabkho/the-i18n-mcp/issues/67)
+
 ## [2.1.0](https://github.com/fabkho/the-i18n-mcp/compare/v2.0.0...v2.1.0) (2026-04-14)
 
 
