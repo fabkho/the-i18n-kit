@@ -77,7 +77,6 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
           if (pat.promoteStaticDynamicMatches) {
             const key = expression
             if (!key) continue
-            if (key.includes('{$')) continue
             if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
             usages.push({ key, file: filePath, line: lineNumber, callee })
           }
