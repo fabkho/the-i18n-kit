@@ -17,6 +17,11 @@ export interface ScanPatternSet {
    * Vue `t('word')` without a dot is likely not i18n — `emit`, `import`, etc.
    */
   requiresDotForCallee?: (callee: string) => boolean
+  /**
+   * When true, dynamic-pattern matches without interpolation are promoted to static keys.
+   * Enables backtick literals like `t(\`foo.bar\`)` to be recognized as static.
+   */
+  promoteStaticDynamicMatches?: boolean
 }
 
 // ─── Vue / Nuxt Patterns ────────────────────────────────────────
@@ -52,6 +57,7 @@ export const VUE_NUXT_PATTERNS: ScanPatternSet = {
   dynamicKeyPatterns: [VUE_DYNAMIC_KEY],
   concatKeyPatterns: [VUE_CONCAT_KEY],
   requiresDotForCallee: (callee: string) => callee === 't',
+  promoteStaticDynamicMatches: true,
 }
 
 // ─── Laravel / PHP Patterns ─────────────────────────────────────

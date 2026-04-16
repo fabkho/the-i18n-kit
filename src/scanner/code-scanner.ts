@@ -71,8 +71,17 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
     for (const regex of pat.dynamicKeyPatterns) {
       regex.lastIndex = 0
       for (const match of line.matchAll(regex)) {
+        const callee = match[1]
         const expression = match[2]
-        if (!expression.includes('${') && !expression.includes('{$')) continue
+        if (!expression.includes('${') && !expression.includes('{$')) {
+          if (pat.promoteStaticDynamicMatches) {
+            const key = expression
+            if (!key) continue
+            if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
+            usages.push({ key, file: filePath, line: lineNumber, callee })
+          }
+          continue
+        }
         const normalized = expression.includes('{$')
           ? expression.replace(/\{\$[^}]+\}/g, '${_}')
           : expression
@@ -247,4 +256,39 @@ export function buildIgnorePatternRegexes(patterns: string[]): RegExp[] {
     }
     return new RegExp(`^${regexStr}$`)
   })
+}
+
+// ─── Layer scan planning ────────────────────────────────────────
+
+export interface LayerScanPlan {
+  dir: string
+  excludeDirs: string[]
+}
+
+interface LayerInfo {
+  layer: string
+  layerRootDir: string
+}
+
+export function buildLayerScanPlan(
+  localeDir: LayerInfo,
+  allLocaleDirs: LayerInfo[],
+  userExcludeDirs: string[] | undefined,
+): LayerScanPlan[] {
+  const baseExclude = userExcludeDirs ?? []
+  const plans: LayerScanPlan[] = [{ dir: localeDir.layerRootDir, excludeDirs: baseExclude }]
+
+  const rootLocaleDir = allLocaleDirs.find(ld =>
+    ld.layer !== localeDir.layer
+    && localeDir.layerRootDir.startsWith(ld.layerRootDir + '/'),
+  )
+  if (!rootLocaleDir) return plans
+
+  const siblingAppDirs = allLocaleDirs
+    .filter(ld => ld.layer !== rootLocaleDir.layer && ld.layer !== localeDir.layer)
+    .map(ld => relative(rootLocaleDir.layerRootDir, ld.layerRootDir))
+    .filter(rel => !rel.startsWith('..'))
+
+  plans.push({ dir: rootLocaleDir.layerRootDir, excludeDirs: [...baseExclude, ...siblingAppDirs] })
+  return plans
 }

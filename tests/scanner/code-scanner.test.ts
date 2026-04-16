@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { extractKeys, scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes } from '../../src/scanner/code-scanner.js'
+import { extractKeys, scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes, buildLayerScanPlan } from '../../src/scanner/code-scanner.js'
 
 const tmpDir = join(dirname(fileURLToPath(import.meta.url)), '../../.tmp-test/scanner')
 
@@ -135,10 +135,30 @@ describe('extractKeys', () => {
     })
 
     it('does not flag template literals without interpolation as dynamic', () => {
-      // A template literal without ${} is effectively static; the static regex
-      // won't match it, but it shouldn't be flagged as dynamic either
-      const { dynamicKeys } = extract("t(`common.actions.save`)")
+      const { dynamicKeys, usages } = extract("t(`common.actions.save`)")
       expect(dynamicKeys).toHaveLength(0)
+      expect(usages).toHaveLength(1)
+      expect(usages[0]).toMatchObject({ key: 'common.actions.save', callee: 't' })
+    })
+
+    it('promotes $t() backtick literal without interpolation to static key', () => {
+      const { usages, dynamicKeys } = extract("{{ $t(`components.displayPanels.closed.label`) }}")
+      expect(dynamicKeys).toHaveLength(0)
+      expect(usages).toHaveLength(1)
+      expect(usages[0]).toMatchObject({ key: 'components.displayPanels.closed.label', callee: '$t' })
+    })
+
+    it('promotes this.$te() backtick literal without interpolation to static key', () => {
+      const { usages, dynamicKeys } = extract("this.$te(`settings.checkout.title`)")
+      expect(dynamicKeys).toHaveLength(0)
+      expect(usages).toHaveLength(1)
+      expect(usages[0]).toMatchObject({ key: 'settings.checkout.title', callee: 'this.$te' })
+    })
+
+    it('still treats backtick literals WITH interpolation as dynamic', () => {
+      const { usages, dynamicKeys } = extract("$t(`prefix.${type}.suffix`)")
+      expect(dynamicKeys).toHaveLength(1)
+      expect(usages).toHaveLength(0)
     })
 
     it('detects multiple dynamic keys on separate lines', () => {
@@ -593,5 +613,45 @@ describe('toRelativePath', () => {
 
   it('returns just the filename when file is in root', () => {
     expect(toRelativePath('/project/App.vue', '/project')).toBe('App.vue')
+  })
+})
+
+describe('buildLayerScanPlan', () => {
+  const allDirs = [
+    { layer: 'root', layerRootDir: '/project' },
+    { layer: 'app-admin', layerRootDir: '/project/app-admin' },
+    { layer: 'app-shop', layerRootDir: '/project/app-shop' },
+    { layer: 'app-designer', layerRootDir: '/project/app-designer' },
+  ]
+
+  it('returns only own dir for root layer', () => {
+    const plans = buildLayerScanPlan(allDirs[0], allDirs, undefined)
+    expect(plans).toHaveLength(1)
+    expect(plans[0].dir).toBe('/project')
+    expect(plans[0].excludeDirs).toEqual([])
+  })
+
+  it('returns own dir + root dir for app layer, excluding siblings', () => {
+    const plans = buildLayerScanPlan(allDirs[1], allDirs, undefined)
+    expect(plans).toHaveLength(2)
+    expect(plans[0].dir).toBe('/project/app-admin')
+    expect(plans[1].dir).toBe('/project')
+    expect(plans[1].excludeDirs).toContain('app-shop')
+    expect(plans[1].excludeDirs).toContain('app-designer')
+    expect(plans[1].excludeDirs).not.toContain('app-admin')
+  })
+
+  it('passes user excludeDirs to all plans', () => {
+    const plans = buildLayerScanPlan(allDirs[2], allDirs, ['storybook'])
+    expect(plans[0].excludeDirs).toContain('storybook')
+    expect(plans[1].excludeDirs).toContain('storybook')
+    expect(plans[1].excludeDirs).toContain('app-admin')
+  })
+
+  it('returns only own dir when no parent layer exists', () => {
+    const standalone = [{ layer: 'standalone', layerRootDir: '/other/app' }]
+    const plans = buildLayerScanPlan(standalone[0], standalone, undefined)
+    expect(plans).toHaveLength(1)
+    expect(plans[0].dir).toBe('/other/app')
   })
 })
