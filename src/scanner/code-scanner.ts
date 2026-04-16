@@ -26,6 +26,12 @@ export interface ScanResult {
   dynamicKeys: DynamicKeyUsage[]
   filesScanned: number
   uniqueKeys: Set<string>
+  /**
+   * All quoted strings containing at least one dot, extracted from source files.
+   * These are NOT confirmed i18n keys — they must be intersected with actual
+   * locale keys to identify bare key references (e.g., `{ name: 'common.actions.save', i18n: true }`).
+   */
+  bareStringCandidates: Set<string>
 }
 
 // ─── Extraction ─────────────────────────────────────────────────
@@ -169,12 +175,15 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   try {
     relativePaths = await glob(pat.filePatterns, { cwd: rootDir, ignore, dot: false, absolute: false })
   } catch {
-    return { usages: [], dynamicKeys: [], filesScanned: 0, uniqueKeys: new Set() }
+    return { usages: [], dynamicKeys: [], filesScanned: 0, uniqueKeys: new Set(), bareStringCandidates: new Set() }
   }
 
   const allUsages: KeyUsage[] = []
   const allDynamicKeys: DynamicKeyUsage[] = []
+  const bareStringCandidates = new Set<string>()
   let filesScanned = 0
+
+  const BARE_DOTTED_STRING = /(['"])((?:[\w-]+\.)+[\w-]+)\1/g
 
   for (const relPath of relativePaths) {
     const filePath = join(rootDir, relPath)
@@ -189,13 +198,19 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     const { usages, dynamicKeys } = extractKeys(content, filePath, pat)
     allUsages.push(...usages)
     allDynamicKeys.push(...dynamicKeys)
+
+    BARE_DOTTED_STRING.lastIndex = 0
+    for (const match of content.matchAll(BARE_DOTTED_STRING)) {
+      bareStringCandidates.add(match[2])
+    }
+
     filesScanned++
   }
 
   const uniqueKeys = new Set(allUsages.map(u => u.key))
-  log.debug(`Scanned ${filesScanned} files, found ${uniqueKeys.size} unique keys, ${allDynamicKeys.length} dynamic references`)
+  log.debug(`Scanned ${filesScanned} files, found ${uniqueKeys.size} unique keys, ${allDynamicKeys.length} dynamic references, ${bareStringCandidates.size} bare string candidates`)
 
-  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, uniqueKeys }
+  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, uniqueKeys, bareStringCandidates }
 }
 
 // ─── Utilities ──────────────────────────────────────────────────
