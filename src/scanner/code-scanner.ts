@@ -274,9 +274,12 @@ export function buildLayerScanPlan(
   localeDir: LayerInfo,
   allLocaleDirs: LayerInfo[],
   userExcludeDirs: string[] | undefined,
+  includeParentLayer = false,
 ): LayerScanPlan[] {
   const baseExclude = userExcludeDirs ?? []
   const plans: LayerScanPlan[] = [{ dir: localeDir.layerRootDir, excludeDirs: baseExclude }]
+
+  if (!includeParentLayer) return plans
 
   const rootLocaleDir = allLocaleDirs.find(ld =>
     ld.layer !== localeDir.layer

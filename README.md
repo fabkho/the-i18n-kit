@@ -284,7 +284,7 @@ For IDE autocompletion, point to the schema:
 | `translationPrompt` | System prompt prepended to all translation requests |
 | `localeNotes` | Per-locale instructions — terminology constraints, formality, regional conventions. **Keys must match your locale codes exactly** (case-sensitive) |
 | `examples` | Few-shot translation examples demonstrating project style |
-| `orphanScan` | Per-layer config for orphan detection: `ignorePatterns` (glob patterns for keys to skip). Keys are layer names from `list_locale_dirs`. Each layer automatically scans from its own root directory |
+| `orphanScan` | Per-layer config for orphan detection: `ignorePatterns` (glob patterns for keys to skip), `includeParentLayer` (also scan shared root code for key usage in monorepos). Keys are layer names from `list_locale_dirs`. Each layer automatically scans from its own root directory |
 | `reportOutput` | `true` for default `.i18n-reports/` dir, or a string for a custom path. Diagnostic tools write full output to disk and return only a summary in the MCP response |
 | `samplingPreferences` | Override model preferences for `translate_missing` sampling. See [Model Selection](#model-selection-for-translations) |
 
@@ -338,7 +338,8 @@ For IDE autocompletion, point to the schema:
       "ignorePatterns": ["common.datetime.**", "common.countries.*"]
     },
     "app-admin": {
-      "ignorePatterns": ["admin.legacy.*"]
+      "ignorePatterns": ["admin.legacy.*"],
+      "includeParentLayer": true
     }
   },
   "reportOutput": true,
