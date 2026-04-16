@@ -92,6 +92,13 @@ function resolveOrphanIgnorePatterns(
   return layerConfig.ignorePatterns
 }
 
+function resolveIncludeParentLayer(
+  config: I18nConfig,
+  layer: string,
+): boolean {
+  return config.projectConfig?.orphanScan?.[layer]?.includeParentLayer ?? false
+}
+
 // ─── Shared helpers ───────────────────────────────────────────────
 
 /**
@@ -1826,7 +1833,7 @@ export function createServer(): McpServer {
         for (const [layerName, { keys, localeDir }] of keysByLayer) {
           const scanPlans = scanDirs
             ? scanDirs.map(d => ({ dir: d, excludeDirs: excludeDirs ?? [] }))
-            : buildLayerScanPlan(localeDir, config.localeDirs, excludeDirs)
+            : buildLayerScanPlan(localeDir, config.localeDirs, excludeDirs, resolveIncludeParentLayer(config, layerName))
           dirsScanned.push(...scanPlans.map(p => p.dir))
 
           const combinedUniqueKeys = new Set<string>()
@@ -2153,7 +2160,7 @@ export function createServer(): McpServer {
         for (const [layerName, { keys, localeDir }] of keysByLayer) {
           const scanPlans = scanDirs
             ? scanDirs.map(d => ({ dir: d, excludeDirs: excludeDirs ?? [] }))
-            : buildLayerScanPlan(localeDir, config.localeDirs, excludeDirs)
+            : buildLayerScanPlan(localeDir, config.localeDirs, excludeDirs, resolveIncludeParentLayer(config, layerName))
 
           const combinedUniqueKeys = new Set<string>()
           const combinedBareStrings = new Set<string>()

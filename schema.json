@@ -100,6 +100,11 @@
             "items": {
               "type": "string"
             }
+          },
+          "includeParentLayer": {
+            "type": "boolean",
+            "description": "When true, also scan the parent (root) layer's source code when checking for orphans in this app layer. Useful in monorepos where shared root code (components/, composables/, etc.) references app-layer keys. Default: false.",
+            "default": false
           }
         },
         "additionalProperties": false

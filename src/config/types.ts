@@ -55,6 +55,8 @@ export interface ProjectConfig {
   orphanScan?: Record<string, {
     /** Glob patterns for translation keys to exclude from orphan detection (e.g., "common.datetime.months.*"). */
     ignorePatterns?: string[]
+    /** When true, also scan the parent (root) layer's source code for key usage. Useful in monorepos with shared root code. */
+    includeParentLayer?: boolean
   }>
   /** Default output directory for diagnostic tool reports. Set to true for '.i18n-reports/', or a string for a custom relative path. */
   reportOutput?: string | boolean

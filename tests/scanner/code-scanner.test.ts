@@ -631,8 +631,15 @@ describe('buildLayerScanPlan', () => {
     expect(plans[0].excludeDirs).toEqual([])
   })
 
-  it('returns own dir + root dir for app layer, excluding siblings', () => {
+  it('returns only own dir for app layer by default (includeParentLayer=false)', () => {
     const plans = buildLayerScanPlan(allDirs[1], allDirs, undefined)
+    expect(plans).toHaveLength(1)
+    expect(plans[0].dir).toBe('/project/app-admin')
+    expect(plans[0].excludeDirs).toEqual([])
+  })
+
+  it('returns own dir + root dir when includeParentLayer=true, excluding siblings', () => {
+    const plans = buildLayerScanPlan(allDirs[1], allDirs, undefined, true)
     expect(plans).toHaveLength(2)
     expect(plans[0].dir).toBe('/project/app-admin')
     expect(plans[1].dir).toBe('/project')
@@ -641,16 +648,16 @@ describe('buildLayerScanPlan', () => {
     expect(plans[1].excludeDirs).not.toContain('app-admin')
   })
 
-  it('passes user excludeDirs to all plans', () => {
-    const plans = buildLayerScanPlan(allDirs[2], allDirs, ['storybook'])
+  it('passes user excludeDirs to all plans when includeParentLayer=true', () => {
+    const plans = buildLayerScanPlan(allDirs[2], allDirs, ['storybook'], true)
     expect(plans[0].excludeDirs).toContain('storybook')
     expect(plans[1].excludeDirs).toContain('storybook')
     expect(plans[1].excludeDirs).toContain('app-admin')
   })
 
-  it('returns only own dir when no parent layer exists', () => {
+  it('returns only own dir when no parent layer exists even with includeParentLayer=true', () => {
     const standalone = [{ layer: 'standalone', layerRootDir: '/other/app' }]
-    const plans = buildLayerScanPlan(standalone[0], standalone, undefined)
+    const plans = buildLayerScanPlan(standalone[0], standalone, undefined, true)
     expect(plans).toHaveLength(1)
     expect(plans[0].dir).toBe('/other/app')
   })
