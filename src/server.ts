@@ -20,7 +20,7 @@ import {
   renameNestedKey,
   validateTranslationValue,
 } from './io/key-operations.js'
-import { scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes } from './scanner/code-scanner.js'
+import { scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes, buildLayerScanPlan } from './scanner/code-scanner.js'
 import { getPatternSet } from './scanner/patterns.js'
 import { log } from './utils/logger.js'
 import { ToolError } from './utils/errors.js'
@@ -1824,15 +1824,17 @@ export function createServer(): McpServer {
         const dirsScanned: string[] = []
 
         for (const [layerName, { keys, localeDir }] of keysByLayer) {
-          const layerScanDirs = scanDirs ?? [localeDir.layerRootDir]
-          dirsScanned.push(...layerScanDirs)
+          const scanPlans = scanDirs
+            ? scanDirs.map(d => ({ dir: d, excludeDirs: excludeDirs ?? [] }))
+            : buildLayerScanPlan(localeDir, config.localeDirs, excludeDirs)
+          dirsScanned.push(...scanPlans.map(p => p.dir))
 
           const combinedUniqueKeys = new Set<string>()
           const combinedBareStrings = new Set<string>()
           const layerDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }> = []
 
-          for (const scanDir of layerScanDirs) {
-            const result = await scanSourceFiles(scanDir, excludeDirs, getPatternSet(config.localeFileFormat))
+          for (const plan of scanPlans) {
+            const result = await scanSourceFiles(plan.dir, plan.excludeDirs, getPatternSet(config.localeFileFormat))
             totalFilesScanned += result.filesScanned
             for (const key of result.uniqueKeys) combinedUniqueKeys.add(key)
             for (const bare of result.bareStringCandidates) combinedBareStrings.add(bare)
@@ -2149,14 +2151,16 @@ export function createServer(): McpServer {
         const allDynamicKeys: Array<{ expression: string; file: string; line: number }> = []
 
         for (const [layerName, { keys, localeDir }] of keysByLayer) {
-          const layerScanDirs = scanDirs ?? [localeDir.layerRootDir]
+          const scanPlans = scanDirs
+            ? scanDirs.map(d => ({ dir: d, excludeDirs: excludeDirs ?? [] }))
+            : buildLayerScanPlan(localeDir, config.localeDirs, excludeDirs)
 
           const combinedUniqueKeys = new Set<string>()
           const combinedBareStrings = new Set<string>()
           const layerDynamicKeys: Array<{ expression: string; file: string; line: number }> = []
 
-          for (const scanDir of layerScanDirs) {
-            const result = await scanSourceFiles(scanDir, excludeDirs, getPatternSet(config.localeFileFormat))
+          for (const plan of scanPlans) {
+            const result = await scanSourceFiles(plan.dir, plan.excludeDirs, getPatternSet(config.localeFileFormat))
             totalFilesScanned += result.filesScanned
             for (const key of result.uniqueKeys) combinedUniqueKeys.add(key)
             for (const bare of result.bareStringCandidates) combinedBareStrings.add(bare)
