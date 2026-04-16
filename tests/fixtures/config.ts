@@ -51,9 +51,7 @@ const projectConfig = {
     },
   ],
   orphanScan: {
-    root: {
-      scanDirs: ['.', 'app-admin'],
-    },
+    root: {},
   },
 }
 
