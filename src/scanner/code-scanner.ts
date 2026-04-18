@@ -198,7 +198,7 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   let filesScanned = 0
 
   const BARE_DOTTED_STRING = /(['"])((?:[\w-]+\.)+[\w-]+)\1/g
-  const BARE_DYNAMIC_TEMPLATE = /`((?:[^`\\]|\\.)*\.[^`\\]*\$\{(?:[^`\\]|\\.)*)`/g
+  const BARE_DYNAMIC_TEMPLATE = /`((?:[^`\\]|\\.)*\$\{(?:[^`\\]|\\.)*)`/g
 
   for (const relPath of relativePaths) {
     const filePath = join(rootDir, relPath)
