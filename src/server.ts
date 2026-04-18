@@ -1846,6 +1846,7 @@ export function createServer(): McpServer {
             for (const key of result.uniqueKeys) combinedUniqueKeys.add(key)
             for (const bare of result.bareStringCandidates) combinedBareStrings.add(bare)
             layerDynamicKeys.push(...result.dynamicKeys)
+            for (const bd of result.bareDynamicCandidates) layerDynamicKeys.push({ expression: bd, file: '', line: 0, callee: '' })
           }
 
           allDynamicKeys.push(...layerDynamicKeys)
@@ -1890,7 +1891,7 @@ export function createServer(): McpServer {
             locale: localeCode,
           },
           dynamicKeyWarning: allDynamicKeys.length > 0
-            ? `${allDynamicKeys.length} dynamic key reference(s) found (template literals with interpolation). Some "orphan" keys may actually be used via dynamic keys. Review before removing.`
+            ? `${allDynamicKeys.length} dynamic key reference(s) found (template literals with interpolation). Some "orphan" keys may actually be used via dynamic keys. Review before removing. Note: string concatenation patterns (e.g. 'prefix.' + var) are not detected — use template literals for full coverage.`
             : undefined,
           dynamicKeys: allDynamicKeys.length > 0
             ? allDynamicKeys.map(dk => ({
@@ -2176,6 +2177,7 @@ export function createServer(): McpServer {
               file: toRelativePath(dk.file, dir),
               line: dk.line,
             })))
+            for (const bd of result.bareDynamicCandidates) layerDynamicKeys.push({ expression: bd, file: '', line: 0 })
           }
 
           allDynamicKeys.push(...layerDynamicKeys)
@@ -2244,7 +2246,7 @@ export function createServer(): McpServer {
             },
           }
           if (allDynamicKeys.length > 0) {
-            output.dynamicKeyWarning = `${allDynamicKeys.length} dynamic key reference(s) found. Some "orphan" keys may be used via dynamic keys. Review before removing.`
+            output.dynamicKeyWarning = `${allDynamicKeys.length} dynamic key reference(s) found. Some "orphan" keys may be used via dynamic keys. Review before removing. Note: string concatenation patterns (e.g. 'prefix.' + var) are not detected — use template literals for full coverage.`
             output.dynamicKeys = allDynamicKeys
           }
           const dryRunReportPath = resolveReportFilePath(config, dir, 'cleanup_unused_translations')

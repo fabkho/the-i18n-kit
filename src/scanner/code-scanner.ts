@@ -32,6 +32,12 @@ export interface ScanResult {
    * locale keys to identify bare key references (e.g., `{ name: 'common.actions.save', i18n: true }`).
    */
   bareStringCandidates: Set<string>
+  /**
+   * Template literal expressions containing at least one dot and `${...}` interpolation,
+   * extracted from source files regardless of i18n call context.
+   * Format: `` `prefix.${_}.suffix` `` — ready to feed into `buildDynamicKeyRegexes`.
+   */
+  bareDynamicCandidates: Set<string>
 }
 
 // ─── Extraction ─────────────────────────────────────────────────
@@ -47,6 +53,7 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
   const pat = patterns ?? VUE_NUXT_PATTERNS
   const usages: KeyUsage[] = []
   const dynamicKeys: DynamicKeyUsage[] = []
+
   const lines = content.split('\n')
 
   for (let i = 0; i < lines.length; i++) {
@@ -59,9 +66,6 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
         const callee = match[1]
         const key = match[3]
         if (!key) continue
-        // Skip PHP brace-interpolated keys like "msg.{$type}.title" — handled by dynamicKeyPatterns.
-        // Bare $var interpolation (without braces) is intentionally treated as static because
-        // it's indistinguishable from a literal dollar sign without PHP runtime context.
         if (key.includes('{$')) continue
         if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
         usages.push({ key, file: filePath, line: lineNumber, callee })
@@ -184,15 +188,17 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   try {
     relativePaths = await glob(pat.filePatterns, { cwd: rootDir, ignore, dot: false, absolute: false })
   } catch {
-    return { usages: [], dynamicKeys: [], filesScanned: 0, uniqueKeys: new Set(), bareStringCandidates: new Set() }
+    return { usages: [], dynamicKeys: [], filesScanned: 0, uniqueKeys: new Set(), bareStringCandidates: new Set(), bareDynamicCandidates: new Set() }
   }
 
   const allUsages: KeyUsage[] = []
   const allDynamicKeys: DynamicKeyUsage[] = []
   const bareStringCandidates = new Set<string>()
+  const bareDynamicCandidates = new Set<string>()
   let filesScanned = 0
 
   const BARE_DOTTED_STRING = /(['"])((?:[\w-]+\.)+[\w-]+)\1/g
+  const BARE_DYNAMIC_TEMPLATE = /`((?:[^`\\]|\\.)*\$\{(?:[^`\\]|\\.)*)`/g
 
   for (const relPath of relativePaths) {
     const filePath = join(rootDir, relPath)
@@ -213,13 +219,21 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
       bareStringCandidates.add(match[2])
     }
 
+    BARE_DYNAMIC_TEMPLATE.lastIndex = 0
+    for (const match of content.matchAll(BARE_DYNAMIC_TEMPLATE)) {
+      const expr = match[1]
+      if (!expr.includes('.')) continue
+      const normalized = expr.replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '${_}')
+      bareDynamicCandidates.add(`\`${normalized}\``)
+    }
+
     filesScanned++
   }
 
   const uniqueKeys = new Set(allUsages.map(u => u.key))
-  log.debug(`Scanned ${filesScanned} files, found ${uniqueKeys.size} unique keys, ${allDynamicKeys.length} dynamic references, ${bareStringCandidates.size} bare string candidates`)
+  log.debug(`Scanned ${filesScanned} files, found ${uniqueKeys.size} unique keys, ${allDynamicKeys.length} dynamic references, ${bareStringCandidates.size} bare string candidates, ${bareDynamicCandidates.size} bare dynamic candidates`)
 
-  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, uniqueKeys, bareStringCandidates }
+  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, uniqueKeys, bareStringCandidates, bareDynamicCandidates }
 }
 
 // ─── Utilities ──────────────────────────────────────────────────
@@ -268,6 +282,8 @@ export interface LayerScanPlan {
 interface LayerInfo {
   layer: string
   layerRootDir: string
+  /** When set, this layer's locale files physically live in another layer's directory */
+  aliasOf?: string
 }
 
 export function buildLayerScanPlan(
@@ -279,6 +295,11 @@ export function buildLayerScanPlan(
   const baseExclude = userExcludeDirs ?? []
   const plans: LayerScanPlan[] = [{ dir: localeDir.layerRootDir, excludeDirs: baseExclude }]
 
+  const aliasLayers = allLocaleDirs.filter(ld => ld.aliasOf === localeDir.layer)
+  for (const alias of aliasLayers) {
+    plans.push({ dir: alias.layerRootDir, excludeDirs: baseExclude })
+  }
+
   if (!includeParentLayer) return plans
 
   const rootLocaleDir = allLocaleDirs.find(ld =>
@@ -288,7 +309,7 @@ export function buildLayerScanPlan(
   if (!rootLocaleDir) return plans
 
   const siblingAppDirs = allLocaleDirs
-    .filter(ld => ld.layer !== rootLocaleDir.layer && ld.layer !== localeDir.layer)
+    .filter(ld => ld.layer !== rootLocaleDir.layer && ld.layer !== localeDir.layer && !aliasLayers.some(a => a.layer === ld.layer))
     .map(ld => relative(rootLocaleDir.layerRootDir, ld.layerRootDir))
     .filter(rel => !rel.startsWith('..'))
 
