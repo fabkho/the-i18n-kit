@@ -181,7 +181,7 @@ Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`, `"
 - Supports monorepos: discovers all Nuxt apps under the given `projectDir`
 - Supports Nuxt layers: each layer's locale directory becomes a separate layer
 - Requires `@nuxt/kit` as a peer dependency (already present in Nuxt projects)
-- Scans `.vue`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.mts` for `$t()`, `t()`, `this.$t()`
+- Scans `.vue`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.mts` for `$t()`, `t()`, `this.$t()`, `$te()`, `this.$te()`
 
 ### Laravel
 
@@ -476,6 +476,7 @@ See [`playground/nuxt/.i18n-mcp.json`](playground/nuxt/.i18n-mcp.json) for a wor
 - [ ] Glossary validation — check translations against glossary terms
 - [ ] Flat JSON support — `flatJson: true` in vue-i18n config
 - [ ] Pluralization support — vue-i18n plural forms and Laravel `trans_choice`
+- [ ] Confidence scoring for orphan keys — flag low-confidence orphans that share a prefix with dynamic patterns ([#109](https://github.com/fabkho/the-i18n-mcp/issues/109))
 - [ ] Plain vue-i18n support (without Nuxt)
 
 ## Development
