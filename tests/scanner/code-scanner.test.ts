@@ -314,6 +314,59 @@ describe('extractKeys', () => {
       expect(usages[0].key).toBe('pages.dashboard.widgets.customerBookingPatterns.yAxisLabel')
     })
   })
+
+  describe('multi-line calls', () => {
+    it('extracts static key when $t( and quoted key are on separate lines', () => {
+      const content = `this.$t(\n  'common.actions.save'\n)`
+      const { usages } = extract(content)
+      expect(usages).toHaveLength(1)
+      expect(usages[0]).toMatchObject({ key: 'common.actions.save', callee: 'this.$t', line: 1 })
+    })
+
+    it('extracts dynamic key when t( and backtick are on separate lines', () => {
+      const content = `this.$t(\n  \`common.components.calendars.fullCalendar.views.\${view}\`\n)`
+      const { dynamicKeys } = extract(content)
+      expect(dynamicKeys).toHaveLength(1)
+      expect(dynamicKeys[0].expression).toBe('`common.components.calendars.fullCalendar.views.${view}`')
+      expect(dynamicKeys[0].line).toBe(1)
+    })
+
+    it('promotes static backtick on separate line to static usage', () => {
+      const content = `t(\n  \`common.plans.trialPeriod.month\`\n)`
+      const { usages } = extract(content)
+      expect(usages).toHaveLength(1)
+      expect(usages[0]).toMatchObject({ key: 'common.plans.trialPeriod.month', callee: 't' })
+    })
+
+    it('extracts concat key when t( and quoted prefix are on separate lines', () => {
+      const content = `$t(\n  'status.' + statusVar + '.label'\n)`
+      const { dynamicKeys } = extract(content)
+      expect(dynamicKeys).toHaveLength(1)
+      expect(dynamicKeys[0].expression).toBe('`status.${_}`')
+    })
+
+    it('reports correct line number for multi-line matches deep in file', () => {
+      const content = `line1\nline2\nline3\nthis.$t(\n  'deep.key.here'\n)\nline7`
+      const { usages } = extract(content)
+      expect(usages).toHaveLength(1)
+      expect(usages[0].line).toBe(4)
+    })
+
+    it('handles multiple multi-line calls in one file', () => {
+      const content = [
+        `$t(`,
+        `  'first.key'`,
+        `)`,
+        `$t(`,
+        `  'second.key'`,
+        `)`,
+      ].join('\n')
+      const { usages } = extract(content)
+      expect(usages).toHaveLength(2)
+      expect(usages[0]).toMatchObject({ key: 'first.key', line: 1 })
+      expect(usages[1]).toMatchObject({ key: 'second.key', line: 4 })
+    })
+  })
 })
 
 describe('buildDynamicKeyRegexes', () => {

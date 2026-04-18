@@ -47,61 +47,84 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
   const pat = patterns ?? VUE_NUXT_PATTERNS
   const usages: KeyUsage[] = []
   const dynamicKeys: DynamicKeyUsage[] = []
-  const lines = content.split('\n')
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const lineNumber = i + 1
+  // Match against the full file content so that multi-line calls like
+  //   this.$t(
+  //     `prefix.${var}.suffix`
+  //   )
+  // are detected. Line numbers are computed from match offsets.
+  const lineOffsets = buildLineOffsets(content)
 
-    for (const regex of pat.staticKeyPatterns) {
-      regex.lastIndex = 0
-      for (const match of line.matchAll(regex)) {
-        const callee = match[1]
-        const key = match[3]
-        if (!key) continue
-        // Skip PHP brace-interpolated keys like "msg.{$type}.title" — handled by dynamicKeyPatterns.
-        // Bare $var interpolation (without braces) is intentionally treated as static because
-        // it's indistinguishable from a literal dollar sign without PHP runtime context.
-        if (key.includes('{$')) continue
-        if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
-        usages.push({ key, file: filePath, line: lineNumber, callee })
-      }
+  for (const regex of pat.staticKeyPatterns) {
+    regex.lastIndex = 0
+    for (const match of content.matchAll(regex)) {
+      const callee = match[1]
+      const key = match[3]
+      if (!key) continue
+      // Skip PHP brace-interpolated keys like "msg.{$type}.title" — handled by dynamicKeyPatterns.
+      // Bare $var interpolation (without braces) is intentionally treated as static because
+      // it's indistinguishable from a literal dollar sign without PHP runtime context.
+      if (key.includes('{$')) continue
+      if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
+      usages.push({ key, file: filePath, line: offsetToLine(lineOffsets, match.index!), callee })
     }
+  }
 
-    for (const regex of pat.dynamicKeyPatterns) {
-      regex.lastIndex = 0
-      for (const match of line.matchAll(regex)) {
-        const callee = match[1]
-        const expression = match[2]
-        if (!expression.includes('${') && !expression.includes('{$')) {
-          if (pat.promoteStaticDynamicMatches) {
-            const key = expression
-            if (!key) continue
-            if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
-            usages.push({ key, file: filePath, line: lineNumber, callee })
-          }
-          continue
+  for (const regex of pat.dynamicKeyPatterns) {
+    regex.lastIndex = 0
+    for (const match of content.matchAll(regex)) {
+      const callee = match[1]
+      const expression = match[2]
+      const lineNumber = offsetToLine(lineOffsets, match.index!)
+      if (!expression.includes('${') && !expression.includes('{$')) {
+        if (pat.promoteStaticDynamicMatches) {
+          const key = expression
+          if (!key) continue
+          if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
+          usages.push({ key, file: filePath, line: lineNumber, callee })
         }
-        const normalized = expression.includes('{$')
-          ? expression.replace(/\{\$[^}]+\}/g, '${_}')
-          : expression
-        dynamicKeys.push({ expression: `\`${normalized}\``, file: filePath, line: lineNumber, callee: match[1] })
+        continue
       }
+      const normalized = expression.includes('{$')
+        ? expression.replace(/\{\$[^}]+\}/g, '${_}')
+        : expression
+      dynamicKeys.push({ expression: `\`${normalized}\``, file: filePath, line: lineNumber, callee: match[1] })
     }
+  }
 
-    for (const regex of pat.concatKeyPatterns) {
-      regex.lastIndex = 0
-      for (const match of line.matchAll(regex)) {
-        const callee = match[1]
-        const prefix = match[3]
-        if (!prefix) continue
-        if (pat.requiresDotForCallee?.(callee) && !prefix.includes('.')) continue
-        dynamicKeys.push({ expression: `\`${prefix}\${_}\``, file: filePath, line: lineNumber, callee })
-      }
+  for (const regex of pat.concatKeyPatterns) {
+    regex.lastIndex = 0
+    for (const match of content.matchAll(regex)) {
+      const callee = match[1]
+      const prefix = match[3]
+      if (!prefix) continue
+      if (pat.requiresDotForCallee?.(callee) && !prefix.includes('.')) continue
+      dynamicKeys.push({ expression: `\`${prefix}\${_}\``, file: filePath, line: offsetToLine(lineOffsets, match.index!), callee })
     }
   }
 
   return { usages, dynamicKeys }
+}
+
+function buildLineOffsets(content: string): number[] {
+  const offsets = [0]
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] === '\n') {
+      offsets.push(i + 1)
+    }
+  }
+  return offsets
+}
+
+function offsetToLine(lineOffsets: number[], offset: number): number {
+  let lo = 0
+  let hi = lineOffsets.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (lineOffsets[mid] <= offset) lo = mid
+    else hi = mid - 1
+  }
+  return lo + 1
 }
 
 // ─── Dynamic key pattern matching ───────────────────────────────
