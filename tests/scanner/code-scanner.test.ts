@@ -314,59 +314,6 @@ describe('extractKeys', () => {
       expect(usages[0].key).toBe('pages.dashboard.widgets.customerBookingPatterns.yAxisLabel')
     })
   })
-
-  describe('multi-line calls', () => {
-    it('extracts static key when $t( and quoted key are on separate lines', () => {
-      const content = `this.$t(\n  'common.actions.save'\n)`
-      const { usages } = extract(content)
-      expect(usages).toHaveLength(1)
-      expect(usages[0]).toMatchObject({ key: 'common.actions.save', callee: 'this.$t', line: 1 })
-    })
-
-    it('extracts dynamic key when t( and backtick are on separate lines', () => {
-      const content = `this.$t(\n  \`common.components.calendars.fullCalendar.views.\${view}\`\n)`
-      const { dynamicKeys } = extract(content)
-      expect(dynamicKeys).toHaveLength(1)
-      expect(dynamicKeys[0].expression).toBe('`common.components.calendars.fullCalendar.views.${view}`')
-      expect(dynamicKeys[0].line).toBe(1)
-    })
-
-    it('promotes static backtick on separate line to static usage', () => {
-      const content = `t(\n  \`common.plans.trialPeriod.month\`\n)`
-      const { usages } = extract(content)
-      expect(usages).toHaveLength(1)
-      expect(usages[0]).toMatchObject({ key: 'common.plans.trialPeriod.month', callee: 't' })
-    })
-
-    it('extracts concat key when t( and quoted prefix are on separate lines', () => {
-      const content = `$t(\n  'status.' + statusVar + '.label'\n)`
-      const { dynamicKeys } = extract(content)
-      expect(dynamicKeys).toHaveLength(1)
-      expect(dynamicKeys[0].expression).toBe('`status.${_}`')
-    })
-
-    it('reports correct line number for multi-line matches deep in file', () => {
-      const content = `line1\nline2\nline3\nthis.$t(\n  'deep.key.here'\n)\nline7`
-      const { usages } = extract(content)
-      expect(usages).toHaveLength(1)
-      expect(usages[0].line).toBe(4)
-    })
-
-    it('handles multiple multi-line calls in one file', () => {
-      const content = [
-        `$t(`,
-        `  'first.key'`,
-        `)`,
-        `$t(`,
-        `  'second.key'`,
-        `)`,
-      ].join('\n')
-      const { usages } = extract(content)
-      expect(usages).toHaveLength(2)
-      expect(usages[0]).toMatchObject({ key: 'first.key', line: 1 })
-      expect(usages[1]).toMatchObject({ key: 'second.key', line: 4 })
-    })
-  })
 })
 
 describe('buildDynamicKeyRegexes', () => {
@@ -656,6 +603,43 @@ describe('scanSourceFiles', () => {
   it('handles non-existent directory gracefully', async () => {
     const result = await scanSourceFiles(join(tmpDir, 'does-not-exist'))
     expect(result.filesScanned).toBe(0)
+  })
+
+  it('extracts bare dynamic candidates from template literals with dots and interpolation', async () => {
+    await writeFile(join(tmpDir, 'Component.vue'), [
+      'const url = `https://api.example.com/${id}`',
+      'const label = `common.plans.trialPeriod.${interval}`',
+      'const title = `pages.${section}.items.${id}.label`',
+      'const plain = `no-dots-here-${val}`',
+    ].join('\n'))
+
+    const result = await scanSourceFiles(tmpDir)
+    expect(result.bareDynamicCandidates.size).toBe(3)
+    expect(result.bareDynamicCandidates.has('`https://api.example.com/${_}`')).toBe(true)
+    expect(result.bareDynamicCandidates.has('`common.plans.trialPeriod.${_}`')).toBe(true)
+    expect(result.bareDynamicCandidates.has('`pages.${_}.items.${_}.label`')).toBe(true)
+  })
+
+  it('bare dynamic candidates work for multi-line $t calls', async () => {
+    await writeFile(join(tmpDir, 'MultiLine.vue'), [
+      'this.$t(',
+      '  `common.components.calendars.fullCalendar.views.${view}`',
+      ')',
+    ].join('\n'))
+
+    const result = await scanSourceFiles(tmpDir)
+    expect(result.bareDynamicCandidates.has('`common.components.calendars.fullCalendar.views.${_}`')).toBe(true)
+    const regexes = buildDynamicKeyRegexes([...result.bareDynamicCandidates].map(e => ({ expression: e })))
+    expect(regexes.some(re => re.test('common.components.calendars.fullCalendar.views.dayGridWeek'))).toBe(true)
+  })
+
+  it('deduplicates bare dynamic candidates', async () => {
+    await writeFile(join(tmpDir, 'A.vue'), 'const a = `prefix.${x}.suffix`')
+    await writeFile(join(tmpDir, 'B.vue'), 'const b = `prefix.${y}.suffix`')
+
+    const result = await scanSourceFiles(tmpDir)
+    expect(result.bareDynamicCandidates.size).toBe(1)
+    expect(result.bareDynamicCandidates.has('`prefix.${_}.suffix`')).toBe(true)
   })
 })
 

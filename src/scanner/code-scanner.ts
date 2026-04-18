@@ -32,6 +32,12 @@ export interface ScanResult {
    * locale keys to identify bare key references (e.g., `{ name: 'common.actions.save', i18n: true }`).
    */
   bareStringCandidates: Set<string>
+  /**
+   * Template literal expressions containing at least one dot and `${...}` interpolation,
+   * extracted from source files regardless of i18n call context.
+   * Format: `` `prefix.${_}.suffix` `` — ready to feed into `buildDynamicKeyRegexes`.
+   */
+  bareDynamicCandidates: Set<string>
 }
 
 // ─── Extraction ─────────────────────────────────────────────────
@@ -48,83 +54,58 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
   const usages: KeyUsage[] = []
   const dynamicKeys: DynamicKeyUsage[] = []
 
-  // Match against the full file content so that multi-line calls like
-  //   this.$t(
-  //     `prefix.${var}.suffix`
-  //   )
-  // are detected. Line numbers are computed from match offsets.
-  const lineOffsets = buildLineOffsets(content)
+  const lines = content.split('\n')
 
-  for (const regex of pat.staticKeyPatterns) {
-    regex.lastIndex = 0
-    for (const match of content.matchAll(regex)) {
-      const callee = match[1]
-      const key = match[3]
-      if (!key) continue
-      // Skip PHP brace-interpolated keys like "msg.{$type}.title" — handled by dynamicKeyPatterns.
-      // Bare $var interpolation (without braces) is intentionally treated as static because
-      // it's indistinguishable from a literal dollar sign without PHP runtime context.
-      if (key.includes('{$')) continue
-      if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
-      usages.push({ key, file: filePath, line: offsetToLine(lineOffsets, match.index!), callee })
-    }
-  }
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const lineNumber = i + 1
 
-  for (const regex of pat.dynamicKeyPatterns) {
-    regex.lastIndex = 0
-    for (const match of content.matchAll(regex)) {
-      const callee = match[1]
-      const expression = match[2]
-      const lineNumber = offsetToLine(lineOffsets, match.index!)
-      if (!expression.includes('${') && !expression.includes('{$')) {
-        if (pat.promoteStaticDynamicMatches) {
-          const key = expression
-          if (!key) continue
-          if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
-          usages.push({ key, file: filePath, line: lineNumber, callee })
-        }
-        continue
+    for (const regex of pat.staticKeyPatterns) {
+      regex.lastIndex = 0
+      for (const match of line.matchAll(regex)) {
+        const callee = match[1]
+        const key = match[3]
+        if (!key) continue
+        if (key.includes('{$')) continue
+        if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
+        usages.push({ key, file: filePath, line: lineNumber, callee })
       }
-      const normalized = expression.includes('{$')
-        ? expression.replace(/\{\$[^}]+\}/g, '${_}')
-        : expression
-      dynamicKeys.push({ expression: `\`${normalized}\``, file: filePath, line: lineNumber, callee: match[1] })
     }
-  }
 
-  for (const regex of pat.concatKeyPatterns) {
-    regex.lastIndex = 0
-    for (const match of content.matchAll(regex)) {
-      const callee = match[1]
-      const prefix = match[3]
-      if (!prefix) continue
-      if (pat.requiresDotForCallee?.(callee) && !prefix.includes('.')) continue
-      dynamicKeys.push({ expression: `\`${prefix}\${_}\``, file: filePath, line: offsetToLine(lineOffsets, match.index!), callee })
+    for (const regex of pat.dynamicKeyPatterns) {
+      regex.lastIndex = 0
+      for (const match of line.matchAll(regex)) {
+        const callee = match[1]
+        const expression = match[2]
+        if (!expression.includes('${') && !expression.includes('{$')) {
+          if (pat.promoteStaticDynamicMatches) {
+            const key = expression
+            if (!key) continue
+            if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
+            usages.push({ key, file: filePath, line: lineNumber, callee })
+          }
+          continue
+        }
+        const normalized = expression.includes('{$')
+          ? expression.replace(/\{\$[^}]+\}/g, '${_}')
+          : expression
+        dynamicKeys.push({ expression: `\`${normalized}\``, file: filePath, line: lineNumber, callee: match[1] })
+      }
+    }
+
+    for (const regex of pat.concatKeyPatterns) {
+      regex.lastIndex = 0
+      for (const match of line.matchAll(regex)) {
+        const callee = match[1]
+        const prefix = match[3]
+        if (!prefix) continue
+        if (pat.requiresDotForCallee?.(callee) && !prefix.includes('.')) continue
+        dynamicKeys.push({ expression: `\`${prefix}\${_}\``, file: filePath, line: lineNumber, callee })
+      }
     }
   }
 
   return { usages, dynamicKeys }
-}
-
-function buildLineOffsets(content: string): number[] {
-  const offsets = [0]
-  for (let i = 0; i < content.length; i++) {
-    if (content[i] === '\n') {
-      offsets.push(i + 1)
-    }
-  }
-  return offsets
-}
-
-function offsetToLine(lineOffsets: number[], offset: number): number {
-  let lo = 0
-  let hi = lineOffsets.length - 1
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1
-    if (lineOffsets[mid] <= offset) lo = mid
-    else hi = mid - 1
-  }
-  return lo + 1
 }
 
 // ─── Dynamic key pattern matching ───────────────────────────────
@@ -207,15 +188,17 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   try {
     relativePaths = await glob(pat.filePatterns, { cwd: rootDir, ignore, dot: false, absolute: false })
   } catch {
-    return { usages: [], dynamicKeys: [], filesScanned: 0, uniqueKeys: new Set(), bareStringCandidates: new Set() }
+    return { usages: [], dynamicKeys: [], filesScanned: 0, uniqueKeys: new Set(), bareStringCandidates: new Set(), bareDynamicCandidates: new Set() }
   }
 
   const allUsages: KeyUsage[] = []
   const allDynamicKeys: DynamicKeyUsage[] = []
   const bareStringCandidates = new Set<string>()
+  const bareDynamicCandidates = new Set<string>()
   let filesScanned = 0
 
   const BARE_DOTTED_STRING = /(['"])((?:[\w-]+\.)+[\w-]+)\1/g
+  const BARE_DYNAMIC_TEMPLATE = /`((?:[^`\\]|\\.)*\.[^`\\]*\$\{(?:[^`\\]|\\.)*)`/g
 
   for (const relPath of relativePaths) {
     const filePath = join(rootDir, relPath)
@@ -236,13 +219,21 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
       bareStringCandidates.add(match[2])
     }
 
+    BARE_DYNAMIC_TEMPLATE.lastIndex = 0
+    for (const match of content.matchAll(BARE_DYNAMIC_TEMPLATE)) {
+      const expr = match[1]
+      if (!expr.includes('.')) continue
+      const normalized = expr.replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '${_}')
+      bareDynamicCandidates.add(`\`${normalized}\``)
+    }
+
     filesScanned++
   }
 
   const uniqueKeys = new Set(allUsages.map(u => u.key))
-  log.debug(`Scanned ${filesScanned} files, found ${uniqueKeys.size} unique keys, ${allDynamicKeys.length} dynamic references, ${bareStringCandidates.size} bare string candidates`)
+  log.debug(`Scanned ${filesScanned} files, found ${uniqueKeys.size} unique keys, ${allDynamicKeys.length} dynamic references, ${bareStringCandidates.size} bare string candidates, ${bareDynamicCandidates.size} bare dynamic candidates`)
 
-  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, uniqueKeys, bareStringCandidates }
+  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, uniqueKeys, bareStringCandidates, bareDynamicCandidates }
 }
 
 // ─── Utilities ──────────────────────────────────────────────────

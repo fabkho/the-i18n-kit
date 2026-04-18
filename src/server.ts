@@ -1846,6 +1846,7 @@ export function createServer(): McpServer {
             for (const key of result.uniqueKeys) combinedUniqueKeys.add(key)
             for (const bare of result.bareStringCandidates) combinedBareStrings.add(bare)
             layerDynamicKeys.push(...result.dynamicKeys)
+            for (const bd of result.bareDynamicCandidates) layerDynamicKeys.push({ expression: bd, file: '', line: 0, callee: '' })
           }
 
           allDynamicKeys.push(...layerDynamicKeys)
@@ -2176,6 +2177,7 @@ export function createServer(): McpServer {
               file: toRelativePath(dk.file, dir),
               line: dk.line,
             })))
+            for (const bd of result.bareDynamicCandidates) layerDynamicKeys.push({ expression: bd, file: '', line: 0 })
           }
 
           allDynamicKeys.push(...layerDynamicKeys)

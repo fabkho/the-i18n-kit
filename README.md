@@ -210,9 +210,82 @@ monorepo/
 
 Flat layouts work too — `app-shop/` and `app-admin/` at the project root are discovered the same way. Discovery stops descending into a directory once it finds a `nuxt.config` — nested Nuxt layers are loaded by `@nuxt/kit` automatically.
 
+## How Orphan Detection Works
+
+`find_orphan_keys` and `cleanup_unused_translations` use a multi-strategy approach to determine whether a translation key is referenced in source code. A key is only reported as an orphan if **none** of the strategies find a match.
+
+### Strategy 1: Direct call detection
+
+Scans for explicit i18n function calls on a single line:
+
+| Framework | Patterns |
+|-----------|----------|
+| **Nuxt/Vue** | `$t('key')`, `t('key')`, `this.$t('key')`, `$te('key')`, `this.$te('key')` |
+| **Laravel** | `__('key')`, `trans('key')`, `trans_choice('key', n)`, `Lang::get('key')`, `@lang('key')` |
+
+Backtick literals without interpolation are promoted to static matches: `` t(`common.actions.save`) `` is treated the same as `t('common.actions.save')`.
+
+### Strategy 2: Bare string matching
+
+Extracts **all** quoted strings containing at least one dot from source files (e.g., `'common.actions.save'`), regardless of whether they appear inside a `t()` call. These are intersected with known translation keys — if a key appears as a dotted string anywhere in the codebase, it's considered used.
+
+This catches keys referenced in data structures, config objects, or passed as variables:
+
+```ts
+// All detected via bare string matching — no t() call needed
+const columns = [{ label: 'common.actions.save', i18n: true }]
+const key = 'pages.dashboard.title'
+```
+
+### Strategy 3: Dynamic key detection (template literals)
+
+Scans for template literals with `${...}` interpolation inside `t()` / `$t()` calls. Converts them to regex patterns and matches against all known keys:
+
+```ts
+t(`common.metrics.${metric}`)  // → matches common.metrics.revenue, common.metrics.bookings, etc.
+t(`${prefix}.items.${id}.label`)  // → matches shop.items.42.label, admin.items.abc.label, etc.
+```
+
+### Strategy 4: Bare dynamic candidate matching
+
+Extracts **all** template literals containing at least one dot and `${...}` interpolation from source files, regardless of `t()` context. Like bare string matching, these are optimistically treated as potential i18n patterns and matched against known keys.
+
+This catches dynamic keys that are split across lines by formatters like Prettier, or used outside direct `t()` calls:
+
+```vue
+<!-- Prettier wraps long $t() calls — template literal is on a separate line -->
+this.$t(
+  `common.components.plans.trialPeriod.${interval}`
+)
+
+<!-- Dynamic keys in data structures -->
+const keyPattern = `pages.${section}.title`
+```
+
+### Strategy 5: Ignore patterns
+
+Keys matching glob patterns in `orphanScan.ignorePatterns` (from `.i18n-mcp.json`) are excluded:
+
+```json
+{
+  "orphanScan": {
+    "root": {
+      "ignorePatterns": ["common.datetime.**", "common.countries.*"]
+    }
+  }
+}
+```
+
+- `**` matches any number of dot-separated segments
+- `*` matches exactly one segment
+
+### Monorepo layer scoping
+
+Each layer scans only its own source directory by default. With `includeParentLayer: true`, child apps (e.g., `app-admin`) also scan the shared root directory, excluding sibling apps.
+
 ## Orphan Detection Limitations
 
-The `find_orphan_keys` and `cleanup_unused_translations` tools detect dynamic key usage through **template literals** (`` t(`prefix.${var}.suffix`) ``), but they do **not** detect keys constructed via **string concatenation** (`t('prefix.' + var + '.suffix')`). Keys used only through concatenation patterns will be incorrectly reported as orphans.
+**String concatenation is not detected.** Keys constructed via `t('prefix.' + var + '.suffix')` will be incorrectly reported as orphans. Only template literals are supported.
 
 **Mitigation:** Enable ESLint's built-in [`prefer-template`](https://eslint.org/docs/latest/rules/prefer-template) rule to auto-fix concatenation to template literals across your codebase:
 
