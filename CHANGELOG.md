@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.3.0](https://github.com/fabkho/the-i18n-mcp/compare/v2.2.0...v2.3.0) (2026-04-18)
+
+
+### Features
+
+* auto-detect shared langDir for orphan scanning ([#106](https://github.com/fabkho/the-i18n-mcp/issues/106)) ([d43b2e7](https://github.com/fabkho/the-i18n-mcp/commit/d43b2e7251051c6022614f239bcf7693d0f69807)), closes [#105](https://github.com/fabkho/the-i18n-mcp/issues/105)
+* per-layer orphan scanning, bare string matching, and $te support ([#100](https://github.com/fabkho/the-i18n-mcp/issues/100)) ([dddff93](https://github.com/fabkho/the-i18n-mcp/commit/dddff9391ee37d03f1202dab7cbb3bd15418b54e))
+
+
+### Bug Fixes
+
+* backtick static keys and cross-layer orphan scanning ([#97](https://github.com/fabkho/the-i18n-mcp/issues/97), [#98](https://github.com/fabkho/the-i18n-mcp/issues/98)) ([#102](https://github.com/fabkho/the-i18n-mcp/issues/102)) ([27c73b5](https://github.com/fabkho/the-i18n-mcp/commit/27c73b5da112742e7fc3dc753d407a3b41bf8fc5))
+* detect multi-line i18n calls in orphan scanner ([#108](https://github.com/fabkho/the-i18n-mcp/issues/108)) ([a861d37](https://github.com/fabkho/the-i18n-mcp/commit/a861d371796f2ed2d8ecae44e291aa5431543fed))
+
 ## [2.2.0](https://github.com/fabkho/the-i18n-mcp/compare/v2.1.0...v2.2.0) (2026-04-15)
 
 
