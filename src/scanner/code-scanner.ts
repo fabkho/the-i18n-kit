@@ -268,6 +268,8 @@ export interface LayerScanPlan {
 interface LayerInfo {
   layer: string
   layerRootDir: string
+  /** When set, this layer's locale files physically live in another layer's directory */
+  aliasOf?: string
 }
 
 export function buildLayerScanPlan(
@@ -279,6 +281,11 @@ export function buildLayerScanPlan(
   const baseExclude = userExcludeDirs ?? []
   const plans: LayerScanPlan[] = [{ dir: localeDir.layerRootDir, excludeDirs: baseExclude }]
 
+  const aliasLayers = allLocaleDirs.filter(ld => ld.aliasOf === localeDir.layer)
+  for (const alias of aliasLayers) {
+    plans.push({ dir: alias.layerRootDir, excludeDirs: baseExclude })
+  }
+
   if (!includeParentLayer) return plans
 
   const rootLocaleDir = allLocaleDirs.find(ld =>
@@ -288,7 +295,7 @@ export function buildLayerScanPlan(
   if (!rootLocaleDir) return plans
 
   const siblingAppDirs = allLocaleDirs
-    .filter(ld => ld.layer !== rootLocaleDir.layer && ld.layer !== localeDir.layer)
+    .filter(ld => ld.layer !== rootLocaleDir.layer && ld.layer !== localeDir.layer && !aliasLayers.some(a => a.layer === ld.layer))
     .map(ld => relative(rootLocaleDir.layerRootDir, ld.layerRootDir))
     .filter(rel => !rel.startsWith('..'))
 
