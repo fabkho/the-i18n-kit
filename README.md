@@ -210,6 +210,48 @@ monorepo/
 
 Flat layouts work too — `app-shop/` and `app-admin/` at the project root are discovered the same way. Discovery stops descending into a directory once it finds a `nuxt.config` — nested Nuxt layers are loaded by `@nuxt/kit` automatically.
 
+## Orphan Detection Limitations
+
+The `find_orphan_keys` and `cleanup_unused_translations` tools detect dynamic key usage through **template literals** (`` t(`prefix.${var}.suffix`) ``), but they do **not** detect keys constructed via **string concatenation** (`t('prefix.' + var + '.suffix')`). Keys used only through concatenation patterns will be incorrectly reported as orphans.
+
+**Mitigation:** Enable ESLint's built-in [`prefer-template`](https://eslint.org/docs/latest/rules/prefer-template) rule to auto-fix concatenation to template literals across your codebase:
+
+```json
+{ "prefer-template": "error" }
+```
+
+If you need a rule scoped specifically to i18n calls (`t()`, `$t()`, `$te()`), no existing plugin covers this — you'll need a custom ESLint rule:
+
+<details>
+<summary><strong>Custom ESLint rule: <code>no-i18n-concat</code></strong></summary>
+
+```js
+// eslint-rules/no-i18n-concat.js
+module.exports = {
+  meta: {
+    type: 'suggestion',
+    docs: { description: 'Disallow string concatenation in i18n calls; use template literals.' },
+    messages: { noConcat: 'Use a template literal instead of string concatenation in i18n calls.' },
+  },
+  create(context) {
+    const fns = new Set(['t', '$t', '$te', '$tc', 'tc']);
+    return {
+      CallExpression(node) {
+        const c = node.callee;
+        const name = c.type === 'Identifier' ? c.name : c.type === 'MemberExpression' ? c.property.name : null;
+        if (!name || !fns.has(name)) return;
+        const arg = node.arguments[0];
+        if (arg?.type === 'BinaryExpression' && arg.operator === '+') {
+          context.report({ node: arg, messageId: 'noConcat' });
+        }
+      },
+    };
+  },
+};
+```
+
+</details>
+
 ## Model Selection for Translations
 
 `translate_missing` uses [MCP sampling](https://modelcontextprotocol.io/docs/concepts/sampling) — the host picks which LLM fulfills the request. The server sends `modelPreferences` hinting toward fast, cheap models since translation is high-volume and doesn't require frontier reasoning.
