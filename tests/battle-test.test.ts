@@ -1,4 +1,5 @@
 import { resolve } from 'node:path'
+import { existsSync } from 'node:fs'
 import { detectI18nConfig } from '../src/config/detector'
 import { buildLayerScanPlan, findOrphanKeysForConfig } from '../src/scanner/code-scanner'
 import { readLocaleData } from '../src/io/locale-data'
@@ -19,8 +20,9 @@ function flattenKeys(obj: Record<string, unknown>, prefix = ''): string[] {
 }
 
 const ANNY_UI = '/Users/fabiankirchhoff/code/anny/anny-ui'
+const canRun = existsSync(ANNY_UI)
 
-describe('battle-test: anny-ui (Nuxt monorepo)', () => {
+describe.skipIf(!canRun)('battle-test: anny-ui (Nuxt monorepo)', () => {
   let config: Awaited<ReturnType<typeof detectI18nConfig>>
   let orphanResult: Awaited<ReturnType<typeof findOrphanKeysForConfig>>
 
