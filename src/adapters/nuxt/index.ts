@@ -140,6 +140,8 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
       fallbackLocale = appConfig.fallbackLocale
     }
 
+    const layerNameRemap = new Map<string, string>()
+
     for (const dir of appConfig.localeDirs) {
       const realPath = await realpath(dir.path).catch(() => dir.path)
       const existing = seenLocalePaths.get(realPath)
@@ -176,6 +178,9 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
       if (usedLayerNames.has(layerName)) {
         layerName = deriveLayerName(dir.layerRootDir, discoveryRoot, usedLayerNames)
       }
+      if (layerName !== dir.layer) {
+        layerNameRemap.set(dir.layer, layerName)
+      }
       usedLayerNames.add(layerName)
       seenLocalePaths.set(realPath, { layer: layerName, layerRootDir: dir.layerRootDir })
       allLocaleDirs.push({ ...dir, layer: layerName })
@@ -195,7 +200,8 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
     }
 
     for (const appInfo of appConfig.apps) {
-      allApps.push(appInfo)
+      const remappedLayers = appInfo.layers.map(name => layerNameRemap.get(name) ?? name)
+      allApps.push({ ...appInfo, layers: remappedLayers })
     }
   }
 

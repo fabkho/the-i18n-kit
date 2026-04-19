@@ -90,6 +90,7 @@ export class GenericAdapter implements FrameworkAdapter {
       layerRootDirs: [projectDir],
       projectConfig,
       localeFileFormat: detectedFormat,
+      apps: [{ name: 'default', rootDir: projectDir, layers: localeDirs.map(d => d.layer) }],
     }
   }
 }

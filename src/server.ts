@@ -2105,7 +2105,7 @@ export function createServer(): McpServer {
           }
         }
 
-        const orphanResult2 = await findOrphanKeysForConfig({
+        const orphanResult = await findOrphanKeysForConfig({
           keysByLayer,
           apps: config.apps,
           scanDirs: scanDirs || undefined,
@@ -2113,12 +2113,12 @@ export function createServer(): McpServer {
           resolveIgnorePatterns: (layerName) => resolveOrphanIgnorePatterns(config, layerName),
           patterns: getPatternSet(config.localeFileFormat),
         })
-        const orphansByLayer = orphanResult2.orphansByLayer
-        const orphanCount = orphanResult2.orphanCount
-        const totalFilesScanned = orphanResult2.totalFilesScanned
-        const dynamicMatchedCount = orphanResult2.dynamicMatchedCount
-        const ignoredCount = orphanResult2.ignoredCount
-        const allDynamicKeys = orphanResult2.allDynamicKeys.map(dk => ({
+        const orphansByLayer = orphanResult.orphansByLayer
+        const orphanCount = orphanResult.orphanCount
+        const totalFilesScanned = orphanResult.totalFilesScanned
+        const dynamicMatchedCount = orphanResult.dynamicMatchedCount
+        const ignoredCount = orphanResult.ignoredCount
+        const allDynamicKeys = orphanResult.allDynamicKeys.map(dk => ({
           expression: dk.expression,
           file: toRelativePath(dk.file, dir),
           line: dk.line,
