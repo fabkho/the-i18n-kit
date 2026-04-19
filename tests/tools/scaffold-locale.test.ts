@@ -37,6 +37,7 @@ function createTestConfig(locales: LocaleDefinition[]): I18nConfig {
       },
     ],
     layerRootDirs: [tmpDir],
+    apps: [{ name: 'root', rootDir: tmpDir, layers: ['root'] }],
   }
 }
 
@@ -59,6 +60,7 @@ function createMultiLayerConfig(locales: LocaleDefinition[]): I18nConfig {
       },
     ],
     layerRootDirs: [tmpDir, resolve(tmpDir, 'admin')],
+    apps: [{ name: 'root', rootDir: tmpDir, layers: ['root', 'app-admin'] }],
   }
 }
 
@@ -280,6 +282,7 @@ describe('scaffoldLocale (Laravel)', () => {
       ],
       layerRootDirs: [tmpLaravelDir],
       localeFileFormat: 'php-array',
+      apps: [{ name: 'root', rootDir: tmpLaravelDir, layers: ['lang'] }],
     }
   }
 

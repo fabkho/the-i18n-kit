@@ -311,7 +311,7 @@ Keys matching glob patterns in `orphanScan.ignorePatterns` (from `.i18n-mcp.json
 
 ### Monorepo layer scoping
 
-Each layer scans only its own source directory by default. With `includeParentLayer: true`, child apps (e.g., `app-admin`) also scan the shared root directory, excluding sibling apps.
+The scanner automatically determines the correct scan scope for each layer using a consumer graph. For each layer, it identifies all apps that consume it (via Nuxt's `_layers`) and scans their source directories. Shared layers consumed by multiple apps are checked against all consumers' code — no manual configuration needed.
 
 ## Orphan Detection Limitations
 
@@ -429,7 +429,7 @@ For IDE autocompletion, point to the schema:
 | `translationPrompt` | System prompt prepended to all translation requests |
 | `localeNotes` | Per-locale instructions — terminology constraints, formality, regional conventions. **Keys must match your locale codes exactly** (case-sensitive) |
 | `examples` | Few-shot translation examples demonstrating project style |
-| `orphanScan` | Per-layer config for orphan detection: `ignorePatterns` (glob patterns for keys to skip), `includeParentLayer` (also scan shared root code for key usage in monorepos). Keys are layer names from `list_locale_dirs`. Each layer automatically scans from its own root directory |
+| `orphanScan` | Per-layer config for orphan detection: `ignorePatterns` (glob patterns for keys to skip). Keys are layer names from `list_locale_dirs`. The scanner automatically determines scan scope via the consumer graph. |
 | `reportOutput` | `true` for default `.i18n-reports/` dir, or a string for a custom path. Diagnostic tools write full output to disk and return only a summary in the MCP response |
 | `samplingPreferences` | Override model preferences for `translate_missing` sampling. See [Model Selection](#model-selection-for-translations) |
 | `localeDirs` | Locale directories for the generic adapter. Array of path strings or `{ path, layer }` objects. Required (with `defaultLocale`) to activate the generic adapter |
@@ -486,8 +486,7 @@ For IDE autocompletion, point to the schema:
       "ignorePatterns": ["common.datetime.**", "common.countries.*"]
     },
     "app-admin": {
-      "ignorePatterns": ["admin.legacy.*"],
-      "includeParentLayer": true
+      "ignorePatterns": ["admin.legacy.*"]
     }
   },
   "reportOutput": true,

@@ -20,7 +20,7 @@ import {
   renameNestedKey,
   validateTranslationValue,
 } from './io/key-operations.js'
-import { scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes, buildLayerScanPlan } from './scanner/code-scanner.js'
+import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from './scanner/code-scanner.js'
 import { getPatternSet } from './scanner/patterns.js'
 import { log } from './utils/logger.js'
 import { ToolError } from './utils/errors.js'
@@ -90,13 +90,6 @@ function resolveOrphanIgnorePatterns(
   const layerConfig = config.projectConfig.orphanScan[layer]
   if (!layerConfig?.ignorePatterns?.length) return undefined
   return layerConfig.ignorePatterns
-}
-
-function resolveIncludeParentLayer(
-  config: I18nConfig,
-  layer: string,
-): boolean {
-  return config.projectConfig?.orphanScan?.[layer]?.includeParentLayer ?? false
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────
@@ -1819,82 +1812,45 @@ export function createServer(): McpServer {
           }
         }
 
-        // Per-layer scanning: scan from each layer's rootDir.
-        // Root layer's rootDir = project root → scans everything (root + all child apps).
-        // App layer's rootDir = app dir → scans only that app.
-        // When explicit scanDirs are provided, use them for all layers (backward compat).
-        const orphanKeys: Array<{ key: string; layer: string }> = []
-        let totalFilesScanned = 0
-        let totalDynamicMatchedCount = 0
-        let totalIgnoredCount = 0
-        const allDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }> = []
-        const dirsScanned: string[] = []
+        const orphanResult = await findOrphanKeysForConfig({
+          keysByLayer,
+          apps: config.apps,
+          scanDirs: scanDirs || undefined,
+          excludeDirs: excludeDirs || undefined,
+          resolveIgnorePatterns: (layerName) => resolveOrphanIgnorePatterns(config, layerName),
+          patterns: getPatternSet(config.localeFileFormat),
+        })
 
-        for (const [layerName, { keys, localeDir }] of keysByLayer) {
-          const scanPlans = scanDirs
-            ? scanDirs.map(d => ({ dir: d, excludeDirs: excludeDirs ?? [] }))
-            : buildLayerScanPlan(localeDir, config.localeDirs, excludeDirs, resolveIncludeParentLayer(config, layerName))
-          dirsScanned.push(...scanPlans.map(p => p.dir))
-
-          const combinedUniqueKeys = new Set<string>()
-          const combinedBareStrings = new Set<string>()
-          const layerDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }> = []
-
-          for (const plan of scanPlans) {
-            const result = await scanSourceFiles(plan.dir, plan.excludeDirs, getPatternSet(config.localeFileFormat))
-            totalFilesScanned += result.filesScanned
-            for (const key of result.uniqueKeys) combinedUniqueKeys.add(key)
-            for (const bare of result.bareStringCandidates) combinedBareStrings.add(bare)
-            layerDynamicKeys.push(...result.dynamicKeys)
-            for (const bd of result.bareDynamicCandidates) layerDynamicKeys.push({ expression: bd, file: '', line: 0, callee: '' })
-          }
-
-          allDynamicKeys.push(...layerDynamicKeys)
-          const dynamicKeyRegexes = buildDynamicKeyRegexes(layerDynamicKeys)
-          const ignorePatterns = resolveOrphanIgnorePatterns(config, layerName)
-          const ignoreRegexes = ignorePatterns ? buildIgnorePatternRegexes(ignorePatterns) : []
-
-          for (const key of keys) {
-            if (combinedUniqueKeys.has(key)) continue
-            if (combinedBareStrings.has(key)) continue
-            if (dynamicKeyRegexes.some(re => re.test(key))) {
-              totalDynamicMatchedCount++
-              continue
-            }
-            if (ignoreRegexes.length > 0 && ignoreRegexes.some(re => re.test(key))) {
-              totalIgnoredCount++
-              continue
-            }
-            orphanKeys.push({ key, layer: layerName })
-          }
+        const byLayer = orphanResult.orphansByLayer
+        const allOrphanKeys: Array<{ key: string; layer: string }> = []
+        for (const [layerName, keys] of Object.entries(byLayer)) {
+          for (const key of keys) allOrphanKeys.push({ key, layer: layerName })
         }
-
-        orphanKeys.sort((a, b) => a.layer.localeCompare(b.layer) || a.key.localeCompare(b.key))
-
-        const byLayer: Record<string, string[]> = {}
-        for (const { key, layer: keyLayer } of orphanKeys) {
-          if (!byLayer[keyLayer]) byLayer[keyLayer] = []
-          byLayer[keyLayer].push(key)
+        allOrphanKeys.sort((a, b) => a.layer.localeCompare(b.layer) || a.key.localeCompare(b.key))
+        const sortedByLayer: Record<string, string[]> = {}
+        for (const { key, layer: keyLayer } of allOrphanKeys) {
+          if (!sortedByLayer[keyLayer]) sortedByLayer[keyLayer] = []
+          sortedByLayer[keyLayer].push(key)
         }
 
         const output = {
-          orphanKeys: byLayer,
+          orphanKeys: sortedByLayer,
           summary: {
             totalKeys,
-            orphanCount: orphanKeys.length,
-            dynamicMatchedCount: totalDynamicMatchedCount,
-            ignoredCount: totalIgnoredCount,
-            usedCount: totalKeys - orphanKeys.length,
-            filesScanned: totalFilesScanned,
+            orphanCount: orphanResult.orphanCount,
+            dynamicMatchedCount: orphanResult.dynamicMatchedCount,
+            ignoredCount: orphanResult.ignoredCount,
+            usedCount: totalKeys - orphanResult.orphanCount,
+            filesScanned: orphanResult.totalFilesScanned,
             layersChecked: layersToCheck.map(d => d.layer),
-            dirsScanned: [...new Set(dirsScanned)],
+            dirsScanned: orphanResult.dirsScanned,
             locale: localeCode,
           },
-          dynamicKeyWarning: allDynamicKeys.length > 0
-            ? `${allDynamicKeys.length} dynamic key reference(s) found (template literals with interpolation). Some "orphan" keys may actually be used via dynamic keys. Review before removing. Note: string concatenation patterns (e.g. 'prefix.' + var) are not detected — use template literals for full coverage.`
+          dynamicKeyWarning: orphanResult.allDynamicKeys.length > 0
+            ? `${orphanResult.allDynamicKeys.length} dynamic key reference(s) found (template literals with interpolation). Some "orphan" keys may actually be used via dynamic keys. Review before removing. Note: string concatenation patterns (e.g. 'prefix.' + var) are not detected — use template literals for full coverage.`
             : undefined,
-          dynamicKeys: allDynamicKeys.length > 0
-            ? allDynamicKeys.map(dk => ({
+          dynamicKeys: orphanResult.allDynamicKeys.length > 0
+            ? orphanResult.allDynamicKeys.map(dk => ({
                 expression: dk.expression,
                 file: toRelativePath(dk.file, dir),
                 line: dk.line,
@@ -2149,59 +2105,24 @@ export function createServer(): McpServer {
           }
         }
 
-        // Per-layer scanning: scan from each layer's rootDir.
-        // Root layer scans project root (includes all children). App layers scan only their own dir.
-        const orphansByLayer: Record<string, string[]> = {}
-        let orphanCount = 0
-        let totalFilesScanned = 0
-        let dynamicMatchedCount = 0
-        let ignoredCount = 0
-        const allDynamicKeys: Array<{ expression: string; file: string; line: number }> = []
-
-        for (const [layerName, { keys, localeDir }] of keysByLayer) {
-          const scanPlans = scanDirs
-            ? scanDirs.map(d => ({ dir: d, excludeDirs: excludeDirs ?? [] }))
-            : buildLayerScanPlan(localeDir, config.localeDirs, excludeDirs, resolveIncludeParentLayer(config, layerName))
-
-          const combinedUniqueKeys = new Set<string>()
-          const combinedBareStrings = new Set<string>()
-          const layerDynamicKeys: Array<{ expression: string; file: string; line: number }> = []
-
-          for (const plan of scanPlans) {
-            const result = await scanSourceFiles(plan.dir, plan.excludeDirs, getPatternSet(config.localeFileFormat))
-            totalFilesScanned += result.filesScanned
-            for (const key of result.uniqueKeys) combinedUniqueKeys.add(key)
-            for (const bare of result.bareStringCandidates) combinedBareStrings.add(bare)
-            layerDynamicKeys.push(...result.dynamicKeys.map(dk => ({
-              expression: dk.expression,
-              file: toRelativePath(dk.file, dir),
-              line: dk.line,
-            })))
-            for (const bd of result.bareDynamicCandidates) layerDynamicKeys.push({ expression: bd, file: '', line: 0 })
-          }
-
-          allDynamicKeys.push(...layerDynamicKeys)
-          const dynamicKeyRegexes = buildDynamicKeyRegexes(layerDynamicKeys)
-          const ignorePatterns = resolveOrphanIgnorePatterns(config, layerName)
-          const ignoreRegexes = ignorePatterns ? buildIgnorePatternRegexes(ignorePatterns) : []
-          const orphans = keys.filter((k) => {
-            if (combinedUniqueKeys.has(k)) return false
-            if (combinedBareStrings.has(k)) return false
-            if (dynamicKeyRegexes.some(re => re.test(k))) {
-              dynamicMatchedCount++
-              return false
-            }
-            if (ignoreRegexes.length > 0 && ignoreRegexes.some(re => re.test(k))) {
-              ignoredCount++
-              return false
-            }
-            return true
-          }).sort()
-          if (orphans.length > 0) {
-            orphansByLayer[layerName] = orphans
-            orphanCount += orphans.length
-          }
-        }
+        const orphanResult2 = await findOrphanKeysForConfig({
+          keysByLayer,
+          apps: config.apps,
+          scanDirs: scanDirs || undefined,
+          excludeDirs: excludeDirs || undefined,
+          resolveIgnorePatterns: (layerName) => resolveOrphanIgnorePatterns(config, layerName),
+          patterns: getPatternSet(config.localeFileFormat),
+        })
+        const orphansByLayer = orphanResult2.orphansByLayer
+        const orphanCount = orphanResult2.orphanCount
+        const totalFilesScanned = orphanResult2.totalFilesScanned
+        const dynamicMatchedCount = orphanResult2.dynamicMatchedCount
+        const ignoredCount = orphanResult2.ignoredCount
+        const allDynamicKeys = orphanResult2.allDynamicKeys.map(dk => ({
+          expression: dk.expression,
+          file: toRelativePath(dk.file, dir),
+          line: dk.line,
+        }))
 
         if (orphanCount === 0) {
           const messageParts: string[] = ['No orphan keys found.']

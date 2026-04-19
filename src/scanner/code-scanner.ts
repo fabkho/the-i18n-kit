@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import { glob } from 'tinyglobby'
+import { DepGraph } from 'dependency-graph'
 import { log } from '../utils/logger.js'
 import type { ScanPatternSet } from './patterns.js'
 import { VUE_NUXT_PATTERNS } from './patterns.js'
+import type { AppInfo } from '../config/types.js'
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -279,40 +281,177 @@ export interface LayerScanPlan {
   excludeDirs: string[]
 }
 
-interface LayerInfo {
-  layer: string
-  layerRootDir: string
-  /** When set, this layer's locale files physically live in another layer's directory */
-  aliasOf?: string
+export async function scanAllApps(
+  apps: AppInfo[],
+  excludeDirs: string[] | undefined,
+  patterns?: ScanPatternSet,
+): Promise<Map<string, ScanResult>> {
+  const cache = new Map<string, ScanResult>()
+  const seen = new Set<string>()
+
+  for (const app of apps) {
+    if (seen.has(app.rootDir)) continue
+    seen.add(app.rootDir)
+    const result = await scanSourceFiles(app.rootDir, excludeDirs ?? [], patterns)
+    cache.set(app.rootDir, result)
+  }
+
+  return cache
 }
 
 export function buildLayerScanPlan(
-  localeDir: LayerInfo,
-  allLocaleDirs: LayerInfo[],
+  layerName: string,
+  apps: AppInfo[],
   userExcludeDirs: string[] | undefined,
-  includeParentLayer = false,
 ): LayerScanPlan[] {
   const baseExclude = userExcludeDirs ?? []
-  const plans: LayerScanPlan[] = [{ dir: localeDir.layerRootDir, excludeDirs: baseExclude }]
+  const graph = new DepGraph<string>()
+  const APP_PREFIX = 'app::'
 
-  const aliasLayers = allLocaleDirs.filter(ld => ld.aliasOf === localeDir.layer)
-  for (const alias of aliasLayers) {
-    plans.push({ dir: alias.layerRootDir, excludeDirs: baseExclude })
+  for (const app of apps) {
+    graph.addNode(APP_PREFIX + app.name, app.rootDir)
+    for (const layer of app.layers) {
+      if (!graph.hasNode(layer)) graph.addNode(layer, '')
+      graph.addDependency(APP_PREFIX + app.name, layer)
+    }
   }
 
-  if (!includeParentLayer) return plans
+  let consumerAppNames: string[]
+  try {
+    consumerAppNames = graph.dependantsOf(layerName)
+      .filter(n => n.startsWith(APP_PREFIX))
+      .map(n => n.slice(APP_PREFIX.length))
+  } catch {
+    consumerAppNames = apps.map(a => a.name)
+  }
 
-  const rootLocaleDir = allLocaleDirs.find(ld =>
-    ld.layer !== localeDir.layer
-    && localeDir.layerRootDir.startsWith(ld.layerRootDir + '/'),
-  )
-  if (!rootLocaleDir) return plans
+  if (consumerAppNames.length === 0) {
+    consumerAppNames = [layerName]
+  }
 
-  const siblingAppDirs = allLocaleDirs
-    .filter(ld => ld.layer !== rootLocaleDir.layer && ld.layer !== localeDir.layer && !aliasLayers.some(a => a.layer === ld.layer))
-    .map(ld => relative(rootLocaleDir.layerRootDir, ld.layerRootDir))
-    .filter(rel => !rel.startsWith('..'))
+  const scannedDirs = new Set<string>()
+  const plans: LayerScanPlan[] = []
 
-  plans.push({ dir: rootLocaleDir.layerRootDir, excludeDirs: [...baseExclude, ...siblingAppDirs] })
+  for (const appName of consumerAppNames) {
+    const app = apps.find(a => a.name === appName)
+    if (!app) continue
+    if (scannedDirs.has(app.rootDir)) continue
+    scannedDirs.add(app.rootDir)
+    plans.push({ dir: app.rootDir, excludeDirs: baseExclude })
+  }
+
+  if (plans.length === 0) {
+    for (const app of apps) {
+      if (scannedDirs.has(app.rootDir)) continue
+      scannedDirs.add(app.rootDir)
+      plans.push({ dir: app.rootDir, excludeDirs: baseExclude })
+    }
+  }
+
   return plans
+}
+
+export interface OrphanScanOptions {
+  keysByLayer: Map<string, { keys: string[]; localeDir: { layer: string } }>
+  apps: AppInfo[]
+  scanDirs?: string[]
+  excludeDirs?: string[]
+  resolveIgnorePatterns: (layerName: string) => string[] | undefined
+  patterns?: ScanPatternSet
+}
+
+export interface OrphanScanResult {
+  orphansByLayer: Record<string, string[]>
+  orphanCount: number
+  totalFilesScanned: number
+  dynamicMatchedCount: number
+  ignoredCount: number
+  allDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }>
+  dirsScanned: string[]
+}
+
+export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promise<OrphanScanResult> {
+  const { keysByLayer, apps, scanDirs, excludeDirs, resolveIgnorePatterns, patterns } = options
+
+  let scanCache: Map<string, ScanResult>
+  if (scanDirs) {
+    scanCache = new Map()
+    for (const dir of scanDirs) {
+      scanCache.set(dir, await scanSourceFiles(dir, excludeDirs ?? [], patterns))
+    }
+  } else {
+    scanCache = await scanAllApps(apps, excludeDirs, patterns)
+  }
+
+  const orphansByLayer: Record<string, string[]> = {}
+  let orphanCount = 0
+  let totalFilesScanned = 0
+  let dynamicMatchedCount = 0
+  let ignoredCount = 0
+  const allDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }> = []
+  const dirsScanned: string[] = []
+
+  for (const result of scanCache.values()) {
+    totalFilesScanned += result.filesScanned
+  }
+
+  for (const [layerName, { keys }] of keysByLayer) {
+    let relevantResults: ScanResult[]
+    if (scanDirs) {
+      relevantResults = [...scanCache.values()]
+    } else {
+      const plans = buildLayerScanPlan(layerName, apps, excludeDirs)
+      dirsScanned.push(...plans.map(p => p.dir))
+      relevantResults = plans
+        .map(p => scanCache.get(p.dir))
+        .filter((r): r is ScanResult => r !== undefined)
+    }
+
+    const combinedUniqueKeys = new Set<string>()
+    const combinedBareStrings = new Set<string>()
+    const layerDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }> = []
+
+    for (const result of relevantResults) {
+      for (const key of result.uniqueKeys) combinedUniqueKeys.add(key)
+      for (const bare of result.bareStringCandidates) combinedBareStrings.add(bare)
+      layerDynamicKeys.push(...result.dynamicKeys)
+      for (const bd of result.bareDynamicCandidates) {
+        layerDynamicKeys.push({ expression: bd, file: '', line: 0, callee: '' })
+      }
+    }
+
+    allDynamicKeys.push(...layerDynamicKeys)
+    const dynamicKeyRegexes = buildDynamicKeyRegexes(layerDynamicKeys)
+    const ignorePatterns = resolveIgnorePatterns(layerName)
+    const ignoreRegexes = ignorePatterns ? buildIgnorePatternRegexes(ignorePatterns) : []
+
+    const orphans = keys.filter((k) => {
+      if (combinedUniqueKeys.has(k)) return false
+      if (combinedBareStrings.has(k)) return false
+      if (dynamicKeyRegexes.some(re => re.test(k))) {
+        dynamicMatchedCount++
+        return false
+      }
+      if (ignoreRegexes.length > 0 && ignoreRegexes.some(re => re.test(k))) {
+        ignoredCount++
+        return false
+      }
+      return true
+    }).sort()
+
+    if (orphans.length > 0) {
+      orphansByLayer[layerName] = orphans
+      orphanCount += orphans.length
+    }
+  }
+
+  return {
+    orphansByLayer,
+    orphanCount,
+    totalFilesScanned,
+    dynamicMatchedCount,
+    ignoredCount,
+    allDynamicKeys,
+    dirsScanned: [...new Set(dirsScanned)],
+  }
 }

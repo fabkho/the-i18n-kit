@@ -3,6 +3,7 @@ import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { extractKeys, scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes, buildLayerScanPlan } from '../../src/scanner/code-scanner.js'
+import type { AppInfo } from '../../src/config/types.js'
 
 const tmpDir = join(dirname(fileURLToPath(import.meta.url)), '../../.tmp-test/scanner')
 
@@ -654,88 +655,73 @@ describe('toRelativePath', () => {
 })
 
 describe('buildLayerScanPlan', () => {
-  const allDirs = [
-    { layer: 'root', layerRootDir: '/project' },
-    { layer: 'app-admin', layerRootDir: '/project/app-admin' },
-    { layer: 'app-shop', layerRootDir: '/project/app-shop' },
-    { layer: 'app-designer', layerRootDir: '/project/app-designer' },
-  ]
-
-  it('returns only own dir for root layer', () => {
-    const plans = buildLayerScanPlan(allDirs[0], allDirs, undefined)
+  it('single app — scans app root for any layer', () => {
+    const apps: AppInfo[] = [
+      { name: 'root', rootDir: '/project', layers: ['root', 'ui', 'shared'] }
+    ]
+    const plans = buildLayerScanPlan('ui', apps, undefined)
     expect(plans).toHaveLength(1)
     expect(plans[0].dir).toBe('/project')
     expect(plans[0].excludeDirs).toEqual([])
   })
 
-  it('returns only own dir for app layer by default (includeParentLayer=false)', () => {
-    const plans = buildLayerScanPlan(allDirs[1], allDirs, undefined)
-    expect(plans).toHaveLength(1)
-    expect(plans[0].dir).toBe('/project/app-admin')
-    expect(plans[0].excludeDirs).toEqual([])
-  })
-
-  it('returns own dir + root dir when includeParentLayer=true, excluding siblings', () => {
-    const plans = buildLayerScanPlan(allDirs[1], allDirs, undefined, true)
-    expect(plans).toHaveLength(2)
-    expect(plans[0].dir).toBe('/project/app-admin')
-    expect(plans[1].dir).toBe('/project')
-    expect(plans[1].excludeDirs).toContain('app-shop')
-    expect(plans[1].excludeDirs).toContain('app-designer')
-    expect(plans[1].excludeDirs).not.toContain('app-admin')
-  })
-
-  it('passes user excludeDirs to all plans when includeParentLayer=true', () => {
-    const plans = buildLayerScanPlan(allDirs[2], allDirs, ['storybook'], true)
-    expect(plans[0].excludeDirs).toContain('storybook')
-    expect(plans[1].excludeDirs).toContain('storybook')
-    expect(plans[1].excludeDirs).toContain('app-admin')
-  })
-
-  it('returns only own dir when no parent layer exists even with includeParentLayer=true', () => {
-    const standalone = [{ layer: 'standalone', layerRootDir: '/other/app' }]
-    const plans = buildLayerScanPlan(standalone[0], standalone, undefined, true)
-    expect(plans).toHaveLength(1)
-    expect(plans[0].dir).toBe('/other/app')
-  })
-
-  it('includes alias layer source dir when another layer aliases the scanned layer', () => {
-    const dirsWithAlias = [
-      { layer: 'root', layerRootDir: '/project' },
-      { layer: 'app-shop', layerRootDir: '/project/app-shop' },
-      { layer: 'app-outlook', layerRootDir: '/project/app-outlook', aliasOf: 'app-shop' },
+  it('monorepo siblings — shared layer scans all consumer apps', () => {
+    const apps: AppInfo[] = [
+      { name: 'app-1', rootDir: '/mono/app-1', layers: ['app-1', 'app-shared'] },
+      { name: 'app-2', rootDir: '/mono/app-2', layers: ['app-2', 'app-shared'] },
     ]
-    const plans = buildLayerScanPlan(dirsWithAlias[1], dirsWithAlias, undefined)
+    const plans = buildLayerScanPlan('app-shared', apps, undefined)
     expect(plans).toHaveLength(2)
-    expect(plans[0].dir).toBe('/project/app-shop')
-    expect(plans[1].dir).toBe('/project/app-outlook')
+    const dirs = plans.map(p => p.dir).sort()
+    expect(dirs).toEqual(['/mono/app-1', '/mono/app-2'])
   })
 
-  it('does not include alias layer dir when scanning a layer that is not the alias target', () => {
-    const dirsWithAlias = [
-      { layer: 'root', layerRootDir: '/project' },
-      { layer: 'app-shop', layerRootDir: '/project/app-shop' },
-      { layer: 'app-outlook', layerRootDir: '/project/app-outlook', aliasOf: 'app-shop' },
+  it('monorepo siblings — app-specific layer scans only that app', () => {
+    const apps: AppInfo[] = [
+      { name: 'app-1', rootDir: '/mono/app-1', layers: ['app-1', 'app-shared'] },
+      { name: 'app-2', rootDir: '/mono/app-2', layers: ['app-2', 'app-shared'] },
     ]
-    const plans = buildLayerScanPlan(dirsWithAlias[0], dirsWithAlias, undefined)
+    const plans = buildLayerScanPlan('app-1', apps, undefined)
+    expect(plans).toHaveLength(1)
+    expect(plans[0].dir).toBe('/mono/app-1')
+  })
+
+  it('passes user excludeDirs to all plans', () => {
+    const apps: AppInfo[] = [
+      { name: 'app-1', rootDir: '/mono/app-1', layers: ['app-1', 'app-shared'] },
+      { name: 'app-2', rootDir: '/mono/app-2', layers: ['app-2', 'app-shared'] },
+    ]
+    const plans = buildLayerScanPlan('app-shared', apps, ['storybook'])
+    for (const plan of plans) {
+      expect(plan.excludeDirs).toContain('storybook')
+    }
+  })
+
+  it('deduplicates scan dirs when apps share rootDir', () => {
+    const apps: AppInfo[] = [
+      { name: 'app-1', rootDir: '/project', layers: ['root', 'ui'] },
+      { name: 'app-2', rootDir: '/project', layers: ['root', 'shared'] },
+    ]
+    const plans = buildLayerScanPlan('root', apps, undefined)
     expect(plans).toHaveLength(1)
     expect(plans[0].dir).toBe('/project')
   })
 
-  it('excludes alias layer from sibling exclusion when includeParentLayer=true', () => {
-    const dirsWithAlias = [
-      { layer: 'root', layerRootDir: '/project' },
-      { layer: 'app-shop', layerRootDir: '/project/app-shop' },
-      { layer: 'app-admin', layerRootDir: '/project/app-admin' },
-      { layer: 'app-outlook', layerRootDir: '/project/app-outlook', aliasOf: 'app-shop' },
+  it('monorepo nested — shared layer scans all consumer apps', () => {
+    const apps: AppInfo[] = [
+      { name: 'app-1', rootDir: '/shared/app-1', layers: ['app-1', 'app-shared'] },
+      { name: 'app-2', rootDir: '/shared/app-2', layers: ['app-2', 'app-shared'] },
     ]
-    const plans = buildLayerScanPlan(dirsWithAlias[1], dirsWithAlias, undefined, true)
-    expect(plans).toHaveLength(3)
-    expect(plans[0].dir).toBe('/project/app-shop')
-    expect(plans[1].dir).toBe('/project/app-outlook')
-    expect(plans[2].dir).toBe('/project')
-    expect(plans[2].excludeDirs).toContain('app-admin')
-    expect(plans[2].excludeDirs).not.toContain('app-outlook')
-    expect(plans[2].excludeDirs).not.toContain('app-shop')
+    const plans = buildLayerScanPlan('app-shared', apps, undefined)
+    expect(plans).toHaveLength(2)
+  })
+
+  it('falls back to all apps when layer not in graph', () => {
+    const apps: AppInfo[] = [
+      { name: 'app-1', rootDir: '/mono/app-1', layers: ['app-1'] },
+    ]
+    const plans = buildLayerScanPlan('unknown-layer', apps, undefined)
+    expect(plans).toHaveLength(1)
+    expect(plans[0].dir).toBe('/mono/app-1')
   })
 })

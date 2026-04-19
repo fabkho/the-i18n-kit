@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { readdir, readFile, realpath } from 'node:fs/promises'
 import { resolve, relative } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
-import type { I18nConfig, LocaleDefinition, LocaleDir } from '../../config/types'
+import type { I18nConfig, LocaleDefinition, LocaleDir, AppInfo } from '../../config/types'
 import { findNuxtConfig, discoverNuxtApps, deriveLayerName } from '../../config/discovery'
 import { loadKit } from '../../config/nuxt-loader'
 import { loadProjectConfig } from '../../config/project-config'
@@ -53,6 +53,9 @@ export class NuxtAdapter implements FrameworkAdapter {
       const config = await loadSingleApp(appDirs[0], projectDir)
       if (appDirs[0] !== projectDir) {
         config.rootDir = projectDir
+        if (config.apps.length > 0) {
+          config.apps[0].rootDir = projectDir
+        }
       }
       log.info(`Detected ${config.locales.length} locales, ${config.localeDirs.length} locale directories`)
       return config
@@ -114,6 +117,7 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
   const allLocaleDirs: LocaleDir[] = []
   const allLocales: LocaleDefinition[] = []
   const allLayerRootDirs: string[] = []
+  const allApps: AppInfo[] = []
   const seenLocalePaths = new Map<string, { layer: string, layerRootDir: string }>()
   const seenLocaleCodes = new Set<string>()
   const usedLayerNames = new Set<string>()
@@ -189,6 +193,10 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
         allLayerRootDirs.push(rootDir)
       }
     }
+
+    for (const appInfo of appConfig.apps) {
+      allApps.push(appInfo)
+    }
   }
 
   if (allLocaleDirs.length === 0) {
@@ -206,6 +214,7 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
     localeDirs: allLocaleDirs,
     layerRootDirs: allLayerRootDirs,
     projectConfig: projectConfig ?? undefined,
+    apps: allApps,
   }
 }
 
@@ -259,6 +268,11 @@ async function extractI18nConfig(
     layerRootDirs.push(appDir)
   }
 
+  const usedLayerNamesForApp = new Set<string>()
+  const appLayerNames = layers.map(l => deriveLayerName(l.config.rootDir, discoveryRoot, usedLayerNamesForApp))
+  const appName = deriveLayerName(appDir, discoveryRoot, new Set())
+  const appInfo: AppInfo = { name: appName, rootDir: appDir, layers: appLayerNames }
+
   return {
     rootDir: appDir,
     defaultLocale,
@@ -267,6 +281,7 @@ async function extractI18nConfig(
     localeDirs,
     layerRootDirs,
     projectConfig: projectConfig ?? undefined,
+    apps: [appInfo],
   }
 }
 

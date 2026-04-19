@@ -76,6 +76,7 @@ export function createPlaygroundConfig(): I18nConfig {
     ],
     layerRootDirs: [playgroundDir],
     projectConfig: structuredClone(projectConfig),
+    apps: [{ name: 'root', rootDir: playgroundDir, layers: ['root'] }],
   }
 }
 
@@ -98,6 +99,7 @@ export function createMonorepoConfig(): I18nConfig {
     ],
     layerRootDirs: [playgroundDir],
     projectConfig: structuredClone(projectConfig),
+    apps: [{ name: 'playground', rootDir: playgroundDir, layers: ['playground'] }],
   }
 }
 export function createAppAdminConfig(): I18nConfig {
@@ -120,5 +122,8 @@ export function createAppAdminConfig(): I18nConfig {
     ],
     layerRootDirs: [appAdminDir, playgroundDir],
     projectConfig: structuredClone(projectConfig),
+    apps: [
+      { name: 'root', rootDir: appAdminDir, layers: ['root', 'playground'] },
+    ],
   }
 }

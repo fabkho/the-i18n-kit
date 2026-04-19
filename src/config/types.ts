@@ -28,6 +28,15 @@ export interface LocaleDir {
   aliasOf?: string
 }
 
+export interface AppInfo {
+  /** App name (e.g., 'app-admin', 'root') */
+  name: string
+  /** Absolute path to the app's root directory */
+  rootDir: string
+  /** Layer names this app consumes (from _layers) */
+  layers: string[]
+}
+
 /**
  * Project-specific configuration from `.i18n-mcp.json`.
  * All fields are optional — the server passes them to the agent as-is.
@@ -55,8 +64,6 @@ export interface ProjectConfig {
   orphanScan?: Record<string, {
     /** Glob patterns for translation keys to exclude from orphan detection (e.g., "common.datetime.months.*"). */
     ignorePatterns?: string[]
-    /** When true, also scan the parent (root) layer's source code for key usage. Useful in monorepos with shared root code. */
-    includeParentLayer?: boolean
   }>
   /** Default output directory for diagnostic tool reports. Set to true for '.i18n-reports/', or a string for a custom relative path. */
   reportOutput?: string | boolean
@@ -101,4 +108,6 @@ export interface I18nConfig {
   projectConfig?: ProjectConfig
   /** Locale file format used by this project (default: 'json') */
   localeFileFormat?: LocaleFileFormat
+  /** Discovered apps and their layer dependencies. Used for orphan scan scope. */
+  apps: AppInfo[]
 }

@@ -93,6 +93,7 @@ export class LaravelAdapter implements FrameworkAdapter {
       layerRootDirs: [projectDir],
       projectConfig: projectConfig ?? undefined,
       localeFileFormat: 'php-array',
+      apps: [{ name: 'root', rootDir: projectDir, layers: ['root'] }],
     }
   }
 }
