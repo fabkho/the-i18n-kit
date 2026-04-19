@@ -332,12 +332,25 @@ export function buildLayerScanPlan(
   const scannedDirs = new Set<string>()
   const plans: LayerScanPlan[] = []
 
+  const layerRootDirs = new Map<string, string>()
+  for (const app of apps) {
+    layerRootDirs.set(app.name, app.rootDir)
+  }
+
   for (const appName of consumerAppNames) {
     const app = apps.find(a => a.name === appName)
     if (!app) continue
-    if (scannedDirs.has(app.rootDir)) continue
-    scannedDirs.add(app.rootDir)
-    plans.push({ dir: app.rootDir, excludeDirs: baseExclude })
+    if (!scannedDirs.has(app.rootDir)) {
+      scannedDirs.add(app.rootDir)
+      plans.push({ dir: app.rootDir, excludeDirs: baseExclude })
+    }
+    for (const depLayer of app.layers) {
+      const depApp = apps.find(a => a.name === depLayer)
+      if (!depApp) continue
+      if (scannedDirs.has(depApp.rootDir)) continue
+      scannedDirs.add(depApp.rootDir)
+      plans.push({ dir: depApp.rootDir, excludeDirs: baseExclude })
+    }
   }
 
   if (plans.length === 0) {
