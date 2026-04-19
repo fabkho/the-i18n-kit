@@ -11,3 +11,5 @@ dist/
 coverage/
 tmp/
 .tmp-*
+battle-*.ts
+tests/battle-*.test.ts
