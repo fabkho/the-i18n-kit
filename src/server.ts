@@ -20,7 +20,7 @@ import {
   renameNestedKey,
   validateTranslationValue,
 } from './io/key-operations.js'
-import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from './scanner/code-scanner.js'
+import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig, findMisplacedKeysForConfig } from './scanner/code-scanner.js'
 import { getPatternSet } from './scanner/patterns.js'
 import { log } from './utils/logger.js'
 import { ToolError } from './utils/errors.js'
@@ -1885,6 +1885,105 @@ export function createServer(): McpServer {
         }
       } catch (error) {
         return toolErrorResponse('finding orphan keys', error)
+      }
+    },
+  )
+
+  // ─── find_misplaced_keys ────────────────────────────────────────
+
+  server.registerTool(
+    'find_misplaced_keys',
+    {
+      title: 'Find Misplaced Translation Keys',
+      description:
+        'Detect translation keys living in the wrong layer. Flags keys in child layers used by root/other apps (should move to root), and keys in root used by only one child app (should move to that child). Requires a multi-layer project (e.g., Nuxt monorepo).',
+      inputSchema: {
+        locale: z
+          .string()
+          .optional()
+          .describe('Locale code to read translation keys from (e.g., "en", "en-US"). Defaults to the project default locale.'),
+        excludeDirs: z
+          .array(z.string())
+          .optional()
+          .describe('Directory names to skip when scanning source files. Example: ["storybook", "__tests__", "node_modules"].'),
+        ignorePatterns: z
+          .array(z.string())
+          .optional()
+          .describe('Glob patterns for keys to skip. Use * for single segment, ** for multiple. Example: ["common.datetime.**"].'),
+        projectDir: z
+          .string()
+          .optional()
+          .describe('Absolute path to the project root. Defaults to server cwd.'),
+      },
+    },
+    async ({ locale, excludeDirs, ignorePatterns, projectDir }) => {
+      try {
+        const dir = projectDir ?? process.cwd()
+        const config = await detectI18nConfig(dir)
+
+        if (config.apps.length <= 1) {
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify({ misplacedKeys: [], summary: { total: 0, message: 'Misplaced key detection requires a multi-layer project (e.g., Nuxt monorepo). This project has a single app.' } }, null, 2) }],
+          }
+        }
+
+        const localeCode = locale ?? config.defaultLocale
+        const localeDef = findLocale(config, localeCode)
+        if (!localeDef) {
+          throw new ToolError(
+            `Locale not found: "${localeCode}". Available: ${config.locales.map(l => l.code).join(', ')}`,
+            'LOCALE_NOT_FOUND',
+          )
+        }
+
+        const layersToCheck = config.localeDirs.filter(d => !d.aliasOf)
+        const keysByLayer = new Map<string, { keys: string[]; localeDir: { layer: string } }>()
+        for (const localeDir of layersToCheck) {
+          let data: Record<string, unknown>
+          try {
+            data = await readLocaleData(config, localeDir.layer, localeDef)
+          } catch {
+            continue
+          }
+          if (Object.keys(data).length === 0) continue
+          keysByLayer.set(localeDir.layer, { keys: getLeafKeys(data), localeDir })
+        }
+
+        const resolveIgnore = (layerName: string): string[] | undefined => {
+          const base = resolveOrphanIgnorePatterns(config, layerName)
+          if (!ignorePatterns && !base) return undefined
+          return [...(base ?? []), ...(ignorePatterns ?? [])]
+        }
+
+        const result = await findMisplacedKeysForConfig({
+          keysByLayer,
+          apps: config.apps,
+          excludeDirs: excludeDirs || undefined,
+          resolveIgnorePatterns: resolveIgnore,
+          patterns: getPatternSet(config.localeFileFormat),
+        })
+
+        const output = {
+          misplacedKeys: result.misplacedKeys,
+          summary: result.summary,
+        }
+
+        const reportPath = resolveReportFilePath(config, dir, 'find_misplaced_keys')
+        if (reportPath) {
+          await writeReportFile(reportPath, output, {
+            tool: 'find_misplaced_keys',
+            args: { locale, excludeDirs, ignorePatterns },
+          })
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify({ reportFile: reportPath, summary: output.summary }, null, 2) }],
+          }
+        }
+
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
+        }
+      } catch (error) {
+        return toolErrorResponse('finding misplaced keys', error)
       }
     },
   )

@@ -449,6 +449,145 @@ export interface OrphanScanResult {
   unresolvedKeyWarnings: UnresolvedKeyWarning[]
 }
 
+// ─── Misplaced Key Detection ────────────────────────────────────
+
+export interface MisplacedKeyEntry {
+  key: string
+  currentLayer: string
+  suggestedLayer: string
+  usedIn: string[]
+}
+
+export interface MisplacedKeysResult {
+  misplacedKeys: MisplacedKeyEntry[]
+  summary: {
+    total: number
+    moveToRoot: number
+    moveToChild: number
+    byCurrentLayer: Record<string, number>
+  }
+}
+
+export interface MisplacedKeysScanOptions {
+  keysByLayer: Map<string, { keys: string[]; localeDir: { layer: string } }>
+  apps: AppInfo[]
+  excludeDirs?: string[]
+  resolveIgnorePatterns: (layerName: string) => string[] | undefined
+  patterns?: ScanPatternSet
+}
+
+/**
+ * Detect translation keys that live in the wrong layer.
+ * - Child → Root: key in child layer but used from root or multiple apps
+ * - Root → Child: key in root layer but only used from a single child app
+ */
+export async function findMisplacedKeysForConfig(options: MisplacedKeysScanOptions): Promise<MisplacedKeysResult> {
+  const { keysByLayer, apps, excludeDirs, resolveIgnorePatterns, patterns } = options
+
+  if (apps.length <= 1) {
+    return { misplacedKeys: [], summary: { total: 0, moveToRoot: 0, moveToChild: 0, byCurrentLayer: {} } }
+  }
+
+  // Scan all app directories
+  const scanCache = await scanAllApps(apps, excludeDirs, patterns)
+
+  // Build per-app key usage: for each app, which keys does its source code reference?
+  const appKeyUsage = new Map<string, Set<string>>()
+  for (const app of apps) {
+    const result = scanCache.get(app.rootDir)
+    if (!result) continue
+    appKeyUsage.set(app.name, result.uniqueKeys)
+  }
+
+  // Also track bare string matches per app (keys referenced as dotted strings outside t() calls)
+  const appBareStrings = new Map<string, Set<string>>()
+  for (const app of apps) {
+    const result = scanCache.get(app.rootDir)
+    if (!result) continue
+    appBareStrings.set(app.name, result.bareStringCandidates)
+  }
+
+  // Find the root layer name (the layer that other apps depend on)
+  const rootApp = apps.find(a => {
+    // Root is the app that appears as a dependency of other apps
+    return apps.some(other => other.layers.includes(a.name))
+  })
+  const rootLayerName = rootApp?.name ?? apps[0].name
+
+  const misplacedKeys: MisplacedKeyEntry[] = []
+
+  for (const [layerName, { keys }] of keysByLayer) {
+    const ignorePatterns = resolveIgnorePatterns(layerName)
+    const ignoreRegexes = ignorePatterns ? buildIgnorePatternRegexes(ignorePatterns) : []
+
+    for (const key of keys) {
+      // Skip ignored keys
+      if (ignoreRegexes.length > 0 && ignoreRegexes.some(re => re.test(key))) continue
+
+      // Determine which apps use this key
+      const usedByApps: string[] = []
+      for (const app of apps) {
+        const directKeys = appKeyUsage.get(app.name)
+        const bareStrings = appBareStrings.get(app.name)
+        if (directKeys?.has(key) || bareStrings?.has(key)) {
+          usedByApps.push(app.name)
+        }
+      }
+
+      // If no app uses the key, skip (it's an orphan, not misplaced)
+      if (usedByApps.length === 0) continue
+
+      const isInRoot = layerName === rootLayerName
+      const isUsedByMultipleApps = usedByApps.length > 1
+      const isUsedByRoot = usedByApps.includes(rootLayerName)
+
+      if (isInRoot) {
+        // Root → Child: key in root but used by only one child app (not root itself)
+        if (!isUsedByMultipleApps && !isUsedByRoot) {
+          misplacedKeys.push({
+            key,
+            currentLayer: layerName,
+            suggestedLayer: usedByApps[0],
+            usedIn: usedByApps,
+          })
+        }
+      } else {
+        // Child → Root: key in child layer but used from root or other apps
+        const isUsedOutsideOwnLayer = usedByApps.some(a => a !== layerName)
+        if (isUsedOutsideOwnLayer) {
+          misplacedKeys.push({
+            key,
+            currentLayer: layerName,
+            suggestedLayer: rootLayerName,
+            usedIn: usedByApps,
+          })
+        }
+      }
+    }
+  }
+
+  misplacedKeys.sort((a, b) => a.currentLayer.localeCompare(b.currentLayer) || a.key.localeCompare(b.key))
+
+  const moveToRoot = misplacedKeys.filter(m => m.suggestedLayer === rootLayerName).length
+  const moveToChild = misplacedKeys.length - moveToRoot
+  const byCurrentLayer: Record<string, number> = {}
+  for (const m of misplacedKeys) {
+    byCurrentLayer[m.currentLayer] = (byCurrentLayer[m.currentLayer] ?? 0) + 1
+  }
+
+  return {
+    misplacedKeys,
+    summary: {
+      total: misplacedKeys.length,
+      moveToRoot,
+      moveToChild,
+      byCurrentLayer,
+    },
+  }
+}
+
+// ─── Orphan Key Detection ───────────────────────────────────────
+
 export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promise<OrphanScanResult> {
   const { keysByLayer, apps, scanDirs, excludeDirs, resolveIgnorePatterns, patterns } = options
 
