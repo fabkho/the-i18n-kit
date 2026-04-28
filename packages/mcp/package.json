@@ -8,7 +8,7 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fabkho/the-i18n-mcp.git",
+    "url": "git+https://github.com/fabkho/the-i18n-kit.git",
     "directory": "packages/mcp"
   },
   "bin": {
