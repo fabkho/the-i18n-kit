@@ -1,60 +1,33 @@
-# the-i18n-mcp
+# the-i18n-kit
 
-[![npm version][npm-version-src]][npm-version-href]
-[![npm downloads][npm-downloads-src]][npm-downloads-href]
-[![License][license-src]][license-href]
-[![CI][ci-src]][ci-href]
+[![CI](https://github.com/fabkho/the-i18n-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/fabkho/the-i18n-kit/actions/workflows/ci.yml)
+[![License](https://img.shields.io/npm/l/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
 
-An MCP server **and CLI** for managing i18n translation files — read, write, search, rename, and remove translation keys across all locales and layers without dumping entire files into context.
+Toolkit for managing i18n translation files — read, write, search, rename, and remove translation keys across all locales and layers. Supports Nuxt, Laravel, and any project with JSON or PHP locale files.
 
-Point it at any project with JSON or PHP locale files and it auto-detects your framework (or reads explicit config), discovers monorepo structures, and handles the file I/O. Use it as an **MCP server** for AI agents or as a **standalone CLI** in scripts and CI pipelines.
+## Packages
 
-### Why this exists
+| Package | Version | Description |
+|---------|---------|-------------|
+| [**the-i18n-cli**](./packages/cli) | [![npm](https://img.shields.io/npm/v/the-i18n-cli?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-cli) | CLI and core library — globally installable |
+| [**the-i18n-mcp**](./packages/mcp) | [![npm](https://img.shields.io/npm/v/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-mcp) | MCP server for AI agents |
 
-Managing translations with an AI agent sounds simple until you have 30 locales, 6 layers, and 4,000 keys. Pasting locale files into chat doesn't scale. This server exposes 15 purpose-built tools that let the agent work surgically — touching only the keys it needs.
+### CLI
 
-### What you get out of the box
+```bash
+npm install -g the-i18n-cli
 
-- **Auto-translate entire locales** — `translate_missing` batches keys to an LLM via MCP sampling, writes results back, and shows a progress bar. 1,000+ keys across 13 locales in minutes, not hours.
-- **Add a new language in one shot** — the `add-language` prompt walks your agent through config updates, file scaffolding, and bulk translation end-to-end.
-- **Safe, atomic writes** — every file write goes through a temp file + rename cycle. Indentation is preserved, keys are kept alphabetically sorted, and `{placeholders}` / `@:linked` refs are validated before writing.
-- **Smart caching** — config detection and file reads are mtime-cached. Writes invalidate automatically. Repeated tool calls are fast.
-- **Monorepo & layer-aware** — discovers all Nuxt apps and layers under a project root. Each layer's locale directory is a first-class citizen with its own tools scope.
-- **Framework-agnostic tooling** — same 15 tools work for both Nuxt (JSON) and Laravel (PHP arrays). Auto-detection means zero config for most projects.
-- **Project-aware translations** — drop a `.i18n-mcp.json` with your glossary, tone rules, and per-locale notes. The agent uses them in every translation request.
-- **Dead key cleanup** — find orphan keys not referenced in source code, see exactly where keys are used, and bulk-remove unused translations in one step.
-
-> **Migrating from `nuxt-i18n-mcp`?** The old package name still works — both `npx the-i18n-mcp` and `npx nuxt-i18n-mcp` point to the same server. No breaking changes.
-
-## Supported Frameworks
-
-| Framework | Locale Format | Auto-Detection | Config Source |
-|-----------|--------------|----------------|---------------|
-| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` | `@nuxt/kit` (optional peer dep) |
-| **Laravel** (9+) | PHP arrays | `artisan`, `composer.json`, `lang/` directory | Built-in |
-| **Generic** (any JS/PHP project) | JSON or PHP arrays | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` | Built-in |
-
-The server detects your framework automatically based on project structure. For projects that aren't Nuxt or Laravel (React, Vue, Next.js, Symfony, WordPress, etc.), add `localeDirs` and `defaultLocale` to your `.i18n-mcp.json` and all 15 tools work immediately:
-
-```json
-{
-  "defaultLocale": "en",
-  "localeDirs": ["src/locales"]
-}
+the-i18n-cli detect                    # Auto-detect project config
+the-i18n-cli missing                   # Find missing translations
+the-i18n-cli search --query "save"     # Search keys and values
+the-i18n-cli cleanup                   # Find orphan keys (dry-run by default)
 ```
 
-You can also force a specific adapter via `"framework": "generic"`, `"framework": "laravel"`, or `"framework": "nuxt"` in `.i18n-mcp.json`.
+→ [Full CLI documentation](./packages/cli/README.md)
 
-## Quick Start
+### MCP Server
 
-### As an MCP server
-
-No install needed — your MCP host runs the server via `npx`.
-
-<details>
-<summary><strong>VS Code / Cursor</strong></summary>
-
-Add to `.vscode/mcp.json`:
+Add to your MCP host (VS Code, Cursor, Claude Desktop, Zed):
 
 ```json
 {
@@ -68,572 +41,94 @@ Add to `.vscode/mcp.json`:
 }
 ```
 
-</details>
-
-<details>
-<summary><strong>Zed</strong></summary>
-
-Add to `.zed/settings.json`:
-
-```json
-{
-  "context_servers": {
-    "the-i18n-mcp": {
-      "command": "npx",
-      "args": ["the-i18n-mcp@latest"]
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>Claude Desktop</strong></summary>
-
-Add to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "the-i18n-mcp": {
-      "command": "npx",
-      "args": ["the-i18n-mcp@latest"]
-    }
-  }
-}
-```
-
-</details>
-
-### 2. Ask your agent
-
-That's it — no configuration needed. The server auto-detects your project structure, locales, and layers. Just ask:
-
-> *"Add a 'save changes' button translation in all locales"*
->
-> *"Find and fix all missing translations in the admin layer"*
->
-> *"Rename `common.actions.delete` to `common.actions.remove` across all locales"*
->
-> *"Add Swedish as a new language and translate everything"*
-
-### As a CLI
-
-The same operations are available as CLI commands — useful for CI pipelines, scripts, or quick terminal checks.
-
-```bash
-# Install globally or use npx
-npx the-i18n-mcp detect                          # Auto-detect project config
-npx the-i18n-mcp missing                         # Find missing translations
-npx the-i18n-mcp search --query "save"            # Search keys and values
-npx the-i18n-mcp add --layer root --translations '{"common.btn.ok": {"en": "OK", "de": "OK"}}'
-npx the-i18n-mcp cleanup                          # Find orphan keys (dry-run by default)
-npx the-i18n-mcp serve                            # Start MCP server explicitly
-```
-
-Run `npx the-i18n-mcp --help` for all commands, or `npx the-i18n-mcp <command> --help` for per-command options.
-
-**All commands:**
-
-| Command | Description |
-|---------|-------------|
-| `detect` | Auto-detect i18n configuration |
-| `list-dirs` | List locale directories by layer |
-| `get` | Read translation values |
-| `add` | Add new translation keys |
-| `update` | Update existing keys |
-| `missing` | Find keys missing in target locales |
-| `empty` | Find keys with empty values |
-| `search` | Search keys and values |
-| `remove` | Remove keys from all locales |
-| `rename` | Rename/move a key |
-| `translate` | Get translation contexts for missing keys |
-| `orphans` | Find keys not referenced in source code |
-| `scan` | Find where keys are used in code |
-| `cleanup` | Remove unused keys (dry-run by default) |
-| `scaffold` | Create empty locale files for new languages |
-| `serve` | Start MCP server on stdio |
-
-**Common flags:** `-d, --projectDir <dir>` (project directory), `--json` (JSON output), `--dryRun` (preview changes).
-
-## Typical Workflows
-
-### Day-to-day translation maintenance
-
-```
-1. detect_i18n_config        → understand project structure, locales, layers
-2. list_locale_dirs           → see available layers with file counts and key namespaces
-3. get_missing_translations   → find gaps between reference locale and targets
-4. add_translations           → add new keys (requires layer param)
-   translate_missing          → auto-translate missing keys via MCP sampling
-5. find_orphan_keys           → find keys not referenced in source code
-   cleanup_unused_translations → remove orphan keys in one step
-```
-
-Always call `detect_i18n_config` first — all other tools depend on the detected config.
-
-### Adding a new language
-
-Use the `add-language` prompt for a guided workflow, or do it manually:
-
-```
-1. Add the locale to your framework config (nuxt.config.ts or config/app.php)
-2. scaffold_locale            → create empty locale files with key structure from default locale
-3. translate_missing          → auto-translate all keys from the reference locale
-4. get_missing_translations   → verify zero gaps remain
-```
-
-`scaffold_locale` copies every key from your default locale and sets all values to `""`. This gives `translate_missing` the complete key set to work with.
-
-## Tools
-
-Every write tool requires a `layer` parameter (e.g., `"root"`, `"app-admin"`, `"lang"`). Use `list_locale_dirs` to discover available layers.
-
-| Tool | Description |
-|------|-------------|
-| `detect_i18n_config` | Auto-detects framework (Nuxt or Laravel), returns locales, layers, directories, and project config. **Call first.** |
-| `list_locale_dirs` | Lists locale directories grouped by layer, with file counts and top-level key namespaces |
-| `get_translations` | Reads values for dot-path keys from a locale/layer. Use `"*"` as locale for all locales |
-| `add_translations` | Adds new keys to a **layer** across locales. Fails if key already exists. Supports `dryRun` |
-| `update_translations` | Updates existing keys in a **layer**. Fails if key doesn't exist. Supports `dryRun` |
-| `remove_translations` | Removes keys from ALL locale files in a **layer**. Supports `dryRun` |
-| `rename_translation_key` | Renames/moves a key across all locales in a **layer**. Conflict detection + `dryRun` |
-| `get_missing_translations` | Finds keys present in reference locale but missing/empty in targets. `""` counts as missing |
-| `find_empty_translations` | Finds keys with empty string values. Checks each locale independently |
-| `search_translations` | Searches by key pattern or value substring across layers and locales |
-| `translate_missing` | Auto-translates via MCP sampling (batches of 50 keys by default), or returns context for inline translation when sampling is unavailable. Supports `batchSize` override. Each locale writes to its own file — parallel calls targeting different locales are safe |
-| `find_orphan_keys` | Finds keys not referenced in source code. Keys overlapping unresolved dynamic patterns are reported separately as uncertain. Scans Vue/TS for Nuxt, Blade/PHP for Laravel |
-| `scan_code_usage` | Shows where keys are used — file paths, line numbers, call patterns |
-| `cleanup_unused_translations` | Finds orphan keys + removes them in one step. **Dry-run by default** (`dryRun: true`) — pass `dryRun: false` to actually delete. Uncertain keys (overlapping dynamic patterns) are excluded from removal and listed separately |
-| `scaffold_locale` | Creates empty locale files for new languages. Copies key structure from default locale with all values set to `""`. Supports JSON (Nuxt) and PHP (Laravel) |
-
-### Prompts
-
-| Prompt | Description |
-|--------|-------------|
-| `add-feature-translations` | Guided workflow for adding translations when building a new feature. Accepts optional `layer` and `namespace` |
-| `fix-missing-translations` | Find and fix all missing translations across the project. Accepts optional `layer` |
-| `add-language` | Add a new language end-to-end: update framework config, scaffold locale files, translate all keys, and verify. Requires `language` (e.g., `"Swedish"`, `"sv"`) |
-
-### Resources
-
-| Resource | Description |
-|----------|-------------|
-| `i18n:///{layer}/{locale}` | Read a locale's translations for a specific layer (e.g., `i18n:///root/en-US`) |
-
-## Framework-Specific Details
-
-### Nuxt
-
-- Auto-detects `nuxt.config.ts` with `@nuxtjs/i18n` via `@nuxt/kit`
-- Supports monorepos: discovers all Nuxt apps under the given `projectDir`
-- Supports Nuxt layers: each layer's locale directory becomes a separate layer
-- Requires `@nuxt/kit` as a peer dependency (already present in Nuxt projects)
-- Scans `.vue`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.mts` for `$t()`, `t()`, `this.$t()`, `$te()`, `this.$te()`
-
-### Laravel
-
-- Auto-detects Laravel projects via `artisan`, `composer.json`, or `lang/` directory
-- Supports both `lang/` (Laravel 9+) and `resources/lang/` (legacy) layouts
-- Reads and writes PHP array locale files (`return ['key' => 'value'];`)
-- No additional dependencies required — works out of the box
-- Scans `.blade.php` and `.php` for `__()`, `trans()`, `trans_choice()`, `Lang::get()`, `@lang()`
-- Uses `:placeholder` syntax (not `{placeholder}`) — reflect this in your `translationPrompt` and `examples`
-
-### Generic (Any Project)
-
-- Works with any JS or PHP project: React, Vue, Next.js, Symfony, WordPress, custom setups
-- Requires `localeDirs` and `defaultLocale` in `.i18n-mcp.json`
-- Auto-discovers locales from filenames on disk (`en.json` → `"en"`, `de/` → `"de"`)
-- Auto-detects file format: flat JSON files (`en.json`), directory-per-locale JSON (`en/common.json`), or directory-per-locale PHP (`en/messages.php`)
-- Optionally restrict locales via an explicit `"locales"` array
-- Supports multiple locale directories with named layers:
-  ```json
-  {
-    "defaultLocale": "en",
-    "localeDirs": [
-      { "path": "packages/ui/locales", "layer": "ui" },
-      { "path": "packages/app/locales", "layer": "app" }
-    ]
-  }
-  ```
-- Single directory entries use `"default"` as the layer name
-- Activates implicitly when config fields are present — no `"framework": "generic"` needed (though it works as an explicit override)
-
-## Monorepo Support (Nuxt)
-
-The server discovers all Nuxt apps with i18n configuration under the given `projectDir`. Pass the monorepo root and it walks the directory tree, finds every `nuxt.config.ts` with i18n settings, loads each app via `@nuxt/kit`, and merges the results. Each app's locale directories become separate layers.
-
-```
-monorepo/
-├── apps/
-│   ├── shop/          ← discovered, becomes "shop" layer
-│   │   └── nuxt.config.ts (has i18n)
-│   └── admin/         ← discovered, becomes "admin" layer
-│       └── nuxt.config.ts (has i18n)
-├── packages/
-│   └── shared/        ← skipped, no nuxt.config with i18n
-└── package.json
-```
-
-Flat layouts work too — `app-shop/` and `app-admin/` at the project root are discovered the same way. Discovery stops descending into a directory once it finds a `nuxt.config` — nested Nuxt layers are loaded by `@nuxt/kit` automatically.
-
-## How Orphan Detection Works
-
-`find_orphan_keys` and `cleanup_unused_translations` use a multi-strategy approach to determine whether a translation key is referenced in source code. A key is only reported as an orphan if **none** of the strategies find a match.
-
-### Strategy 1: Direct call detection
-
-Scans for explicit i18n function calls on a single line:
-
-| Framework | Patterns |
-|-----------|----------|
-| **Nuxt/Vue** | `$t('key')`, `t('key')`, `this.$t('key')`, `$te('key')`, `this.$te('key')` |
-| **Laravel** | `__('key')`, `trans('key')`, `trans_choice('key', n)`, `Lang::get('key')`, `@lang('key')` |
-
-Backtick literals without interpolation are promoted to static matches: `` t(`common.actions.save`) `` is treated the same as `t('common.actions.save')`.
-
-### Strategy 2: Bare string matching
-
-Extracts **all** quoted strings containing at least one dot from source files (e.g., `'common.actions.save'`), regardless of whether they appear inside a `t()` call. These are intersected with known translation keys — if a key appears as a dotted string anywhere in the codebase, it's considered used.
-
-This catches keys referenced in data structures, config objects, or passed as variables:
-
-```ts
-// All detected via bare string matching — no t() call needed
-const columns = [{ label: 'common.actions.save', i18n: true }]
-const key = 'pages.dashboard.title'
-```
-
-### Strategy 3: Dynamic key detection (template literals)
-
-Scans for template literals with `${...}` interpolation inside `t()` / `$t()` calls. Converts them to regex patterns and matches against all known keys:
-
-```ts
-t(`common.metrics.${metric}`)  // → matches common.metrics.revenue, common.metrics.bookings, etc.
-t(`${prefix}.items.${id}.label`)  // → matches shop.items.42.label, admin.items.abc.label, etc.
-```
-
-### Strategy 4: Bare dynamic candidate matching
-
-Extracts **all** template literals containing at least one dot and `${...}` interpolation from source files, regardless of `t()` context. Like bare string matching, these are optimistically treated as potential i18n patterns and matched against known keys.
-
-This catches dynamic keys that are split across lines by formatters like Prettier, or used outside direct `t()` calls:
-
-```vue
-<!-- Prettier wraps long $t() calls — template literal is on a separate line -->
-this.$t(
-  `common.components.plans.trialPeriod.${interval}`
-)
-
-<!-- Dynamic keys in data structures -->
-const keyPattern = `pages.${section}.title`
-```
-
-### Strategy 5: Ignore patterns
-
-Keys matching glob patterns in `orphanScan.ignorePatterns` (from `.i18n-mcp.json`) are excluded:
-
-```json
-{
-  "orphanScan": {
-    "root": {
-      "ignorePatterns": ["common.datetime.**", "common.countries.*"]
-    }
-  }
-}
-```
-
-- `**` matches any number of dot-separated segments
-- `*` matches exactly one segment
-
-### Unresolved key warnings
-
-When the scanner encounters a dynamic translation call it cannot fully resolve (e.g., `__("integrations.${$type}.description")`), it includes an `unresolvedKeyWarnings` array in the output. Each warning shows the source location and suggests an `ignorePatterns` entry:
-
-```json
-{
-  "expression": "`integrations.${_}.description`",
-  "file": "app/Integrations/AbstractManifest.php",
-  "line": 17,
-  "callee": "__",
-  "suggestedIgnorePattern": "integrations.**"
-}
-```
-
-Orphan keys whose prefix matches an unresolved warning are moved to a separate `uncertainKeys` section and **excluded from deletion** by `cleanup_unused_translations`. This prevents false-positive removals. You can review the uncertain keys and ask the agent to remove them explicitly if they are truly unused.
-
-### Monorepo layer scoping
-
-The scanner automatically determines the correct scan scope for each layer using a consumer graph. For each layer, it identifies all apps that consume it (via Nuxt's `_layers`) and scans their source directories. Shared layers consumed by multiple apps are checked against all consumers' code — no manual configuration needed.
-
-### Battle-tested structures
-
-Orphan detection has been validated against real production codebases:
-
-| Structure | Details | Keys | Orphans | Uncertain | False Positives |
-|-----------|---------|------|---------|-----------|-----------------|
-| **Nuxt monorepo** | 7 apps, 30 locales, nested layers | 7,032 | 1,057 | 0 | 0 (all 124 checked) |
-| **Laravel API** | 31 locales, PHP array files | 2,086 | 98 | 26 | 0 (all 124 checked) |
-
-The consumer graph correctly scopes shared layers — a root layer used by 7 apps is scanned against all 7 app directories. App-specific layers are scanned against their own directory plus any parent layers they depend on.
-
-## Orphan Detection Limitations
-
-### String concatenation
-
-Keys constructed via `t('prefix.' + var + '.suffix')` will be incorrectly reported as orphans. Only template literals and PHP double-quoted string interpolation are supported.
-
-**Mitigation:** Enable ESLint's built-in [`prefer-template`](https://eslint.org/docs/latest/rules/prefer-template) rule to auto-fix concatenation to template literals across your codebase:
-
-```json
-{ "prefer-template": "error" }
-```
-
-If you need a rule scoped specifically to i18n calls (`t()`, `$t()`, `$te()`), no existing plugin covers this — you'll need a custom ESLint rule:
-
-<details>
-<summary><strong>Custom ESLint rule: <code>no-i18n-concat</code></strong></summary>
-
-```js
-// eslint-rules/no-i18n-concat.js
-module.exports = {
-  meta: {
-    type: 'suggestion',
-    docs: { description: 'Disallow string concatenation in i18n calls; use template literals.' },
-    messages: { noConcat: 'Use a template literal instead of string concatenation in i18n calls.' },
-  },
-  create(context) {
-    const fns = new Set(['t', '$t', '$te', '$tc', 'tc']);
-    return {
-      CallExpression(node) {
-        const c = node.callee;
-        const name = c.type === 'Identifier' ? c.name : c.type === 'MemberExpression' ? c.property.name : null;
-        if (!name || !fns.has(name)) return;
-        const arg = node.arguments[0];
-        if (arg?.type === 'BinaryExpression' && arg.operator === '+') {
-          context.report({ node: arg, messageId: 'noConcat' });
-        }
-      },
-    };
-  },
-};
-```
-
-</details>
-
-### Cross-line variable indirection
-
-The scanner does not trace data flow across variable assignments. If a translation key prefix is stored in a variable and the suffix is appended on a separate line, the children will appear as orphans:
-
-```php
-// Not detected — $key is assigned on one line, used on another
-$key = 'notifications.subscriptions.charged';
-__("{$key}.message");  // notifications.subscriptions.charged.message appears orphaned
-```
-
-**Mitigation:** Add affected key prefixes to `ignorePatterns`.
-
-### Parent key access (Laravel)
-
-`Lang::get('parent.key')` returns the entire subtree as an array, implicitly marking all children as used. The scanner detects `parent.key` as used but does not mark `parent.key.child1`, `parent.key.child2`, etc.
-
-```php
-// Scanner sees 'passport.scopes' as used, but not its children
-$scopes = Lang::get('passport.scopes');
-```
-
-**Mitigation:** Add `"passport.scopes.**"` to `ignorePatterns`.
-
-### Multi-segment dynamic placeholders
-
-Each `${variable}` or `$variable` interpolation matches exactly one dot-separated segment (`[^.]+`). Keys where a single variable spans multiple segments (e.g., `exceptions.$this->code` where `$this->code` = `access_control.duplicate_resource`) will not match correctly.
-
-**Mitigation:** Add the parent namespace to `ignorePatterns` (e.g., `"exceptions.**"`).
-
-## Model Selection for Translations
-
-`translate_missing` uses [MCP sampling](https://modelcontextprotocol.io/docs/concepts/sampling) — the host picks which LLM fulfills the request. The server sends `modelPreferences` hinting toward fast, cheap models since translation is high-volume and doesn't require frontier reasoning.
-
-> **Recommended host: VS Code.** VS Code has the most complete MCP sampling implementation — it supports `temperature`, `modelPreferences`, `systemPrompt` hoisting, and lets you restrict which models the server can use per-server via the UI. Other hosts vary in their sampling support: some ignore `modelPreferences` or don't expose model selection. If `translate_missing` behaves unexpectedly (wrong model, no temperature control), your host's sampling implementation is likely the bottleneck.
-
-**How batching works:** each batch sends up to 50 keys (configurable via `batchSize`) to the host LLM. Locales are processed sequentially within a single call — but since each locale writes to its own file, you can call `translate_missing` once per locale in parallel for faster throughput. A progress bar tracks completion across all locales and batches.
-
-**Built-in defaults** (used when no `samplingPreferences` in `.i18n-mcp.json`):
-
-| Priority | Value | Rationale |
-|----------|-------|-----------|
-| `hints` | `["flash", "haiku", "gpt-4o-mini"]` | Fastest models across providers (substring match) |
-| `speedPriority` | `0.9` | Users watch a progress bar — latency matters |
-| `costPriority` | `0.8` | Hundreds of batches add up |
-| `intelligencePriority` | `0.3` | Translation needs quality, not reasoning |
-
-Override via `samplingPreferences` in [`.i18n-mcp.json`](#project-config) if needed (e.g., to prefer a stronger model for nuanced locales).
-
-**Controlling the model in VS Code:**
-
-1. Command Palette → **MCP: List Servers** → select `the-i18n-mcp` → **Configure Model Access**
-2. Restrict to your preferred model (e.g., only Gemini 2.5 Flash)
-3. Your main chat/agent session continues using whatever model you chose — the restriction only applies to sampling requests from this MCP server
-
-> **Tip:** For large translation runs (1,000+ keys), restricting to a fast model like Gemini 2.5 Flash significantly reduces wall-clock time. A batch of 50 keys typically completes in 10–20s with Flash. You can increase `batchSize` up to 200 for fewer round trips, but larger batches risk hitting the host's request timeout. For maximum throughput, call `translate_missing` once per locale in parallel — each locale writes to its own file, so concurrent calls are safe.
-
-### Recommended workflow for large projects
-
-A single `translate_missing` call processes locales sequentially. On a project with many locales and layers, this adds up. The fastest approach is to split locales across parallel calls and tackle layers in order of size.
-
-**Step 1 — Start with your largest layer.** Split the target locales across 3–4 parallel `translate_missing` calls:
-
-```
-Call 1: layer "app-admin", targetLocales ["bg-BG", "da-DK", "el-GR"]
-Call 2: layer "app-admin", targetLocales ["et-EE", "fi-FI", "ga-IE"]
-Call 3: layer "app-admin", targetLocales ["hr-HR", "lt-LT", "lv-LV"]
-Call 4: layer "app-admin", targetLocales ["mt-MT", "sk-SK", "sl-SI", "sv-SE"]
-```
-
-Each call runs independently — different locales, different files, no conflicts.
-
-**Step 2 — Move to smaller layers.** Once the large layer finishes, translate the remaining layers. Small layers can run concurrently since each layer writes to its own directory:
-
-```
-Call 1: layer "app-shop",   targetLocales [all 13 locales]
-Call 2: layer "app-panels", targetLocales [all 13 locales]
-```
-
-**Step 3 — Verify.** Run `get_missing_translations` across all layers to confirm zero gaps.
-
-This pattern lets you translate thousands of keys across dozens of locales in minutes instead of waiting for one sequential run.
+→ [Full MCP documentation](./packages/mcp/README.md)
+
+## Supported Frameworks
+
+| Framework | Locale Format | Auto-Detection |
+|-----------|--------------|----------------|
+| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` |
+| **Laravel** (9+) | PHP arrays | `artisan`, `composer.json`, `lang/` |
+| **Generic** | JSON or PHP | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` |
 
 ## Project Config
 
-Optionally drop a `.i18n-mcp.json` at your project root to give the agent project-specific context. Everything is optional — the server passes them to the agent, which interprets the natural-language rules. The server walks up from `projectDir` to find the nearest config file (like ESLint or tsconfig resolution).
-
-For IDE autocompletion, point to the schema:
-
-```json
-{
-  "$schema": "node_modules/the-i18n-mcp/schema.json"
-}
-```
-
-| Field | Purpose |
-|-------|---------|
-| `framework` | Force framework detection: `"nuxt"`, `"laravel"`, or `"generic"`. Normally auto-detected from project structure |
-| `context` | Free-form project background (business domain, user base, brand voice) |
-| `layerRules` | Rules for which layer a new key belongs to, with natural-language `when` conditions |
-| `glossary` | Term dictionary for consistent translations |
-| `translationPrompt` | System prompt prepended to all translation requests |
-| `localeNotes` | Per-locale instructions — terminology constraints, formality, regional conventions. **Keys must match your locale codes exactly** (case-sensitive) |
-| `examples` | Few-shot translation examples demonstrating project style |
-| `orphanScan` | Per-layer config for orphan detection: `ignorePatterns` (glob patterns for keys to skip). Keys are layer names from `list_locale_dirs`. The scanner automatically determines scan scope via the consumer graph. |
-| `reportOutput` | `true` for default `.i18n-reports/` dir, or a string for a custom path. Diagnostic tools write full output to disk and return only a summary in the MCP response |
-| `samplingPreferences` | Override model preferences for `translate_missing` sampling. See [Model Selection](#model-selection-for-translations) |
-| `localeDirs` | Locale directories for the generic adapter. Array of path strings or `{ path, layer }` objects. Required (with `defaultLocale`) to activate the generic adapter |
-| `defaultLocale` | Default locale code. Required (with `localeDirs`) to activate the generic adapter |
-| `locales` | Explicit list of locale codes to operate on. If absent, auto-discovered from files on disk |
-
-### Full example
+Drop a `.i18n-mcp.json` at your project root for project-specific context:
 
 ```json
 {
   "$schema": "node_modules/the-i18n-mcp/schema.json",
-  "context": "B2B SaaS booking platform. Professional but approachable tone.",
-  "layerRules": [
-    {
-      "layer": "shared",
-      "description": "Shared translations: common.actions.*, common.messages.*",
-      "when": "The key is generic enough to be used in multiple apps"
-    },
-    {
-      "layer": "app-admin",
-      "description": "Admin dashboard translations",
-      "when": "The key is only relevant to admin functionality"
-    }
-  ],
+  "context": "B2B SaaS booking platform",
   "glossary": {
-    "Buchung": "Booking (never 'Reservation')",
-    "Ressource": "Resource (a bookable entity like a room, desk, or person)",
-    "Termin": "Appointment"
+    "Booking": "Core concept. Dutch: 'Boeking'.",
+    "Resource": "A bookable entity (room, desk, person)"
   },
-  "translationPrompt": "Use professional but approachable tone. Preserve all {placeholders} and @:linked references exactly. Keep translations concise — button labels should be 1-2 words.",
+  "translationPrompt": "Professional but approachable tone. Keep translations concise.",
   "localeNotes": {
-    "de": "Informal German (du). Standard business tone.",
-    "de-formal": "Formal German (Sie). Used by enterprise customers.",
-    "en-us": "American English. Default reference locale.",
-    "nl": "Dutch (je/jij). Informal. Resource = 'Resource' (NEVER 'Middel'). Booking = 'Boeking'.",
-    "fr": "French. Use inclusive writing where practical."
-  },
-  "examples": [
-    {
-      "key": "common.actions.save",
-      "de": "Speichern",
-      "en-us": "Save",
-      "note": "Concise, imperative"
-    },
-    {
-      "key": "bookings.status.checked_in",
-      "de": "Eingecheckt",
-      "en-us": "Checked in",
-      "note": "Past participle, not imperative"
-    }
-  ],
-  "orphanScan": {
-    "shared": {
-      "ignorePatterns": ["common.datetime.**", "common.countries.*"]
-    },
-    "app-admin": {
-      "ignorePatterns": ["admin.legacy.*"]
-    }
-  },
-  "reportOutput": true,
-  "samplingPreferences": {
-    "hints": ["sonnet", "gpt-4o"],
-    "intelligencePriority": 0.7,
-    "speedPriority": 0.5,
-    "costPriority": 0.3
+    "de": "Informal German (du)",
+    "de-formal": "Formal German (Sie)"
   }
 }
 ```
 
-See [`playground/nuxt/.i18n-mcp.json`](playground/nuxt/.i18n-mcp.json) for a working example.
+<details>
+<summary><strong>All config options</strong></summary>
 
-## Roadmap
+| Field | Purpose |
+|-------|---------|
+| `framework` | Force framework detection: `"nuxt"`, `"laravel"`, or `"generic"` |
+| `context` | Free-form project background for the agent |
+| `layerRules` | Rules for which layer a new key belongs to |
+| `glossary` | Term dictionary for consistent translations |
+| `translationPrompt` | System prompt for all translation requests |
+| `localeNotes` | Per-locale instructions (formality, terminology) |
+| `examples` | Few-shot translation examples |
+| `orphanScan` | Per-layer ignore patterns for orphan detection |
+| `reportOutput` | `true` or path for diagnostic report output |
+| `samplingPreferences` | Override model preferences for `translate_missing` |
+| `localeDirs` | Locale directories for the generic adapter |
+| `defaultLocale` | Default locale code (required for generic adapter) |
+| `locales` | Explicit list of locale codes |
 
-- [ ] `find_hardcoded_strings` — detect user-facing strings not wrapped in translation calls
-- [ ] `move_translations` — move keys between layers (e.g., promote to shared)
-- [ ] Glossary validation — check translations against glossary terms
-- [ ] Flat JSON support — `flatJson: true` in vue-i18n config
-- [ ] Pluralization support — vue-i18n plural forms and Laravel `trans_choice`
-- [ ] Confidence scoring for orphan keys — flag low-confidence orphans that share a prefix with dynamic patterns ([#109](https://github.com/fabkho/the-i18n-mcp/issues/109))
+</details>
+
+## How Orphan Detection Works
+
+The scanner finds translation key references in source code:
+
+**Nuxt/Vue patterns:** `$t('key')`, `t('key')`, `$tc('key')`, `i18n.t('key')`, `v-t="'key'"`, template literals with `$t`
+
+**Laravel/PHP patterns:** `__('key')`, `trans('key')`, `@lang('key')`, `Lang::get('key')`, `trans_choice('key')`
+
+**Dynamic key handling:**
+- Template literals like `` $t(`status.${val}`) `` → the scanner extracts `status.` as a prefix and matches all keys under `status.*`
+- Keys matching dynamic prefixes are excluded from orphan results (reported as "uncertain" separately)
+- String concatenation (`'prefix.' + var`) is **not** detected — use template literals for coverage
+
+**Monorepo scope:**
+- Each layer's keys are scanned only against source files that consume that layer
+- Layer consumption is determined by the framework's layer/dependency graph
 
 ## Development
 
 ```bash
-pnpm build          # Build via tsdown → dist/index.js
+pnpm install        # Install all dependencies
+pnpm build          # Build all packages
 pnpm test           # Run all tests
-pnpm test:perf      # Run performance benchmarks
-pnpm lint           # ESLint
-pnpm typecheck      # tsc --noEmit
-pnpm start          # Start the server on stdio
-pnpm inspect        # Open MCP Inspector for manual testing
+pnpm lint           # ESLint across all packages
+pnpm typecheck      # TypeScript check all packages
 ```
 
 Set `DEBUG=1` to enable verbose logging to stderr.
 
+## Roadmap
+
+- [ ] `find_hardcoded_strings` — detect user-facing strings not wrapped in translation calls
+- [ ] `move_translations` — move keys between layers
+- [ ] Glossary validation — check translations against glossary terms
+- [ ] Flat JSON support — `flatJson: true` in vue-i18n config
+- [ ] Pluralization support — vue-i18n plural forms and Laravel `trans_choice`
+
 ## License
 
 [MIT](./LICENSE)
-
-<!-- Badges -->
-[npm-version-src]: https://img.shields.io/npm/v/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
-[npm-version-href]: https://npmjs.com/package/the-i18n-mcp
-
-[npm-downloads-src]: https://img.shields.io/npm/dm/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
-[npm-downloads-href]: https://npmjs.com/package/the-i18n-mcp
-
-[license-src]: https://img.shields.io/npm/l/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d
-[license-href]: https://github.com/fabkho/the-i18n-mcp/blob/main/LICENSE
-
-[ci-src]: https://github.com/fabkho/the-i18n-mcp/actions/workflows/ci.yml/badge.svg
-[ci-href]: https://github.com/fabkho/the-i18n-mcp/actions/workflows/ci.yml
