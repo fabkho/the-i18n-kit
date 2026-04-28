@@ -1,6 +1,6 @@
 {
   "name": "the-i18n-mcp",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "mcpName": "io.github.fabkho/the-i18n-mcp",
   "description": "MCP server for managing i18n translation files — wraps the-i18n-cli",
   "author": "Fabian Kirchhoff",
@@ -16,7 +16,10 @@
     "nuxt-i18n-mcp": "./dist/index.js"
   },
   "main": "./dist/index.js",
-  "files": ["dist", "schema.json"],
+  "files": [
+    "dist",
+    "schema.json"
+  ],
   "scripts": {
     "build": "tsdown",
     "test": "echo 'no tests yet'",
