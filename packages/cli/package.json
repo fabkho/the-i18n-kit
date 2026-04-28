@@ -1,6 +1,6 @@
 {
   "name": "the-i18n-cli",
-  "version": "3.0.0",
+  "version": "1.0.0",
   "description": "CLI and core library for managing i18n translation files",
   "author": "Fabian Kirchhoff",
   "license": "MIT",
