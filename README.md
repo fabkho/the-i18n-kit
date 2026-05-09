@@ -9,15 +9,15 @@
 
 ## The Problem
 
-Managing i18n at scale is tedious:
+GUI tools like [BabelEdit](https://www.codeandweb.com/babeledit) already make i18n management easier — a visual editor beats hunting through raw JSON. But they still leave a gap:
 
-- You add a new UI component and need to create the translation key in **every locale file** — manually
-- Over time, removed components leave behind **hundreds of orphan keys** nobody uses
+- You add a new UI component and need to create the translation key in **every locale file** — manually, in a separate tool
+- Over time, removed components leave behind **hundreds of orphan keys** nobody uses — no GUI tool detects these from source code
 - You rename a key and have to hunt it down across **30+ JSON files**
-- Your AI agent writes `$t('some.key')` and has no idea where the locale files live or what already exists
-- `translate_missing` returns 50KB of JSON that floods your agent's context window
+- Your AI agent writes `$t('some.key')` but has no idea where the locale files live, what already exists, or which layer the key belongs to
+- Large tool outputs (missing keys, orphan reports) flood your agent's context window and freeze the session
 
-The-i18n-kit solves all of this.
+The-i18n-kit fills the gap: automation from the terminal and a native integration for AI agents — so translation maintenance becomes part of your normal development workflow, not a separate step.
 
 ## How It Works
 
