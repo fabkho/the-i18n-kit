@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
 import type { I18nConfig, LocaleDefinition, LocaleDir } from '../../config/types'
 import { loadProjectConfig } from '../../config/project-config'
+import { applyLocaleOverride } from '../../config/locale-override'
 import { log } from '../../utils/logger'
 import { ConfigError } from '../../utils/errors'
 
@@ -68,10 +69,13 @@ export class LaravelAdapter implements FrameworkAdapter {
 
     const allCodes = mergeLocaleCodes(localeSubdirs, configLocales)
 
-    const locales: LocaleDefinition[] = allCodes.map(code => ({
-      code,
-      language: code,
-    }))
+    const locales: LocaleDefinition[] = applyLocaleOverride(
+      allCodes.map(code => ({
+        code,
+        language: code,
+      })),
+      projectConfig?.locales,
+    )
 
     const localeDirs: LocaleDir[] = [{
       path: langDir,

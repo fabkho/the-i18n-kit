@@ -71,7 +71,7 @@ export interface ProjectConfig {
   localeDirs?: Array<string | { path: string; layer: string }>
   /** Default locale code (required for generic adapter activation). */
   defaultLocale?: string
-  /** Explicit list of locale codes. If absent, auto-discovered from files on disk. */
+  /** Explicit list of locale codes. If set, overrides framework auto-detection (all adapters). Auto-discovered when absent. */
   locales?: string[]
   /** Model preferences for `translate_missing` sampling requests. Overrides the built-in defaults (fast/cheap model bias). */
   samplingPreferences?: {

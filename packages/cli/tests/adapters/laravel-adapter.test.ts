@@ -292,6 +292,19 @@ describe('LaravelAdapter.resolve', () => {
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
   })
+
+  it('honors locales override from .i18n-mcp.json (filters auto-detected)', async () => {
+    createLaravelProject(tempDir, { locales: ['en', 'de', 'fr', 'es'] })
+    writeFileSync(
+      join(tempDir, '.i18n-mcp.json'),
+      JSON.stringify({ locales: ['en', 'de'] }),
+    )
+
+    const adapter = new LaravelAdapter()
+    const config = await adapter.resolve(tempDir)
+
+    expect(config.locales.map(l => l.code)).toEqual(['en', 'de'])
+  })
 })
 
 describe('Adapter registry: Laravel vs Nuxt', () => {

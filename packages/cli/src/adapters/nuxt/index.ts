@@ -6,6 +6,7 @@ import type { I18nConfig, LocaleDefinition, LocaleDir, AppInfo } from '../../con
 import { findNuxtConfig, discoverNuxtApps, deriveLayerName } from '../../config/discovery'
 import { loadKit } from '../../config/nuxt-loader'
 import { loadProjectConfig } from '../../config/project-config'
+import { applyLocaleOverride } from '../../config/locale-override'
 import { log } from '../../utils/logger'
 import { ConfigError } from '../../utils/errors'
 import { resolveLayerOwnership } from './layer-dedup'
@@ -216,7 +217,7 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
     rootDir: discoveryRoot,
     defaultLocale,
     fallbackLocale,
-    locales: allLocales,
+    locales: applyLocaleOverride(allLocales, projectConfig?.locales),
     localeDirs: allLocaleDirs,
     layerRootDirs: allLayerRootDirs,
     projectConfig: projectConfig ?? undefined,
@@ -283,7 +284,7 @@ async function extractI18nConfig(
     rootDir: appDir,
     defaultLocale,
     fallbackLocale,
-    locales,
+    locales: applyLocaleOverride(locales, projectConfig?.locales),
     localeDirs,
     layerRootDirs,
     projectConfig: projectConfig ?? undefined,
