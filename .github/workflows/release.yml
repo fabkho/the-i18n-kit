@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Force publish any package whose package.json version is ahead of npm'
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
 
 permissions:
   contents: write
@@ -16,6 +24,7 @@ concurrency:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' }}
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       cli_release_created: ${{ steps.release.outputs['packages/cli--release_created'] }}
@@ -27,7 +36,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     needs: release-please
-    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    # Always run on workflow_dispatch; on push only when release-please created a release.
+    # `always()` is needed because `needs.release-please` is skipped on dispatch.
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.release-please.outputs.releases_created == 'true') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,14 +53,35 @@ jobs:
 
       - run: pnpm build
 
+      # Idempotent version diff: publish only when package.json version
+      # is ahead of what's on the npm registry. Lets the same job recover
+      # from a failed publish (e.g. expired token) without needing a fresh
+      # release-please cycle — just re-run via workflow_dispatch.
+      - name: Compute publish targets
+        id: targets
+        run: |
+          set -euo pipefail
+          for pkg in cli mcp; do
+            name=$(jq -r .name "packages/$pkg/package.json")
+            local_ver=$(jq -r .version "packages/$pkg/package.json")
+            remote_ver=$(npm view "$name" version 2>/dev/null || echo "0.0.0")
+            if [ "$local_ver" != "$remote_ver" ]; then
+              echo "$pkg=true"  >> "$GITHUB_OUTPUT"
+              echo "::notice::Will publish $name@$local_ver (registry: $remote_ver)"
+            else
+              echo "$pkg=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Skipping $name@$local_ver (already on registry)"
+            fi
+          done
+
       - name: Publish the-i18n-cli
-        if: ${{ needs.release-please.outputs.cli_release_created == 'true' }}
+        if: ${{ steps.targets.outputs.cli == 'true' }}
         run: pnpm --filter the-i18n-cli publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish the-i18n-mcp
-        if: ${{ needs.release-please.outputs.mcp_release_created == 'true' }}
+        if: ${{ steps.targets.outputs.mcp == 'true' }}
         run: pnpm --filter the-i18n-mcp publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
