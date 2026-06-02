@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-3.2.0...the-i18n-mcp-3.3.0) (2026-06-02)
+
+
+### Features
+
+* add source key translation tool ([#137](https://github.com/fabkho/the-i18n-kit/issues/137)) ([b3ceae7](https://github.com/fabkho/the-i18n-kit/commit/b3ceae715e171c329cf18f0b88299c80419b1d00))
+
 ## [3.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-3.1.0...the-i18n-mcp-3.2.0) (2026-05-09)
 
 

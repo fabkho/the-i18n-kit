@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.1.0...the-i18n-cli-1.2.0) (2026-06-02)
+
+
+### Features
+
+* add source key translation tool ([#137](https://github.com/fabkho/the-i18n-kit/issues/137)) ([b3ceae7](https://github.com/fabkho/the-i18n-kit/commit/b3ceae715e171c329cf18f0b88299c80419b1d00))
+
+
+### Bug Fixes
+
+* **cli:** honor projectConfig.locales override in all adapters ([#139](https://github.com/fabkho/the-i18n-kit/issues/139)) ([5ea0da0](https://github.com/fabkho/the-i18n-kit/commit/5ea0da0a9e462a14ec1cd0e5275f791041c95d9c))
+
 ## [1.1.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.0.1...the-i18n-cli-1.1.0) (2026-05-09)
 
 
