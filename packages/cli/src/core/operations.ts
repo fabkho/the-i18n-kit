@@ -1167,6 +1167,25 @@ export async function renameTranslationKey(opts: {
   return summary
 }
 
+async function runWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = []
+  const queue = [...items]
+  
+  async function worker(): Promise<void> {
+    while (queue.length > 0) {
+      const item = queue.shift()!
+      results.push(await fn(item))
+    }
+  }
+  
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))
+  return results
+}
+
 /**
  * Find keys missing in target locales and translate them.
  *
@@ -1180,6 +1199,8 @@ export async function translateMissing(opts: {
   locales?: string[]
   keys?: string[]
   batchSize?: number
+  /** Max parallel locales to process (default: 5 when sampling, 1 otherwise) */
+  concurrency?: number
   dryRun?: boolean
   projectDir?: string
   samplingFn?: SamplingFn
@@ -1231,7 +1252,6 @@ export async function translateMissing(opts: {
 
   const samplingSupported = !!opts.samplingFn
   const reportProgress = opts.progressFn ?? (async () => {})
-  let samplingModelLogged = false
 
   /** Check whether a key is missing in a given locale data object */
   function isKeyMissingIn(data: Record<string, unknown>, k: string): boolean {
@@ -1269,13 +1289,20 @@ export async function translateMissing(opts: {
   const results: Record<string, TranslateMissingLocaleResult> = {}
   const fallbackContexts: Record<string, Record<string, unknown>> = {}
 
+  // Pre-read all target locale data for missing key detection
+  const targetDataCache = new Map<string, Record<string, unknown>>()
   for (const target of targets) {
     let targetData: Record<string, unknown> = {}
-
     try {
       targetData = await readLocaleData(config, layer, target)
     } catch {}
+    targetDataCache.set(target.code, targetData)
+  }
 
+  async function translateOneLocale(
+    target: LocaleDefinition,
+    targetData: Record<string, unknown>,
+  ): Promise<{ result: TranslateMissingLocaleResult, fallbackContext?: Record<string, unknown> }> {
     let missingKeys: string[]
     if (opts.keys) {
       missingKeys = opts.keys.filter(k => isKeyMissingIn(targetData, k) && allRefKeys.includes(k))
@@ -1284,8 +1311,7 @@ export async function translateMissing(opts: {
     }
 
     if (missingKeys.length === 0) {
-      results[target.code] = { translated: [], failed: [], samplingUsed: false, reason: 'no-missing-keys' }
-      continue
+      return { result: { translated: [], failed: [], samplingUsed: false, reason: 'no-missing-keys' } }
     }
 
     await reportProgress(`Starting ${target.code}: ${missingKeys.length} missing keys`)
@@ -1300,14 +1326,8 @@ export async function translateMissing(opts: {
     }
 
     if (isDryRun) {
-      results[target.code] = {
-        translated: Object.keys(keysAndValues),
-        failed: [],
-        samplingUsed: samplingSupported,
-        reason: 'dry-run',
-      }
       await reportProgress(`Complete ${target.code} (dry run)`)
-      continue
+      return { result: { translated: Object.keys(keysAndValues), failed: [], samplingUsed: samplingSupported, reason: 'dry-run' } }
     }
 
     if (samplingSupported && opts.samplingFn) {
@@ -1325,7 +1345,7 @@ export async function translateMissing(opts: {
 
         const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, target.language || target.code, config.localeFileFormat)
         const userMessage = buildTranslationUserMessage(
-          refLocale.language || refLocale.code,
+          refLocale!.language || refLocale!.code,
           target.language || target.code,
           batch,
           config.localeFileFormat,
@@ -1345,10 +1365,7 @@ export async function translateMissing(opts: {
             })
 
             samplingModel = samplingResult.model
-            if (!samplingModelLogged) {
-              log.info(`Sampling model: ${samplingResult.model}`)
-              samplingModelLogged = true
-            }
+            log.info(`Sampling model: ${samplingResult.model}`)
 
             const parsed = extractJsonFromResponse(samplingResult.text)
             const batchKeys = new Set(Object.keys(batch))
@@ -1406,29 +1423,38 @@ export async function translateMissing(opts: {
           })
         } catch (error) {
           log.warn(`Failed to write translations for ${target.code}: ${error instanceof Error ? error.message : String(error)}`)
-          results[target.code] = { translated: [], failed: [...Object.keys(keysAndValues)], samplingUsed: true, reason: 'translated-with-sampling', batches: totalBatches, model: samplingModel, writeError: error instanceof Error ? error.message : String(error) }
-          continue
+          return { result: { translated: [], failed: [...Object.keys(keysAndValues)], samplingUsed: true, reason: 'translated-with-sampling', batches: totalBatches, model: samplingModel, writeError: error instanceof Error ? error.message : String(error) } }
         }
       }
 
-      results[target.code] = { translated, failed, samplingUsed: true, reason: 'translated-with-sampling', batches: totalBatches, model: samplingModel, ...(placeholderValidation ? { placeholderValidation } : {}) }
+      await reportProgress(`Complete ${target.code}`)
+      return { result: { translated, failed, samplingUsed: true, reason: 'translated-with-sampling', batches: totalBatches, model: samplingModel, ...(placeholderValidation ? { placeholderValidation } : {}) } }
     } else {
       // Fallback: return context for agent to translate inline
-      fallbackContexts[target.code] = buildFallbackContext(
+      const fallbackContext = buildFallbackContext(
         config.projectConfig,
-        refLocale.language || refLocale.code,
+        refLocale!.language || refLocale!.code,
         target.language || target.code,
         keysAndValues,
       )
-      results[target.code] = {
-        translated: [],
-        failed: Object.keys(keysAndValues),
-        samplingUsed: false,
-        reason: 'sampling-unavailable',
-      }
+      await reportProgress(`Complete ${target.code}`)
+      return { result: { translated: [], failed: Object.keys(keysAndValues), samplingUsed: false, reason: 'sampling-unavailable' }, fallbackContext }
     }
+  }
 
-    await reportProgress(`Complete ${target.code}`)
+  const concurrency = opts.concurrency ?? (samplingSupported ? 5 : 1)
+
+  const localeResults = await runWithConcurrency(targets, concurrency, async (target) => {
+    const targetData = targetDataCache.get(target.code) ?? {}
+    return translateOneLocale(target, targetData)
+  })
+
+  for (const [i, { result, fallbackContext }] of localeResults.entries()) {
+    const localeCode = targets[i].code
+    results[localeCode] = result
+    if (fallbackContext) {
+      fallbackContexts[localeCode] = fallbackContext
+    }
   }
 
   const totalTranslated = Object.values(results).reduce((sum, r) => sum + r.translated.length, 0)

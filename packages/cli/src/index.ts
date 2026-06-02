@@ -45,3 +45,7 @@ export { readLocaleData } from './io/locale-data.js'
 
 // Errors
 export { ToolError, ConfigError, FileIOError } from './utils/errors.js'
+
+// LLM providers
+export { createSamplingFn } from './llm/providers.js'
+export type { LlmProvider, LlmProviderConfig } from './llm/providers.js'

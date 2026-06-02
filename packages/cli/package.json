@@ -38,10 +38,18 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@nuxt/kit": "^3.0.0 || ^4.0.0"
+    "@nuxt/kit": "^3.0.0 || ^4.0.0",
+    "openai": "^4.0.0 || ^5.0.0",
+    "@anthropic-ai/sdk": "^0.30.0"
   },
   "peerDependenciesMeta": {
     "@nuxt/kit": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
+    },
+    "@anthropic-ai/sdk": {
       "optional": true
     }
   },
