@@ -47,3 +47,6 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Fallow audit
+        run: npx fallow audit || true
