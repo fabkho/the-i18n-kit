@@ -60,11 +60,11 @@ describe('getMissingTranslations — outputFile', () => {
     expect(parsed).toHaveProperty('missing')
   })
 
-  it('rejects paths outside project dir even when outputFile is explicit', async () => {
+  it('accepts explicit outputFile path (even outside project dir)', async () => {
     const outPath = join(tmpDir, 'missing-tmp.json')
     await expect(
       getMissingTranslations({ projectDir: appAdminDir, outputFile: outPath }),
-    ).rejects.toThrow(/resolves outside the project directory/)
+    ).resolves.toBeDefined()
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -95,11 +95,11 @@ describe('findEmptyTranslations — outputFile', () => {
     expect(parsed).toHaveProperty('emptyKeys')
   })
 
-  it('rejects paths outside project dir even when outputFile is explicit', async () => {
+  it('accepts explicit outputFile path (even outside project dir)', async () => {
     const outPath = join(tmpDir, 'empty-tmp.json')
     await expect(
       findEmptyTranslations({ projectDir: appAdminDir, outputFile: outPath }),
-    ).rejects.toThrow(/resolves outside the project directory/)
+    ).resolves.toBeDefined()
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -130,11 +130,11 @@ describe('findOrphanKeys — outputFile', () => {
     expect(parsed).toHaveProperty('orphanKeys')
   })
 
-  it('rejects paths outside project dir even when outputFile is explicit', async () => {
+  it('accepts explicit outputFile path (even outside project dir)', async () => {
     const outPath = join(tmpDir, 'orphans-tmp.json')
     await expect(
       findOrphanKeys({ projectDir: playgroundDir, outputFile: outPath }),
-    ).rejects.toThrow(/resolves outside the project directory/)
+    ).resolves.toBeDefined()
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -165,11 +165,11 @@ describe('scanCodeUsage — outputFile', () => {
     expect(parsed).toHaveProperty('usages')
   })
 
-  it('rejects paths outside project dir even when outputFile is explicit', async () => {
+  it('accepts explicit outputFile path (even outside project dir)', async () => {
     const outPath = join(tmpDir, 'scan-tmp.json')
     await expect(
       scanCodeUsage({ projectDir: playgroundDir, outputFile: outPath }),
-    ).rejects.toThrow(/resolves outside the project directory/)
+    ).resolves.toBeDefined()
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -200,7 +200,7 @@ describe('removeOrphanKeys — outputFile', () => {
     expect(parsed).toHaveProperty('tool', 'remove_orphan_keys')
   })
 
-  it('rejects paths outside project dir even when outputFile is explicit', async () => {
+  it('rejects paths outside project dir (internal auto-generated paths are validated)', async () => {
     const outPath = join(tmpDir, 'cleanup-tmp.json')
     await expect(
       removeOrphanKeys({ projectDir: playgroundDir, dryRun: true, outputFile: outPath }),

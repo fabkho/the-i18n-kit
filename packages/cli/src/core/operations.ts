@@ -877,7 +877,6 @@ export async function getMissingTranslations(opts: {
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'get_missing_translations')
   if (reportPath) {
-    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'get_missing_translations',
       args: { layer, referenceLocale: opts.referenceLocale, targetLocales: opts.targetLocales },
@@ -962,7 +961,6 @@ export async function findEmptyTranslations(opts: {
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_empty_translations')
   if (reportPath) {
-    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'find_empty_translations',
       args: { layer, locale },
@@ -1055,7 +1053,6 @@ export async function searchTranslations(opts: {
 
   const reportPath = outputFile ?? resolveReportFilePath(config, dir, 'search_translations')
   if (reportPath) {
-    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'search_translations',
       args: { query, searchIn: opts.searchIn, layer, locale },
@@ -1823,7 +1820,6 @@ export async function findOrphanKeys(opts: {
     const emptyOutput = { orphanKeys: {} as Record<string, string[]>, summary: { totalKeys: 0, orphanCount: 0, filesScanned: 0, message: 'No translation keys found in locale files.' } }
     const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
     if (reportPath) {
-      validateReportPath(dir, reportPath)
       await writeReportFile(reportPath, emptyOutput, {
         tool: 'find_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs },
@@ -1891,7 +1887,6 @@ export async function findOrphanKeys(opts: {
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
   if (reportPath) {
-    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'find_orphan_keys',
       args: { layer, locale, scanDirs, excludeDirs },
@@ -1976,7 +1971,6 @@ export async function scanCodeUsage(opts: {
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'scan_code_usage')
   if (reportPath) {
-    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'scan_code_usage',
       args: { keys, scanDirs, excludeDirs },
