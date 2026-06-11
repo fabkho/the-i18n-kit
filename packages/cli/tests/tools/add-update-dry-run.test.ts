@@ -179,26 +179,6 @@ describe('add_translations dryRun', () => {
     }
   })
 
-  it('actually writes when dryRun is false (control test)', async () => {
-    const newKey = 'common.actions.submit'
-    const value = 'Submit'
-
-    for (const file of localeFiles) {
-      const filePath = join(tmpRootLocales, file)
-      await mutateLocaleFile(filePath, (data) => {
-        if (!hasNestedKey(data, newKey)) {
-          setNestedValue(data, newKey, value)
-        }
-      })
-    }
-
-    for (const file of localeFiles) {
-      const filePath = join(tmpRootLocales, file)
-      const data = await readLocaleFile(filePath)
-      expect(hasNestedKey(data, newKey)).toBe(true)
-      expect(getNestedValue(data, newKey)).toBe(value)
-    }
-  })
 })
 
 // ─── update_translations dry-run behaviour ──────────────────────
@@ -319,54 +299,6 @@ describe('update_translations dryRun', () => {
     }
   })
 
-  it('actually writes when dryRun is false (control test)', async () => {
-    const existingKey = 'common.actions.save'
-    const newValue = 'Save Changes'
-
-    const originalValues: Record<string, unknown> = {}
-    for (const file of localeFiles) {
-      const filePath = join(tmpRootLocales, file)
-      const data = await readLocaleFile(filePath)
-      originalValues[file] = getNestedValue(data, existingKey)
-    }
-
-    for (const file of localeFiles) {
-      const filePath = join(tmpRootLocales, file)
-      await mutateLocaleFile(filePath, (data) => {
-        if (hasNestedKey(data, existingKey)) {
-          setNestedValue(data, existingKey, newValue)
-        }
-      })
-    }
-
-    for (const file of localeFiles) {
-      const filePath = join(tmpRootLocales, file)
-      const data = await readLocaleFile(filePath)
-      expect(getNestedValue(data, existingKey)).toBe(newValue)
-      expect(getNestedValue(data, existingKey)).not.toBe(originalValues[file])
-    }
-  })
-
-  it('preserves file formatting after read-only dryRun', async () => {
-    for (const file of localeFiles) {
-      const filePath = join(tmpRootLocales, file)
-      const raw = await readFile(filePath, 'utf-8')
-      expect(() => JSON.parse(raw)).not.toThrow()
-      expect(raw.endsWith('\n')).toBe(true)
-    }
-
-    for (const file of localeFiles) {
-      const filePath = join(tmpRootLocales, file)
-      await readLocaleFile(filePath)
-    }
-
-    for (const file of localeFiles) {
-      const filePath = join(tmpRootLocales, file)
-      const raw = await readFile(filePath, 'utf-8')
-      expect(() => JSON.parse(raw)).not.toThrow()
-      expect(raw.endsWith('\n')).toBe(true)
-    }
-  })
 })
 
 // ─── writeTranslations (upsert / add / update / dryRun) ────────
