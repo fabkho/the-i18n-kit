@@ -109,7 +109,7 @@ Then just ask your agent:
 | `search_translations` | Search by key or value substring |
 | `translate_missing` | Auto-translate missing keys via MCP sampling or return fallback context |
 | `translate_key` | Translate one source key into target locales; can overwrite stale values |
-| `scan_keys` | Scan source code for key usage + find orphan keys not referenced in code |
+| `find_orphan_keys` | Find keys not referenced in source code |
 | `cleanup_unused_translations` | Find + remove orphan keys. **Dry-run by default** |
 | `scaffold_locale` | Create empty locale files for new languages |
 

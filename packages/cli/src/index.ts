@@ -17,7 +17,6 @@ export {
   translateKey,
   findOrphanKeys,
   scanCodeUsage,
-  scanKeys,
   cleanupUnusedTranslations,
   scaffoldLocaleFiles,
   findLocaleImpl,

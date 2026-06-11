@@ -21,7 +21,7 @@ import {
   renameTranslationKey,
   translateMissing,
   translateKey,
-  scanKeys,
+  findOrphanKeys,
   cleanupUnusedTranslations,
   scaffoldLocaleFiles,
   findLocaleImpl,
@@ -647,54 +647,49 @@ export function createServer(): McpServer {
     },
   )
 
-  // ─── Tool: scan_keys ───────────────────────────────────────────
+  // ─── Tool: find_orphan_keys ───────────────────────────────────
 
   server.registerTool(
-    'scan_keys',
+    'find_orphan_keys',
     {
-      title: 'Scan Translation Keys',
+      title: 'Find Orphan Translation Keys',
       description:
-        'Scan source code for translation key usage AND find orphan keys (keys in locale files but '
-        + 'not referenced in any source). Runs a single scan. '
-        + 'Returns: (1) where each key is used (file + line), (2) keys in locale JSON that are never '
-        + 'referenced in code, (3) dynamic key patterns that may produce false positives.',
+        'Find translation keys that exist in locale JSON files but are not referenced in any Vue/TS source code. '
+        + 'Scans a specific layer or all layers. Reports keys that can potentially be removed. '
+        + 'Also detects dynamic key patterns and uncertain matches.',
       inputSchema: {
-        keys: z
-          .array(z.string())
-          .optional()
-          .describe('Filter usage output to specific keys. If omitted, returns all found usages.'),
         layer: z
           .string()
           .optional()
-          .describe('Limit orphan detection to one layer. If omitted, checks all layers.'),
+          .describe('Layer name to check for orphan keys (e.g., "root", "app-admin"). If omitted, checks all layers. Call discover to see available layers.'),
         locale: z
           .string()
           .optional()
-          .describe('Locale to read for orphan detection. Defaults to project default locale.'),
+          .describe('Locale code to read translation keys from (e.g., "en", "en-US"). Defaults to the project default locale.'),
         scanDirs: z
           .array(z.string())
           .optional()
-          .describe('Absolute paths to directories to scan. Defaults to all layer root directories.'),
+          .describe('Absolute paths to directories to scan for source code usage. Defaults to all layer root directories. Example: ["/home/user/my-app/apps/admin"].'),
         excludeDirs: z
           .array(z.string())
           .optional()
-          .describe('Directory names to skip, e.g. ["storybook", "__tests__", "node_modules"].'),
+          .describe('Directory names to skip when scanning source files. Example: ["storybook", "__tests__", "node_modules"].'),
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to project root. Defaults to server cwd.'),
+          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
         outputFile: z
           .string()
           .optional()
-          .describe('Absolute path to write full JSON output. Returns compact summary to caller.'),
+          .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/orphan-keys.json"'),
       },
     },
-    async ({ keys, layer, locale, scanDirs, excludeDirs, projectDir, outputFile }) => {
+    async ({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile }) => {
       try {
-        const result = await scanKeys({ keys, layer, locale, scanDirs, excludeDirs, projectDir, outputFile })
+        const result = await findOrphanKeys({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile })
         return jsonContent(result)
       } catch (error) {
-        return toolErrorResponse('scanning keys', error)
+        return toolErrorResponse('finding orphan keys', error)
       }
     },
   )
@@ -706,7 +701,7 @@ export function createServer(): McpServer {
     {
       title: 'Cleanup Unused Translations',
       description:
-        'Find translation keys not referenced in source code and remove them. Combines scan_keys + remove_translations in one step. Always does a dry run first unless dryRun is explicitly set to false.',
+        'Find translation keys not referenced in source code and remove them. Combines find_orphan_keys + remove_translations in one step. Always does a dry run first unless dryRun is explicitly set to false.',
       inputSchema: {
         layer: z
           .string()

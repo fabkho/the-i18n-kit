@@ -1953,65 +1953,6 @@ export async function scanCodeUsage(opts: {
 }
 
 /**
- * Scan source code for translation key usage AND find orphan keys (keys in locale files
- * but not referenced in any source code). Runs both scans concurrently since they share
- * the same expensive file-scanning operation, then merges the outputs.
- */
-export async function scanKeys(opts: {
-  keys?: string[]
-  layer?: string
-  locale?: string
-  scanDirs?: string[]
-  excludeDirs?: string[]
-  projectDir?: string
-  outputFile?: string
-}): Promise<Record<string, unknown>> {
-  const dir = opts.projectDir ?? process.cwd()
-  const config = await detectI18nConfig(dir)
-
-  // Run both scans concurrently (they share the same expensive scanSourceFiles step internally)
-  const [usageResult, orphanResult] = await Promise.all([
-    scanCodeUsage({ keys: opts.keys, scanDirs: opts.scanDirs, excludeDirs: opts.excludeDirs, projectDir: dir }),
-    findOrphanKeys({ layer: opts.layer, locale: opts.locale, scanDirs: opts.scanDirs, excludeDirs: opts.excludeDirs, projectDir: dir }),
-  ])
-
-  const usageSummary = usageResult.summary as Record<string, unknown> | undefined
-  const orphanSummary = orphanResult.summary as Record<string, unknown> | undefined
-
-  const output = {
-    usages: usageResult.usages,
-    notFoundInCode: usageResult.notFoundInCode,
-    orphanKeys: orphanResult.orphanKeys,
-    uncertainKeys: orphanResult.uncertainKeys,
-    dynamicKeys: orphanResult.dynamicKeys || usageResult.dynamicKeys,
-    unresolvedKeyWarnings: orphanResult.unresolvedKeyWarnings,
-    summary: {
-      filesScanned: usageSummary?.filesScanned,
-      dirsScanned: usageSummary?.dirsScanned,
-      uniqueKeysFound: usageSummary?.uniqueKeysFound,
-      totalReferences: usageSummary?.totalReferences,
-      totalLocaleKeys: orphanSummary?.totalKeys,
-      orphanCount: orphanSummary?.orphanCount,
-      uncertainCount: orphanSummary?.uncertainCount,
-      dynamicMatchedCount: orphanSummary?.dynamicMatchedCount,
-      ignoredCount: orphanSummary?.ignoredCount,
-      layersChecked: (orphanSummary?.layersChecked as string[]) || [],
-    },
-  }
-
-  const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'scan_keys')
-  if (reportPath) {
-    await writeReportFile(reportPath, output, {
-      tool: 'scan_keys',
-      args: { keys: opts.keys, layer: opts.layer, locale: opts.locale },
-    })
-    return { reportFile: reportPath, summary: output.summary }
-  }
-
-  return output
-}
-
-/**
  * Find translation keys not referenced in source code and remove them.
  */
 export async function cleanupUnusedTranslations(opts: {
