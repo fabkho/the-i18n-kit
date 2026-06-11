@@ -28,6 +28,8 @@ import {
 
 import type { SamplingFn, ProgressFn, ProjectConfig } from 'the-i18n-cli'
 
+const DEFAULT_PROJECT_DIR = process.env.I18N_PROJECT_DIR ?? process.cwd()
+
 // ─── Shared helpers ───────────────────────────────────────────────
 
 function buildProjectConfigSection(pc: ProjectConfig | undefined): string {
@@ -814,7 +816,7 @@ export function createServer(): McpServer {
       },
     },
     async ({ layer, namespace, projectDir }) => {
-      const dir = projectDir ?? process.cwd()
+      const dir = projectDir ?? DEFAULT_PROJECT_DIR
       let projectConfigSection = ''
 
       try {
@@ -865,7 +867,7 @@ Follow these steps:
       },
     },
     async ({ language, projectDir }) => {
-      const dir = projectDir ?? process.cwd()
+      const dir = projectDir ?? DEFAULT_PROJECT_DIR
       let configSection = ''
 
       try {
