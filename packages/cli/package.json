@@ -1,7 +1,20 @@
 {
   "name": "the-i18n-cli",
   "version": "1.2.0",
-  "description": "CLI and core library for managing i18n translation files",
+  "description": "Find missing translations, remove dead keys, rename across all locales at once — for Nuxt, Laravel, or any project with JSON/PHP locale files",
+  "keywords": [
+    "i18n",
+    "internationalization",
+    "translation",
+    "localization",
+    "locale",
+    "cli",
+    "l10n",
+    "nuxt",
+    "laravel",
+    "vue",
+    "developer-tools"
+  ],
   "author": "Fabian Kirchhoff",
   "license": "MIT",
   "type": "module",
