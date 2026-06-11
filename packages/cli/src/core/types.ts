@@ -77,6 +77,24 @@ export interface AddTranslationsResult {
   skippedKeys?: string[]
 }
 
+export interface WriteTranslationsResult {
+  /** Present when dryRun=true */
+  dryRun?: boolean
+  wouldWrite?: MutationPreview[]
+  /** Present when dryRun=false */
+  written?: string[]
+  skipped: string[]
+  filesWritten?: number
+  warnings?: string[]
+  placeholderValidation?: PlaceholderValidationResult
+  summary?: {
+    keysWritten: number
+    keysSkipped: number
+    message: string
+  }
+  skippedKeys?: string[]
+}
+
 export interface UpdateTranslationsResult {
   /** Present when dryRun=true */
   dryRun?: boolean
@@ -301,7 +319,7 @@ export interface ScanCodeUsageResult {
 
 // ─── remove_orphan_keys ─────────────────────────────────
 
-export interface CleanupUnusedResult {
+export interface RemoveOrphanKeysResult {
   orphanKeys?: Record<string, string[]>
   removed?: Record<string, string[]>
   uncertainKeys?: Record<string, string[]>

@@ -37,6 +37,7 @@ import type {
   SamplingPreferences,
   TranslateMissingLocaleResult,
   AddTranslationsResult,
+  WriteTranslationsResult,
   UpdateTranslationsResult,
   ScaffoldLocaleResult,
   PlaceholderValidationResult,
@@ -631,7 +632,7 @@ export async function writeTranslations(opts: {
   mode?: 'add' | 'update' | 'upsert'
   dryRun?: boolean
   projectDir?: string
-}): Promise<AddTranslationsResult> {
+}): Promise<WriteTranslationsResult> {
   const { layer, translations } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
@@ -643,12 +644,12 @@ export async function writeTranslations(opts: {
   )
 
   if (isDryRun) {
-    const result: AddTranslationsResult = {
+    const result: WriteTranslationsResult = {
       dryRun: true,
-      wouldAdd: preview,
+      wouldWrite: preview,
       skipped,
       summary: {
-        keysToAdd: applied.length,
+        keysWritten: applied.length,
         keysSkipped: skipped.length,
         message: 'Call again with dryRun: false to apply these changes.',
       },
@@ -659,14 +660,14 @@ export async function writeTranslations(opts: {
     return result
   }
 
-  const summary: AddTranslationsResult = {
-    added: applied,
+  const result: WriteTranslationsResult = {
+    written: applied,
     skipped,
     filesWritten,
   }
-  if (warnings.length > 0) { summary.warnings = warnings }
-  if (placeholderValidation) { summary.placeholderValidation = placeholderValidation }
-  return summary
+  if (warnings.length > 0) { result.warnings = warnings }
+  if (placeholderValidation) { result.placeholderValidation = placeholderValidation }
+  return result
 }
 
 /**
