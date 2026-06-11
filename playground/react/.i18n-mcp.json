@@ -1,0 +1,14 @@
+{
+  "$schema": "../../packages/mcp/schema.json",
+  "framework": "generic",
+  "defaultLocale": "en",
+  "localeDirs": [
+    { "path": "messages", "layer": "root" }
+  ],
+  "locales": ["en", "de"],
+  "context": "SaaS booking platform. Professional but approachable tone.",
+  "glossary": {
+    "Booking": "Core concept. Keep consistent per locale."
+  },
+  "translationPrompt": "Use natural language for modern SaaS interfaces. Keep translations concise."
+}
