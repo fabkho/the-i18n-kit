@@ -1734,21 +1734,21 @@ export async function translateKey(opts: {
 }
 
 /**
- * Find translation keys that exist in locale files but are not referenced in source code.
+ * Shared helper for findOrphanKeys and removeOrphanKeys.
+ * Resolves the locale, filters layers, validates aliases, and builds the
+ * keysByLayer Map. Returns the resolved context — or throws on invalid input.
+ * The caller handles the empty-report case (totalKeys === 0).
  */
-export async function findOrphanKeys(opts: {
-  layer?: string
-  locale?: string
-  scanDirs?: string[]
-  excludeDirs?: string[]
-  projectDir?: string
-  outputFile?: string
-}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
-  const { layer, locale, scanDirs, excludeDirs } = opts
-  const dir = opts.projectDir ?? process.cwd()
-  const config = await detectI18nConfig(dir)
-
-  const localeCode = locale ?? config.defaultLocale
+async function resolveOrphanScanContext(
+  config: I18nConfig,
+  opts: { layer?: string; locale?: string; dir: string; toolName: string },
+): Promise<{
+  layersToCheck: LocaleDir[]
+  keysByLayer: Map<string, { keys: string[]; localeDir: LocaleDir }>
+  totalKeys: number
+  localeCode: string
+}> {
+  const localeCode = opts.locale ?? config.defaultLocale
   const localeDef = findLocaleImpl(config, localeCode)
   if (!localeDef) {
     throw new ToolError(
@@ -1757,20 +1757,20 @@ export async function findOrphanKeys(opts: {
     )
   }
 
-  const layersToCheck = layer
-    ? config.localeDirs.filter(d => d.layer === layer)
+  const layersToCheck = opts.layer
+    ? config.localeDirs.filter(d => d.layer === opts.layer)
     : config.localeDirs.filter(d => !d.aliasOf)
 
   if (layersToCheck.length === 0) {
-    if (layer) {
-      findLayerOrThrow(config, layer)
+    if (opts.layer) {
+      findLayerOrThrow(config, opts.layer)
     }
     throw new ToolError('No locale directories found.', 'LAYER_NOT_FOUND')
   }
 
-  if (layer && layersToCheck[0]?.aliasOf) {
+  if (opts.layer && layersToCheck[0]?.aliasOf) {
     throw new ToolError(
-      `Layer "${layer}" is an alias of "${layersToCheck[0].aliasOf}". Use the target layer instead.`,
+      `Layer "${opts.layer}" is an alias of "${layersToCheck[0].aliasOf}". Use the target layer instead.`,
       'LAYER_IS_ALIAS',
     )
   }
@@ -1788,6 +1788,32 @@ export async function findOrphanKeys(opts: {
   }
 
   const totalKeys = [...keysByLayer.values()].reduce((sum, v) => sum + v.keys.length, 0)
+
+  return { layersToCheck, keysByLayer, totalKeys, localeCode }
+}
+
+/**
+ * Find translation keys that exist in locale files but are not referenced in source code.
+ */
+export async function findOrphanKeys(opts: {
+  layer?: string
+  locale?: string
+  scanDirs?: string[]
+  excludeDirs?: string[]
+  projectDir?: string
+  outputFile?: string
+}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
+  const { layer, locale, scanDirs, excludeDirs } = opts
+  const dir = opts.projectDir ?? process.cwd()
+  const config = await detectI18nConfig(dir)
+
+  const { layersToCheck, keysByLayer, totalKeys, localeCode } = await resolveOrphanScanContext(config, {
+    layer,
+    locale,
+    dir,
+    toolName: 'find_orphan_keys',
+  })
+
   if (totalKeys === 0) {
     const emptyOutput = { orphanKeys: {} as Record<string, string[]>, summary: { totalKeys: 0, orphanCount: 0, filesScanned: 0, message: 'No translation keys found in locale files.' } }
     const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
@@ -1970,46 +1996,13 @@ export async function removeOrphanKeys(opts: {
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? true
 
-  const localeCode = locale ?? config.defaultLocale
-  const localeDef = findLocaleImpl(config, localeCode)
-  if (!localeDef) {
-    throw new ToolError(
-      `Locale not found: "${localeCode}". Available: ${config.locales.map(l => l.code).join(', ')}`,
-      'LOCALE_NOT_FOUND',
-    )
-  }
+  const { layersToCheck, keysByLayer, totalKeys, localeCode } = await resolveOrphanScanContext(config, {
+    layer,
+    locale,
+    dir,
+    toolName: 'remove_orphan_keys',
+  })
 
-  const layersToCheck = layer
-    ? config.localeDirs.filter(d => d.layer === layer)
-    : config.localeDirs.filter(d => !d.aliasOf)
-
-  if (layersToCheck.length === 0) {
-    if (layer) {
-      findLayerOrThrow(config, layer)
-    }
-    throw new ToolError('No locale directories found.', 'LAYER_NOT_FOUND')
-  }
-
-  if (layer && layersToCheck[0]?.aliasOf) {
-    throw new ToolError(
-      `Layer "${layer}" is an alias of "${layersToCheck[0].aliasOf}". Use the target layer instead.`,
-      'LAYER_IS_ALIAS',
-    )
-  }
-
-  const keysByLayer = new Map<string, { keys: string[]; localeDir: LocaleDir }>()
-  for (const ld of layersToCheck) {
-    let data: Record<string, unknown>
-    try {
-      data = await readLocaleData(config, ld.layer, localeDef)
-    } catch {
-      continue
-    }
-    if (Object.keys(data).length === 0) continue
-    keysByLayer.set(ld.layer, { keys: getLeafKeys(data), localeDir: ld })
-  }
-
-  const totalKeys = [...keysByLayer.values()].reduce((sum, v) => sum + v.keys.length, 0)
   if (totalKeys === 0) {
     const emptyOutput = { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
     const emptyReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')

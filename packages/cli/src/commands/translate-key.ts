@@ -74,9 +74,6 @@ export default defineCommand({
       if (!args.model) {
         throw new Error('--model is required when --provider is set')
       }
-      if (args.provider !== 'openai' && args.provider !== 'anthropic') {
-        throw new Error(`Unknown provider: "${args.provider}". Must be "openai" or "anthropic".`)
-      }
       samplingFn = await createSamplingFn({
         provider: args.provider as LlmProvider,
         model: args.model,
