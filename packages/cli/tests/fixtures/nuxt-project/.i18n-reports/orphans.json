@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-06-11T21:54:44.669Z",
+  "tool": "find_orphan_keys",
+  "args": {},
+  "orphanKeys": {
+    "root": [
+      "common.actions.cancel",
+      "common.actions.delete",
+      "common.actions.save",
+      "common.messages.loading",
+      "common.messages.noData",
+      "common.messages.success",
+      "common.navigation.back",
+      "common.navigation.home",
+      "common.navigation.settings"
+    ]
+  },
+  "summary": {
+    "totalKeys": 9,
+    "orphanCount": 9,
+    "uncertainCount": 0,
+    "dynamicMatchedCount": 0,
+    "ignoredCount": 0,
+    "usedCount": 0,
+    "filesScanned": 2,
+    "layersChecked": [
+      "root"
+    ],
+    "dirsScanned": [
+      "/Users/fabiankirchhoff/code/anny/the-i18n-kit/packages/cli/tests/fixtures/nuxt-project"
+    ],
+    "locale": "de"
+  }
+}

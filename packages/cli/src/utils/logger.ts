@@ -1,4 +1,4 @@
-const PREFIX = '[the-i18n-mcp]'
+const PREFIX = '[the-i18n-cli]'
 
 function formatMessage(level: string, message: string): string {
   return `${PREFIX} [${level}] ${message}`

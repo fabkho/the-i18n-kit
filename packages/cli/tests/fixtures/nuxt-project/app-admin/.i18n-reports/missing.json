@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-06-11T21:54:44.588Z",
+  "tool": "get_missing_translations",
+  "args": {},
+  "missing": {
+    "fr": {
+      "root": [
+        "admin.users.edit"
+      ]
+    },
+    "es": {
+      "root": [
+        "admin.users.list",
+        "admin.users.create",
+        "admin.users.edit"
+      ]
+    }
+  },
+  "summary": {
+    "referenceLocale": {
+      "code": "de",
+      "language": "de-DE",
+      "file": "de-DE.json"
+    },
+    "targetLocales": [
+      {
+        "code": "en",
+        "language": "en-US",
+        "file": "en-US.json"
+      },
+      {
+        "code": "fr",
+        "language": "fr-FR",
+        "file": "fr-FR.json"
+      },
+      {
+        "code": "es",
+        "language": "es-ES",
+        "file": "es-ES.json"
+      }
+    ],
+    "layersScanned": [
+      "root",
+      "playground"
+    ],
+    "totalMissingKeys": 4
+  }
+}

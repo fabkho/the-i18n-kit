@@ -23,12 +23,11 @@ function resolveApiKey(provider: LlmProvider, configKey?: string): string {
   return key
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
 async function createOpenAiSamplingFn(config: LlmProviderConfig): Promise<SamplingFn> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
   let OpenAI: any
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import
-    OpenAI = (await import('openai')).default as any
+    OpenAI = (await import('openai')).default as any // eslint-disable-line @typescript-eslint/no-explicit-any
   } catch {
     throw new Error(
       'Provider "openai" requires the "openai" package. Install it with:\n  npm install openai\n  pnpm add openai\n  yarn add openai',
@@ -45,10 +44,8 @@ async function createOpenAiSamplingFn(config: LlmProviderConfig): Promise<Sampli
         { role: 'system', content: opts.systemPrompt },
         { role: 'user', content: opts.userMessage },
       ],
-      // eslint-disable-next-line camelcase
       max_tokens: opts.maxTokens,
       temperature: 0,
-      // eslint-disable-next-line camelcase
       response_format: { type: 'json_object' },
     })
 
@@ -57,12 +54,11 @@ async function createOpenAiSamplingFn(config: LlmProviderConfig): Promise<Sampli
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
 async function createAnthropicSamplingFn(config: LlmProviderConfig): Promise<SamplingFn> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
   let Anthropic: any
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import
-    Anthropic = (await import('@anthropic-ai/sdk')).Anthropic as any
+    Anthropic = (await import('@anthropic-ai/sdk')).Anthropic as any // eslint-disable-line @typescript-eslint/no-explicit-any
   } catch {
     throw new Error(
       'Provider "anthropic" requires the "@anthropic-ai/sdk" package. Install it with:\n  npm install @anthropic-ai/sdk\n  pnpm add @anthropic-ai/sdk\n  yarn add @anthropic-ai/sdk',
@@ -77,7 +73,6 @@ async function createAnthropicSamplingFn(config: LlmProviderConfig): Promise<Sam
       model: config.model,
       system: opts.systemPrompt,
       messages: [{ role: 'user', content: opts.userMessage }],
-      // eslint-disable-next-line camelcase
       max_tokens: opts.maxTokens,
       temperature: 0,
     })

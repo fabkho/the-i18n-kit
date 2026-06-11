@@ -877,6 +877,7 @@ export async function getMissingTranslations(opts: {
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'get_missing_translations')
   if (reportPath) {
+    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'get_missing_translations',
       args: { layer, referenceLocale: opts.referenceLocale, targetLocales: opts.targetLocales },
@@ -961,6 +962,7 @@ export async function findEmptyTranslations(opts: {
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_empty_translations')
   if (reportPath) {
+    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'find_empty_translations',
       args: { layer, locale },
@@ -1053,6 +1055,7 @@ export async function searchTranslations(opts: {
 
   const reportPath = outputFile ?? resolveReportFilePath(config, dir, 'search_translations')
   if (reportPath) {
+    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'search_translations',
       args: { query, searchIn: opts.searchIn, layer, locale },
@@ -1424,21 +1427,23 @@ export async function translateMissing(opts: {
               }
             }
             break
-          } catch (error) {
+          } catch (_error) {
             if (attempt === 0) {
-              log.warn(`Sampling failed for batch ${batchNum} in ${target.code}, retrying: ${error instanceof Error ? error.message : String(error)}`)
+              log.warn(`Sampling failed for batch ${batchNum} in ${target.code}, retrying (attempt 2)`)
             } else {
-              log.warn(`Sampling retry failed for batch ${batchNum} in ${target.code}: ${error instanceof Error ? error.message : String(error)}`)
+              log.warn(`Sampling retry failed for batch ${batchNum} in ${target.code}`)
             }
           }
         }
 
-        if (batchTranslations !== null) {
-          for (const [key, value] of Object.entries(batchTranslations)) {
-            if (typeof value === 'string') {
-              allTranslations[key] = value
-              translated.push(key)
-            }
+        const validTranslations = batchTranslations !== null
+          ? Object.entries(batchTranslations).filter(([, v]) => typeof v === 'string')
+          : []
+
+        if (validTranslations.length > 0) {
+          for (const [key, value] of validTranslations) {
+            allTranslations[key] = value
+            translated.push(key)
           }
         } else {
           failed.push(...Object.keys(batch))
@@ -1818,6 +1823,7 @@ export async function findOrphanKeys(opts: {
     const emptyOutput = { orphanKeys: {} as Record<string, string[]>, summary: { totalKeys: 0, orphanCount: 0, filesScanned: 0, message: 'No translation keys found in locale files.' } }
     const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
     if (reportPath) {
+      validateReportPath(dir, reportPath)
       await writeReportFile(reportPath, emptyOutput, {
         tool: 'find_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs },
@@ -1885,6 +1891,7 @@ export async function findOrphanKeys(opts: {
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
   if (reportPath) {
+    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'find_orphan_keys',
       args: { layer, locale, scanDirs, excludeDirs },
@@ -1969,6 +1976,7 @@ export async function scanCodeUsage(opts: {
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'scan_code_usage')
   if (reportPath) {
+    validateReportPath(dir, reportPath)
     await writeReportFile(reportPath, output, {
       tool: 'scan_code_usage',
       args: { keys, scanDirs, excludeDirs },
@@ -2007,6 +2015,7 @@ export async function removeOrphanKeys(opts: {
     const emptyOutput = { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
     const emptyReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (emptyReportPath) {
+      validateReportPath(dir, emptyReportPath)
       await writeReportFile(emptyReportPath, emptyOutput, {
         tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
@@ -2047,6 +2056,7 @@ export async function removeOrphanKeys(opts: {
     }
     const zeroReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (zeroReportPath) {
+      validateReportPath(dir, zeroReportPath)
       await writeReportFile(zeroReportPath, zeroOutput, {
         tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
@@ -2088,6 +2098,7 @@ export async function removeOrphanKeys(opts: {
     }
     const dryRunReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (dryRunReportPath) {
+      validateReportPath(dir, dryRunReportPath)
       await writeReportFile(dryRunReportPath, output, {
         tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
@@ -2139,6 +2150,7 @@ export async function removeOrphanKeys(opts: {
 
   const removalReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
   if (removalReportPath) {
+    validateReportPath(dir, removalReportPath)
     await writeReportFile(removalReportPath, removalOutput, {
       tool: 'remove_orphan_keys',
       args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },

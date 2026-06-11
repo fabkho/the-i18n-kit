@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-06-11T21:54:44.603Z",
+  "tool": "find_empty_translations",
+  "args": {},
+  "emptyKeys": {
+    "fr": {
+      "root": [
+        "admin.users.edit"
+      ]
+    }
+  },
+  "summary": {
+    "totalEmpty": 1,
+    "localesChecked": [
+      "de",
+      "en",
+      "fr",
+      "es"
+    ],
+    "layersChecked": [
+      "root",
+      "playground"
+    ]
+  }
+}

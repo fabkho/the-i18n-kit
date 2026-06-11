@@ -3,13 +3,13 @@
  *
  * Verifies:
  * - When `outputFile` is provided, op writes JSON to disk and returns `{ reportFile, summary }`.
- * - Paths outside the project directory (e.g., /tmp) are accepted when `outputFile` is explicit.
+ * - Paths outside the project directory are rejected even when `outputFile` is explicit.
  * - When `outputFile` is absent and no config-level `reportOutput`, full payload is returned inline.
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { registerDetectorMock, playgroundDir, appAdminDir } from '../fixtures/mock-detector.js'
 
@@ -44,7 +44,7 @@ afterEach(() => {
 
 describe('getMissingTranslations — outputFile', () => {
   it('writes full JSON to disk and returns { reportFile, summary }', async () => {
-    const outPath = join(tmpDir, 'missing.json')
+    const outPath = join(appAdminDir, '.i18n-reports', 'missing.json')
     const result = await getMissingTranslations({
       projectDir: appAdminDir,
       outputFile: outPath,
@@ -60,11 +60,11 @@ describe('getMissingTranslations — outputFile', () => {
     expect(parsed).toHaveProperty('missing')
   })
 
-  it('accepts /tmp paths (outside project dir) when outputFile is explicit', async () => {
+  it('rejects paths outside project dir even when outputFile is explicit', async () => {
     const outPath = join(tmpDir, 'missing-tmp.json')
     await expect(
       getMissingTranslations({ projectDir: appAdminDir, outputFile: outPath }),
-    ).resolves.toHaveProperty('reportFile', outPath)
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -79,7 +79,7 @@ describe('getMissingTranslations — outputFile', () => {
 
 describe('findEmptyTranslations — outputFile', () => {
   it('writes full JSON to disk and returns { reportFile, summary }', async () => {
-    const outPath = join(tmpDir, 'empty.json')
+    const outPath = join(appAdminDir, '.i18n-reports', 'empty.json')
     const result = await findEmptyTranslations({
       projectDir: appAdminDir,
       outputFile: outPath,
@@ -95,11 +95,11 @@ describe('findEmptyTranslations — outputFile', () => {
     expect(parsed).toHaveProperty('emptyKeys')
   })
 
-  it('accepts /tmp paths (outside project dir) when outputFile is explicit', async () => {
+  it('rejects paths outside project dir even when outputFile is explicit', async () => {
     const outPath = join(tmpDir, 'empty-tmp.json')
     await expect(
       findEmptyTranslations({ projectDir: appAdminDir, outputFile: outPath }),
-    ).resolves.toHaveProperty('reportFile', outPath)
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -114,7 +114,7 @@ describe('findEmptyTranslations — outputFile', () => {
 
 describe('findOrphanKeys — outputFile', () => {
   it('writes full JSON to disk and returns { reportFile, summary }', async () => {
-    const outPath = join(tmpDir, 'orphans.json')
+    const outPath = join(playgroundDir, '.i18n-reports', 'orphans.json')
     const result = await findOrphanKeys({
       projectDir: playgroundDir,
       outputFile: outPath,
@@ -130,11 +130,11 @@ describe('findOrphanKeys — outputFile', () => {
     expect(parsed).toHaveProperty('orphanKeys')
   })
 
-  it('accepts /tmp paths (outside project dir) when outputFile is explicit', async () => {
+  it('rejects paths outside project dir even when outputFile is explicit', async () => {
     const outPath = join(tmpDir, 'orphans-tmp.json')
     await expect(
       findOrphanKeys({ projectDir: playgroundDir, outputFile: outPath }),
-    ).resolves.toHaveProperty('reportFile', outPath)
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -149,7 +149,7 @@ describe('findOrphanKeys — outputFile', () => {
 
 describe('scanCodeUsage — outputFile', () => {
   it('writes full JSON to disk and returns { reportFile, summary }', async () => {
-    const outPath = join(tmpDir, 'scan.json')
+    const outPath = join(playgroundDir, '.i18n-reports', 'scan.json')
     const result = await scanCodeUsage({
       projectDir: playgroundDir,
       outputFile: outPath,
@@ -165,11 +165,11 @@ describe('scanCodeUsage — outputFile', () => {
     expect(parsed).toHaveProperty('usages')
   })
 
-  it('accepts /tmp paths (outside project dir) when outputFile is explicit', async () => {
+  it('rejects paths outside project dir even when outputFile is explicit', async () => {
     const outPath = join(tmpDir, 'scan-tmp.json')
     await expect(
       scanCodeUsage({ projectDir: playgroundDir, outputFile: outPath }),
-    ).resolves.toHaveProperty('reportFile', outPath)
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -184,7 +184,7 @@ describe('scanCodeUsage — outputFile', () => {
 
 describe('removeOrphanKeys — outputFile', () => {
   it('writes full JSON to disk and returns { reportFile, summary } in dry-run mode', async () => {
-    const outPath = join(tmpDir, 'cleanup.json')
+    const outPath = join(playgroundDir, '.i18n-reports', 'cleanup.json')
     const result = await removeOrphanKeys({
       projectDir: playgroundDir,
       dryRun: true,
@@ -200,11 +200,11 @@ describe('removeOrphanKeys — outputFile', () => {
     expect(parsed).toHaveProperty('tool', 'remove_orphan_keys')
   })
 
-  it('accepts /tmp paths (outside project dir) when outputFile is explicit', async () => {
+  it('rejects paths outside project dir even when outputFile is explicit', async () => {
     const outPath = join(tmpDir, 'cleanup-tmp.json')
     await expect(
       removeOrphanKeys({ projectDir: playgroundDir, dryRun: true, outputFile: outPath }),
-    ).resolves.toHaveProperty('reportFile', outPath)
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {

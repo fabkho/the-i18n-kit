@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-06-11T21:54:44.685Z",
+  "tool": "scan_code_usage",
+  "args": {},
+  "usages": {},
+  "summary": {
+    "uniqueKeysFound": 0,
+    "totalReferences": 0,
+    "filesScanned": 2,
+    "dirsScanned": [
+      "/Users/fabiankirchhoff/code/anny/the-i18n-kit/packages/cli/tests/fixtures/nuxt-project"
+    ]
+  }
+}
