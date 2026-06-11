@@ -923,8 +923,9 @@ export async function searchTranslations(opts: {
   layer?: string
   locale?: string
   projectDir?: string
-}): Promise<{ matches: SearchMatch[]; totalMatches: number }> {
-  const { query, layer, locale } = opts
+  outputFile?: string
+}): Promise<{ matches: SearchMatch[]; totalMatches: number } | { reportFile: string; summary: { totalMatches: number } }> {
+  const { query, layer, locale, outputFile } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
@@ -991,7 +992,18 @@ export async function searchTranslations(opts: {
     }
   }
 
-  return { matches, totalMatches: matches.length }
+  const output = { matches, totalMatches: matches.length }
+
+  const reportPath = outputFile ?? resolveReportFilePath(config, dir, 'search_translations')
+  if (reportPath) {
+    await writeReportFile(reportPath, output, {
+      tool: 'search_translations',
+      args: { query, searchIn: opts.searchIn, layer, locale },
+    })
+    return { reportFile: reportPath, summary: { totalMatches: matches.length } }
+  }
+
+  return output
 }
 
 /**
@@ -1690,7 +1702,7 @@ export async function translateKey(opts: {
 /**
  * Find translation keys that exist in locale files but are not referenced in source code.
  */
-export async function findOrphanKeysOp(opts: {
+export async function findOrphanKeys(opts: {
   layer?: string
   locale?: string
   scanDirs?: string[]
@@ -1826,7 +1838,7 @@ export async function findOrphanKeysOp(opts: {
 /**
  * Scan Vue/TS source files to find where translation keys are referenced.
  */
-export async function scanCodeUsageOp(opts: {
+export async function scanCodeUsage(opts: {
   keys?: string[]
   scanDirs?: string[]
   excludeDirs?: string[]

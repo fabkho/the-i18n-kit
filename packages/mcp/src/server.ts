@@ -22,8 +22,8 @@ import {
   renameTranslationKey,
   translateMissing,
   translateKey,
-  findOrphanKeysOp,
-  scanCodeUsageOp,
+  findOrphanKeys,
+  scanCodeUsage,
   cleanupUnusedTranslations,
   scaffoldLocaleFiles,
   findLocaleImpl,
@@ -291,10 +291,6 @@ export function createServer(): McpServer {
           .array(z.string())
           .optional()
           .describe('Locale codes to check for missing keys (e.g., ["de", "fr", "es"]). Defaults to all locales except the reference.'),
-        locales: z
-          .array(z.string())
-          .optional()
-          .describe('Alias for targetLocales (deprecated — use targetLocales instead).'),
         projectDir: z
           .string()
           .optional()
@@ -305,9 +301,9 @@ export function createServer(): McpServer {
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/missing-translations.json"'),
       },
     },
-    async ({ layer, referenceLocale, targetLocales, locales, projectDir, outputFile }) => {
+    async ({ layer, referenceLocale, targetLocales, projectDir, outputFile }) => {
       try {
-        const result = await getMissingTranslations({ layer, referenceLocale, targetLocales, locales, projectDir, outputFile })
+        const result = await getMissingTranslations({ layer, referenceLocale, targetLocales, projectDir, outputFile })
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('finding missing translations', error)
@@ -380,11 +376,15 @@ export function createServer(): McpServer {
           .string()
           .optional()
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+        outputFile: z
+          .string()
+          .optional()
+          .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/search-results.json"'),
       },
     },
-    async ({ query, searchIn, layer, locale, projectDir }) => {
+    async ({ query, searchIn, layer, locale, projectDir, outputFile }) => {
       try {
-        const result = await searchTranslations({ query, searchIn, layer, locale, projectDir })
+        const result = await searchTranslations({ query, searchIn, layer, locale, projectDir, outputFile })
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('searching translations', error)
@@ -489,10 +489,6 @@ export function createServer(): McpServer {
           .array(z.string())
           .optional()
           .describe('Locale codes to translate into (e.g., ["de", "fr", "sv"]). Defaults to all locales except the reference.'),
-        locales: z
-          .array(z.string())
-          .optional()
-          .describe('Alias for targetLocales (deprecated — use targetLocales instead).'),
         keys: z
           .array(z.string())
           .optional()
@@ -511,7 +507,7 @@ export function createServer(): McpServer {
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
       },
     },
-    async ({ layer, referenceLocale, targetLocales, locales, keys, batchSize, dryRun, projectDir }, extra) => {
+    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, projectDir }, extra) => {
       try {
         // Check sampling support from MCP client capabilities
         const clientCapabilities = server.server.getClientCapabilities()
@@ -579,7 +575,6 @@ export function createServer(): McpServer {
           layer,
           referenceLocale,
           targetLocales,
-          locales,
           keys,
           batchSize,
           dryRun,
@@ -740,7 +735,7 @@ export function createServer(): McpServer {
     },
     async ({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile }) => {
       try {
-        const result = await findOrphanKeysOp({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile })
+        const result = await findOrphanKeys({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile })
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('finding orphan keys', error)
@@ -781,7 +776,7 @@ export function createServer(): McpServer {
     },
     async ({ keys, scanDirs, excludeDirs, projectDir, outputFile }) => {
       try {
-        const result = await scanCodeUsageOp({ keys, scanDirs, excludeDirs, projectDir, outputFile })
+        const result = await scanCodeUsage({ keys, scanDirs, excludeDirs, projectDir, outputFile })
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('scanning code usage', error)

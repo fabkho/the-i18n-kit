@@ -1,11 +1,14 @@
 import { defineCommand } from 'citty'
 import { translateKey } from '../core/operations.js'
+import { createSamplingFn } from '../llm/providers.js'
+import type { SamplingFn } from '../core/types.js'
+import type { LlmProvider } from '../llm/providers.js'
 import { sharedArgs, outputResult, splitList } from './_shared.js'
 
 export default defineCommand({
   meta: {
     name: 'translate-key',
-    description: 'Translate one key from a source locale into target locales',
+    description: 'Translate a single key from a source locale into target locales. Supports LLM translation with --provider.',
   },
   args: {
     ...sharedArgs,
@@ -47,11 +50,39 @@ export default defineCommand({
       description: 'Include translated values in output',
       default: false,
     },
+    provider: {
+      type: 'string' as const,
+      description: 'LLM provider: "openai" or "anthropic". Without this, only returns fallback context.',
+      valueHint: 'openai|anthropic',
+    },
+    model: {
+      type: 'string' as const,
+      description: 'Model name (required when --provider is set)',
+    },
+    apiKey: {
+      type: 'string' as const,
+      description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY env)',
+    },
   },
   async run({ args }) {
     const targetLocales = args.targets === 'all'
       ? 'all'
       : splitList(args.targets)
+
+    let samplingFn: SamplingFn | undefined
+    if (args.provider) {
+      if (!args.model) {
+        throw new Error('--model is required when --provider is set')
+      }
+      if (args.provider !== 'openai' && args.provider !== 'anthropic') {
+        throw new Error(`Unknown provider: "${args.provider}". Must be "openai" or "anthropic".`)
+      }
+      samplingFn = await createSamplingFn({
+        provider: args.provider as LlmProvider,
+        model: args.model,
+        apiKey: args.apiKey,
+      })
+    }
 
     const result = await translateKey({
       layer: args.layer,
@@ -63,7 +94,7 @@ export default defineCommand({
       dryRun: args.dryRun,
       includePreview: args.includePreview,
       projectDir: args.projectDir,
-      // No samplingFn — CLI returns fallback context unless dry-run/no-op.
+      samplingFn,
     })
     outputResult(result, args)
   },

@@ -21,8 +21,8 @@ const { clearConfigCache } = await import('../../src/config/detector.js')
 import {
   getMissingTranslations,
   findEmptyTranslations,
-  findOrphanKeysOp,
-  scanCodeUsageOp,
+  findOrphanKeys,
+  scanCodeUsage,
   cleanupUnusedTranslations,
 } from '../../src/core/operations.js'
 
@@ -110,12 +110,12 @@ describe('findEmptyTranslations — outputFile', () => {
   })
 })
 
-// ─── findOrphanKeysOp ────────────────────────────────────────────────────────
+// ─── findOrphanKeys ─────────────────────────────────────────────────────────
 
-describe('findOrphanKeysOp — outputFile', () => {
+describe('findOrphanKeys — outputFile', () => {
   it('writes full JSON to disk and returns { reportFile, summary }', async () => {
     const outPath = join(tmpDir, 'orphans.json')
-    const result = await findOrphanKeysOp({
+    const result = await findOrphanKeys({
       projectDir: playgroundDir,
       outputFile: outPath,
     })
@@ -133,24 +133,24 @@ describe('findOrphanKeysOp — outputFile', () => {
   it('accepts /tmp paths (outside project dir) when outputFile is explicit', async () => {
     const outPath = join(tmpDir, 'orphans-tmp.json')
     await expect(
-      findOrphanKeysOp({ projectDir: playgroundDir, outputFile: outPath }),
+      findOrphanKeys({ projectDir: playgroundDir, outputFile: outPath }),
     ).resolves.toHaveProperty('reportFile', outPath)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
-    const result = await findOrphanKeysOp({ projectDir: playgroundDir })
+    const result = await findOrphanKeys({ projectDir: playgroundDir })
     expect(result).toHaveProperty('orphanKeys')
     expect(result).toHaveProperty('summary')
     expect(result).not.toHaveProperty('reportFile')
   })
 })
 
-// ─── scanCodeUsageOp ─────────────────────────────────────────────────────────
+// ─── scanCodeUsage ───────────────────────────────────────────────────────────
 
-describe('scanCodeUsageOp — outputFile', () => {
+describe('scanCodeUsage — outputFile', () => {
   it('writes full JSON to disk and returns { reportFile, summary }', async () => {
     const outPath = join(tmpDir, 'scan.json')
-    const result = await scanCodeUsageOp({
+    const result = await scanCodeUsage({
       projectDir: playgroundDir,
       outputFile: outPath,
     })
@@ -168,12 +168,12 @@ describe('scanCodeUsageOp — outputFile', () => {
   it('accepts /tmp paths (outside project dir) when outputFile is explicit', async () => {
     const outPath = join(tmpDir, 'scan-tmp.json')
     await expect(
-      scanCodeUsageOp({ projectDir: playgroundDir, outputFile: outPath }),
+      scanCodeUsage({ projectDir: playgroundDir, outputFile: outPath }),
     ).resolves.toHaveProperty('reportFile', outPath)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
-    const result = await scanCodeUsageOp({ projectDir: playgroundDir })
+    const result = await scanCodeUsage({ projectDir: playgroundDir })
     expect(result).toHaveProperty('usages')
     expect(result).toHaveProperty('summary')
     expect(result).not.toHaveProperty('reportFile')

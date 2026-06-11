@@ -13,7 +13,6 @@ export const commands = {
   'rename': () => import('./rename.js').then(m => m.default as CommandDef),
   'translate': () => import('./translate.js').then(m => m.default as CommandDef),
   'translate-key': () => import('./translate-key.js').then(m => m.default as CommandDef),
-  'orphans': () => import('./orphans.js').then(m => m.default as CommandDef),
   'scan': () => import('./scan.js').then(m => m.default as CommandDef),
   'cleanup': () => import('./cleanup.js').then(m => m.default as CommandDef),
   'scaffold': () => import('./scaffold.js').then(m => m.default as CommandDef),

@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty'
-import { scanCodeUsageOp } from '../core/operations.js'
+import { scanCodeUsage } from '../core/operations.js'
 import { sharedArgs, outputResult, splitList } from './_shared.js'
 
 export default defineCommand({
@@ -19,7 +19,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const result = await scanCodeUsageOp({
+    const result = await scanCodeUsage({
       keys: splitList(args.keys),
       projectDir: args.projectDir,
       outputFile: args.outputFile,

@@ -1,7 +1,13 @@
 import { createRequire } from 'node:module'
 import { defineCommand, runCommand, runMain } from 'citty'
 import { consola } from 'consola'
-import { commands } from './commands/index.js'
+import { commands as allCommands } from './commands/index.js'
+
+// Hidden diagnostic commands: detect, list-dirs, empty, scan
+const hiddenCommands = new Set(['detect', 'list-dirs', 'empty', 'scan'])
+const commands = Object.fromEntries(
+  Object.entries(allCommands).filter(([key]) => !hiddenCommands.has(key)),
+)
 
 const require = createRequire(import.meta.url)
 const { version, description } = require('../package.json') as { version: string; description: string }
