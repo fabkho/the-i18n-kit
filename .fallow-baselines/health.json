@@ -1,0 +1,112 @@
+{
+  "finding_counts": {
+    "packages/cli/src/adapters/generic/index.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/adapters/nuxt/index.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/cli.ts": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/commands/_shared.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/commands/translate.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/config/discovery.ts": {
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/config/project-config.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/core/operations.ts": {
+      "complexity_critical": {
+        "count": 5
+      },
+      "complexity_high": {
+        "count": 5
+      },
+      "complexity_moderate": {
+        "count": 3
+      },
+      "crap_critical": {
+        "count": 5
+      },
+      "crap_high": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "packages/cli/src/io/locale-data.ts": {
+      "complexity_high": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/scanner/code-scanner.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "packages/mcp/src/server.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": [
+    "packages/cli/src/core/operations.ts:complexity",
+    "packages/cli/src/adapters/nuxt/index.ts:complexity",
+    "packages/cli/src/config/project-config.ts:complexity",
+    "packages/cli/src/io/locale-data.ts:complexity",
+    "packages/cli/src/scanner/code-scanner.ts:complexity"
+  ]
+}
