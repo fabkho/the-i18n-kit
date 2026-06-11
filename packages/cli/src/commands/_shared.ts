@@ -1,4 +1,4 @@
-import { consola } from 'consola'
+import { log } from '../utils/logger.js'
 
 export const sharedArgs = {
   projectDir: {
@@ -26,7 +26,7 @@ export function outputResult(data: unknown, args: { json?: boolean }): void {
     if (args.json || !process.stdout.isTTY) {
       process.stdout.write(`Wrote report to: ${reportFile}\n${summaryJson}\n`)
     } else {
-      consola.log(`Wrote report to: ${reportFile}\n${summaryJson}`)
+      log.info(`Wrote report to: ${reportFile}\n${summaryJson}`)
     }
     return
   }
@@ -34,7 +34,7 @@ export function outputResult(data: unknown, args: { json?: boolean }): void {
   if (args.json || !process.stdout.isTTY) {
     process.stdout.write(json + '\n')
   } else {
-    consola.log(json)
+    log.info(json)
   }
 }
 

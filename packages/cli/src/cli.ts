@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { defineCommand, runCommand, runMain } from 'citty'
-import { consola } from 'consola'
+import { log } from './utils/logger.js'
 import { commands as allCommands } from './commands/index.js'
 
 // Hidden diagnostic commands: detect, list-dirs, empty, scan
@@ -36,9 +36,9 @@ export async function runCli(): Promise<void> {
     await runCommand(main, { rawArgs })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
-    consola.error(message)
+    log.error(message)
     if (rawArgs.includes('--debug') && error instanceof Error && error.stack) {
-      consola.error(error.stack)
+      log.error(error.stack)
     }
     process.exitCode = 1
   }
