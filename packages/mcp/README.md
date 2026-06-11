@@ -106,7 +106,7 @@ Then just ask your agent:
 | `rename_translation_key` | Rename/move a key across all locales |
 | `get_missing_translations` | Find keys missing in target locales |
 | `find_empty_translations` | Find keys with empty string values |
-| `search_translations` | Search by key or value substring |
+| `search_translations` | Search by key or value (case-insensitive substring, not fuzzy) |
 | `translate_missing` | Auto-translate missing keys via MCP sampling or return fallback context |
 | `translate_key` | Translate one source key into target locales; can overwrite stale values |
 | `find_orphan_keys` | Find keys not referenced in source code |
@@ -119,6 +119,64 @@ Then just ask your agent:
 |--------|-------------|
 | `add-feature-translations` | Guided workflow for adding translations for a new feature |
 | `add-language` | Add a new language end-to-end: config, scaffold, translate, verify |
+
+## Examples
+
+### `write_translations` — Hand-crafted translations
+
+Add a key to two locales (upsert mode never fails if key exists):
+```json
+{
+  "layer": "root",
+  "mode": "upsert",
+  "translations": {
+    "auth.login.title": {
+      "en-US": "Welcome back",
+      "de-DE": "Willkommen zurück"
+    }
+  }
+}
+```
+
+Strict add (fails if key already exists):
+```json
+{
+  "layer": "root",
+  "mode": "add",
+  "translations": {
+    "common.actions.save": {
+      "en-US": "Save",
+      "de-DE": "Speichern",
+      "fr-FR": "Enregistrer"
+    }
+  }
+}
+```
+
+### `translate_key` — Single-key LLM translation
+
+Source value provided inline, writes to source locale + translates to others:
+```json
+{
+  "layer": "root",
+  "key": "bookingCreator.options.removeSubResource",
+  "sourceLocale": "en-US",
+  "sourceValue": "Remove sub-resource",
+  "targetLocales": ["de-DE", "fr-FR", "es-ES"],
+  "overwrite": true
+}
+```
+
+Source value read from existing locale file, only fill missing targets:
+```json
+{
+  "layer": "root",
+  "key": "auth.errors.sessionExpired",
+  "sourceLocale": "en-US",
+  "targetLocales": "all",
+  "overwrite": false
+}
+```
 
 ## Project Config
 

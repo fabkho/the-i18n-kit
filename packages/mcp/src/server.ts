@@ -304,7 +304,7 @@ export function createServer(): McpServer {
     {
       title: 'Search Translations',
       description:
-        'Search translation files by key pattern (glob/regex) or value substring. Useful for finding existing translations before adding duplicates.',
+        'Search translation files by key path or value. Simple case-insensitive substring match — not fuzzy or regex. Useful for finding existing translations before adding duplicates.',
       inputSchema: {
         query: z
           .string()
