@@ -1199,7 +1199,7 @@ export async function translateMissing(opts: {
   locales?: string[]
   keys?: string[]
   batchSize?: number
-  /** Max parallel locales to process (default: 5 when sampling, 1 otherwise) */
+  /** Max parallel locales to process. Defaults to unlimited (all at once) when sampling, 1 otherwise. Set lower to throttle LLM API calls. */
   concurrency?: number
   dryRun?: boolean
   projectDir?: string
@@ -1442,7 +1442,7 @@ export async function translateMissing(opts: {
     }
   }
 
-  const concurrency = opts.concurrency ?? (samplingSupported ? 5 : 1)
+  const concurrency = opts.concurrency ?? (samplingSupported ? targets.length : 1)
 
   const localeResults = await runWithConcurrency(targets, concurrency, async (target) => {
     const targetData = targetDataCache.get(target.code) ?? {}

@@ -472,7 +472,7 @@ export function createServer(): McpServer {
     {
       title: 'Translate Missing',
       description:
-        'Find keys missing in target locales and translate them. Uses the host LLM via MCP sampling if available, otherwise returns context for the agent to translate inline. Uses project config (glossary, translation prompt, locale notes, examples) if available. Translates multiple locales concurrently (default: 5) — pass all targetLocales at once.',
+        'Find keys missing in target locales and translate them. Uses the host LLM via MCP sampling if available, otherwise returns context for the agent to translate inline. Uses project config (glossary, translation prompt, locale notes, examples) if available. Translates all locales concurrently by default — pass all targetLocales at once.',
       annotations: {
         title: 'Translate Missing Translations',
         readOnlyHint: false,
