@@ -22,7 +22,7 @@ import {
   translateMissing,
   translateKey,
   findOrphanKeys,
-  cleanupUnusedTranslations,
+  removeOrphanKeys,
   scaffoldLocaleFiles,
   findLocaleImpl,
 } from 'the-i18n-cli'
@@ -694,14 +694,14 @@ export function createServer(): McpServer {
     },
   )
 
-  // ─── Tool: cleanup_unused_translations ────────────────────────
+  // ─── Tool: remove_orphan_keys ────────────────────────
 
   server.registerTool(
-    'cleanup_unused_translations',
+    'remove_orphan_keys',
     {
-      title: 'Cleanup Unused Translations',
+      title: 'Remove Orphan Keys',
       description:
-        'Find translation keys not referenced in source code and remove them. Combines find_orphan_keys + remove_translations in one step. Always does a dry run first unless dryRun is explicitly set to false.',
+        'Find orphan keys (not referenced in source code) and remove them from all locale files. Always does a dry run first.',
       inputSchema: {
         layer: z
           .string()
@@ -735,7 +735,7 @@ export function createServer(): McpServer {
     },
     async ({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir, outputFile }) => {
       try {
-        const result = await cleanupUnusedTranslations({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir, outputFile })
+        const result = await removeOrphanKeys({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir, outputFile })
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('cleaning up unused translations', error)

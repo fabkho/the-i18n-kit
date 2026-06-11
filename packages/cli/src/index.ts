@@ -17,7 +17,7 @@ export {
   translateKey,
   findOrphanKeys,
   scanCodeUsage,
-  cleanupUnusedTranslations,
+  removeOrphanKeys,
   scaffoldLocaleFiles,
   findLocaleImpl,
 } from './core/operations.js'

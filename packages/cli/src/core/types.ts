@@ -299,7 +299,7 @@ export interface ScanCodeUsageResult {
   reportFile?: string
 }
 
-// ─── cleanup_unused_translations ─────────────────────────────────
+// ─── remove_orphan_keys ─────────────────────────────────
 
 export interface CleanupUnusedResult {
   orphanKeys?: Record<string, string[]>

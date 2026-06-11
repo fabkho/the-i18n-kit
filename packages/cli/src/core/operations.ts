@@ -1955,7 +1955,7 @@ export async function scanCodeUsage(opts: {
 /**
  * Find translation keys not referenced in source code and remove them.
  */
-export async function cleanupUnusedTranslations(opts: {
+export async function removeOrphanKeys(opts: {
   layer?: string
   locale?: string
   scanDirs?: string[]
@@ -2011,10 +2011,10 @@ export async function cleanupUnusedTranslations(opts: {
   const totalKeys = [...keysByLayer.values()].reduce((sum, v) => sum + v.keys.length, 0)
   if (totalKeys === 0) {
     const emptyOutput = { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
-    const emptyReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'cleanup_unused_translations')
+    const emptyReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (emptyReportPath) {
       await writeReportFile(emptyReportPath, emptyOutput, {
-        tool: 'cleanup_unused_translations',
+        tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
       })
       return { reportFile: emptyReportPath, summary: emptyOutput.summary }
@@ -2051,10 +2051,10 @@ export async function cleanupUnusedTranslations(opts: {
       uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
       summary: { totalKeys, orphanCount: 0, uncertainCount: orphanResult.uncertainCount, dynamicMatchedCount, ignoredCount, filesScanned: totalFilesScanned, message: messageParts.join(' ') },
     }
-    const zeroReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'cleanup_unused_translations')
+    const zeroReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (zeroReportPath) {
       await writeReportFile(zeroReportPath, zeroOutput, {
-        tool: 'cleanup_unused_translations',
+        tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
       })
       return { reportFile: zeroReportPath, summary: zeroOutput.summary }
@@ -2092,10 +2092,10 @@ export async function cleanupUnusedTranslations(opts: {
         suggestedIgnorePattern: w.suggestedIgnorePattern,
       }))
     }
-    const dryRunReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'cleanup_unused_translations')
+    const dryRunReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (dryRunReportPath) {
       await writeReportFile(dryRunReportPath, output, {
-        tool: 'cleanup_unused_translations',
+        tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
       })
       return { reportFile: dryRunReportPath, summary: output.summary }
@@ -2143,10 +2143,10 @@ export async function cleanupUnusedTranslations(opts: {
     },
   }
 
-  const removalReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'cleanup_unused_translations')
+  const removalReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
   if (removalReportPath) {
     await writeReportFile(removalReportPath, removalOutput, {
-      tool: 'cleanup_unused_translations',
+      tool: 'remove_orphan_keys',
       args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
     })
     return { reportFile: removalReportPath, summary: removalOutput.summary }

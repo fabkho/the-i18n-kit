@@ -1,11 +1,11 @@
 import { defineCommand } from 'citty'
-import { cleanupUnusedTranslations } from '../core/operations.js'
+import { removeOrphanKeys } from '../core/operations.js'
 import { sharedArgs, outputResult } from './_shared.js'
 
 export default defineCommand({
   meta: {
-    name: 'cleanup',
-    description: 'Find and remove translation keys not referenced in source code',
+    name: 'remove-orphans',
+    description: 'Find and remove orphan translation keys not referenced in source code',
   },
   args: {
     ...sharedArgs,
@@ -28,7 +28,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const result = await cleanupUnusedTranslations({
+    const result = await removeOrphanKeys({
       layer: args.layer,
       locale: args.locale,
       dryRun: args.dryRun,

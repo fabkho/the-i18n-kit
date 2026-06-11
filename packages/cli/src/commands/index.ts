@@ -15,6 +15,6 @@ export const commands = {
   'translate': () => import('./translate.js').then(m => m.default as CommandDef),
   'translate-key': () => import('./translate-key.js').then(m => m.default as CommandDef),
   'scan': () => import('./scan.js').then(m => m.default as CommandDef),
-  'cleanup': () => import('./cleanup.js').then(m => m.default as CommandDef),
+  'remove-orphans': () => import('./remove-orphans.js').then(m => m.default as CommandDef),
   'scaffold': () => import('./scaffold.js').then(m => m.default as CommandDef),
 } as const
