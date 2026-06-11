@@ -15,7 +15,6 @@ import {
   getTranslations,
   writeTranslations,
   getMissingTranslations,
-  findEmptyTranslations,
   searchTranslations,
   removeTranslations,
   renameTranslationKey,
@@ -256,43 +255,6 @@ export function createServer(): McpServer {
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('finding missing translations', error)
-      }
-    },
-  )
-
-  // ─── Tool: find_empty_translations ─────────────────────────────
-
-  server.registerTool(
-    'find_empty_translations',
-    {
-      title: 'Find Empty Translations',
-      description:
-        'Find translation keys that have empty string values ("") in locale files. Unlike get_missing_translations which compares against a reference locale, this tool checks each locale independently for empty values. Useful for finding untranslated keys in the reference locale itself.',
-      inputSchema: {
-        layer: z
-          .string()
-          .optional()
-          .describe('Layer name to scan (e.g., "root", "app-admin"). If omitted, scans all layers. Call discover to discover available layers.'),
-        locale: z
-          .string()
-          .optional()
-          .describe('Locale code to check for empty values (e.g., "de", "fr"). If omitted, checks all locales.'),
-        projectDir: z
-          .string()
-          .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
-        outputFile: z
-          .string()
-          .optional()
-          .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/empty-translations.json"'),
-      },
-    },
-    async ({ layer, locale, projectDir, outputFile }) => {
-      try {
-        const result = await findEmptyTranslations({ layer, locale, projectDir, outputFile })
-        return jsonContent(result)
-      } catch (error) {
-        return toolErrorResponse('find_empty_translations', error)
       }
     },
   )

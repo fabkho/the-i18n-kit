@@ -105,7 +105,6 @@ Then just ask your agent:
 | `remove_translations` | Remove keys from all locale files in a layer |
 | `rename_translation_key` | Rename/move a key across all locales |
 | `get_missing_translations` | Find keys missing in target locales |
-| `find_empty_translations` | Find keys with empty string values |
 | `search_translations` | Search by key or value (case-insensitive substring, not fuzzy) |
 | `translate_missing` | Auto-translate missing keys via MCP sampling or return fallback context |
 | `translate_key` | Translate one source key into target locales; can overwrite stale values |
