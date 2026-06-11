@@ -42,10 +42,6 @@ export default defineCommand({
       type: 'string' as const,
       description: 'Model name (required when --provider is set)',
     },
-    concurrency: {
-      type: 'string' as const,
-      description: 'Max parallel locales (default: 5)',
-    },
     apiKey: {
       type: 'string' as const,
       description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY env)',
@@ -82,11 +78,6 @@ export default defineCommand({
       })
     }
 
-    let concurrency: number | undefined
-    if (args.concurrency) {
-      concurrency = Number(args.concurrency)
-    }
-
     const result = await translateMissing({
       layer: args.layer,
       referenceLocale: args.ref,
@@ -96,7 +87,6 @@ export default defineCommand({
       dryRun: args.dryRun,
       projectDir: args.projectDir,
       samplingFn,
-      concurrency,
     })
     outputResult(result, args)
   },

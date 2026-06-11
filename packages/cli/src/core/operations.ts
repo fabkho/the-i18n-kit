@@ -1235,25 +1235,6 @@ export async function renameTranslationKey(opts: {
   return summary
 }
 
-async function runWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = []
-  const queue = [...items]
-  
-  async function worker(): Promise<void> {
-    while (queue.length > 0) {
-      const item = queue.shift()!
-      results.push(await fn(item))
-    }
-  }
-  
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))
-  return results
-}
-
 /**
  * Find keys missing in target locales and translate them.
  *
@@ -1267,8 +1248,6 @@ export async function translateMissing(opts: {
   locales?: string[]
   keys?: string[]
   batchSize?: number
-  /** Max parallel locales to process. Defaults to unlimited (all at once) when sampling, 1 otherwise. Set lower to throttle LLM API calls. */
-  concurrency?: number
   dryRun?: boolean
   projectDir?: string
   samplingFn?: SamplingFn
@@ -1510,12 +1489,10 @@ export async function translateMissing(opts: {
     }
   }
 
-  const concurrency = opts.concurrency ?? (samplingSupported ? targets.length : 1)
-
-  const localeResults = await runWithConcurrency(targets, concurrency, async (target) => {
+  const localeResults = await Promise.all(targets.map(async (target) => {
     const targetData = targetDataCache.get(target.code) ?? {}
     return translateOneLocale(target, targetData)
-  })
+  }))
 
   for (const [i, { result, fallbackContext }] of localeResults.entries()) {
     const localeCode = targets[i].code
