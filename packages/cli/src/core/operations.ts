@@ -1996,7 +1996,7 @@ export async function removeOrphanKeys(opts: {
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? true
 
-  const { layersToCheck, keysByLayer, totalKeys, localeCode } = await resolveOrphanScanContext(config, {
+  const { keysByLayer, totalKeys } = await resolveOrphanScanContext(config, {
     layer,
     locale,
     dir,
