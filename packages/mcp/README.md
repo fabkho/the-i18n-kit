@@ -6,7 +6,7 @@
 
 MCP server for managing i18n translation files — gives your AI agent full control over your app's translations without dumping entire locale files into context.
 
-12 purpose-built tools that let the agent work surgically — touching only the keys it needs. Auto-detects Nuxt, Laravel, or any project with JSON/PHP locale files.
+12 purpose-built tools that let the agent work surgically — touching only the keys it needs. Auto-detects Nuxt, Laravel, Next.js, React, or any project with JSON/PHP locale files (flat or namespaced).
 
 Part of [the-i18n-kit](https://github.com/fabkho/the-i18n-kit) monorepo. For CLI usage, see [the-i18n-cli](https://www.npmjs.com/package/the-i18n-cli).
 
@@ -93,6 +93,7 @@ Then just ask your agent:
 |-----------|--------------|----------------|
 | **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` |
 | **Laravel** (9+) | PHP arrays | `artisan`, `composer.json`, `lang/` |
+| **Next.js / React** | JSON (namespaced) | `.i18n-mcp.json` — configure `localeDirs` + `defaultLocale` |
 | **Generic** | JSON or PHP | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` |
 
 ## Tools
