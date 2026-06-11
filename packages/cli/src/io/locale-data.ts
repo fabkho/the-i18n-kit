@@ -21,7 +21,9 @@ export interface LocaleEntry {
 /**
  * Resolve all locale file entries for a given locale in a layer.
  *
- * - Nuxt (json): Returns a single entry `[{path: ".../en-US.json", namespace: null}]`
+ * - Nuxt (flat json): Returns a single entry `[{path: ".../en-US.json", namespace: null}]`
+ * - Namespaced JSON: Scans `{localeDir}/{localeCode}/*.json` and returns one entry per file
+ *   e.g., `[{path: ".../en/common.json", namespace: "common"}, ...]`
  * - Laravel (php-array): Scans `{langDir}/{localeCode}/*.php` and returns one entry per file
  *   e.g., `[{path: ".../en/auth.php", namespace: "auth"}, ...]`
  *
@@ -39,6 +41,25 @@ export async function resolveLocaleEntries(
     return resolvePhpEntries(localeDir, locale.code)
   }
 
+  // Namespaced JSON: messages/en/common.json, messages/en/auth.json, etc.
+  const namespaceDir = join(localeDir, locale.code)
+  if (existsSync(namespaceDir)) {
+    let files: string[]
+    try {
+      files = await readdir(namespaceDir)
+    } catch {
+      return []
+    }
+    const jsonFiles = files.filter(f => f.endsWith('.json')).sort()
+    if (jsonFiles.length > 0) {
+      return jsonFiles.map(f => ({
+        path: join(namespaceDir, f),
+        namespace: f.replace(/\.json$/, ''),
+      }))
+    }
+  }
+
+  // Flat JSON: en-US.json
   if (!locale.file) return []
   return [{ path: join(localeDir, locale.file), namespace: null }]
 }
@@ -169,9 +190,39 @@ export async function mutateLocaleData(
     const entries = await resolveLocaleEntries(config, layer, locale)
     if (entries.length === 0) return filesWritten
 
-    const filePath = entries[0].path
-    await writeLocale(filePath, data)
-    filesWritten.add(filePath)
+    // Namespaced JSON: split by namespace and write individual files (same pattern as php-array)
+    if (entries[0].namespace !== null) {
+      const localeDir = resolveLayerDir(config, layer)
+      if (!localeDir) return filesWritten
+
+      const localePath = join(localeDir, locale.code)
+      if (!existsSync(localePath)) {
+        await mkdir(localePath, { recursive: true })
+      }
+
+      for (const [namespace, nsData] of Object.entries(data)) {
+        if (typeof nsData !== 'object' || nsData === null) continue
+        const filePath = join(localePath, `${namespace}.json`)
+        await writeLocale(filePath, nsData as Record<string, unknown>)
+        filesWritten.add(filePath)
+      }
+
+      // Remove orphaned namespace files
+      const expectedFiles = new Set(Object.keys(data).map(ns => `${ns}.json`))
+      try {
+        const existingFiles = await readdir(localePath)
+        for (const file of existingFiles) {
+          if (file.endsWith('.json') && !expectedFiles.has(file)) {
+            await unlink(join(localePath, file))
+          }
+        }
+      } catch {}
+    } else {
+      // Flat JSON: write entire object to single file
+      const filePath = entries[0].path
+      await writeLocale(filePath, data)
+      filesWritten.add(filePath)
+    }
   }
 
   return filesWritten
