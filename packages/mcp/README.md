@@ -6,7 +6,7 @@
 
 MCP server for managing i18n translation files — gives your AI agent full control over your app's translations without dumping entire locale files into context.
 
-16 purpose-built tools that let the agent work surgically — touching only the keys it needs. Auto-detects Nuxt, Laravel, or any project with JSON/PHP locale files.
+15 purpose-built tools that let the agent work surgically — touching only the keys it needs. Auto-detects Nuxt, Laravel, or any project with JSON/PHP locale files.
 
 Part of [the-i18n-kit](https://github.com/fabkho/the-i18n-kit) monorepo. For CLI usage, see [the-i18n-cli](https://www.npmjs.com/package/the-i18n-cli).
 
@@ -99,11 +99,9 @@ Then just ask your agent:
 
 | Tool | Description |
 |------|-------------|
-| `detect_i18n_config` | Auto-detect framework, locales, layers. **Call first.** |
-| `list_locale_dirs` | List locale directories by layer with file counts |
+| `discover` | Auto-detect framework, locales, layers + list locale dirs by layer with file counts. **Call first.** |
 | `get_translations` | Read values for dot-path keys. `"*"` for all locales |
-| `add_translations` | Add new keys across locales. Supports `dryRun` |
-| `update_translations` | Update existing keys. Supports `dryRun` |
+| `write_translations` | Write key-value pairs. Mode: `upsert` (default), `add`, or `update`. Supports `dryRun` |
 | `remove_translations` | Remove keys from all locale files in a layer |
 | `rename_translation_key` | Rename/move a key across all locales |
 | `get_missing_translations` | Find keys missing in target locales |
@@ -111,8 +109,7 @@ Then just ask your agent:
 | `search_translations` | Search by key or value substring |
 | `translate_missing` | Auto-translate missing keys via MCP sampling or return fallback context |
 | `translate_key` | Translate one source key into target locales; can overwrite stale values |
-| `find_orphan_keys` | Find keys not referenced in source code |
-| `scan_code_usage` | Find where keys are used (file paths + line numbers) |
+| `scan_keys` | Scan source code for key usage + find orphan keys not referenced in code |
 | `cleanup_unused_translations` | Find + remove orphan keys. **Dry-run by default** |
 | `scaffold_locale` | Create empty locale files for new languages |
 
@@ -121,7 +118,6 @@ Then just ask your agent:
 | Prompt | Description |
 |--------|-------------|
 | `add-feature-translations` | Guided workflow for adding translations for a new feature |
-| `fix-missing-translations` | Find and fix all missing translations across the project |
 | `add-language` | Add a new language end-to-end: config, scaffold, translate, verify |
 
 ## Project Config

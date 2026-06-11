@@ -195,13 +195,13 @@ export function findLocaleOrThrow(config: I18nConfig, localeRef: string): Locale
 }
 
 /**
- * Shared logic for add_translations and update_translations.
+ * Shared logic for write_translations (supports add, update, and upsert modes).
  */
 export async function applyTranslations(
   config: I18nConfig,
   layer: string,
   translations: Record<string, Record<string, string>>,
-  mode: 'add' | 'update',
+  mode: 'add' | 'update' | 'upsert',
   findLocale: (config: I18nConfig, ref: string) => LocaleDefinition | undefined,
   dryRun = false,
 ): Promise<MutationResult> {
@@ -481,7 +481,7 @@ export function buildFallbackContext(
   keysAndValues: Record<string, string>,
 ): Record<string, unknown> {
   const context: Record<string, unknown> = {
-    instruction: `Translate these keys from ${referenceLocaleCode} to ${targetLocaleCode}, then call add_translations to write them.`,
+    instruction: `Translate these keys from ${referenceLocaleCode} to ${targetLocaleCode}, then call write_translations (mode: 'upsert') to write them.`,
     referenceLocale: referenceLocaleCode,
     targetLocale: targetLocaleCode,
     keysToTranslate: keysAndValues,
@@ -618,7 +618,61 @@ export async function getTranslations(opts: {
 }
 
 /**
+ * Write translation keys to the specified layer with mode control.
+ *
+ * Mode:
+ *   - 'upsert' (default): Adds new keys and updates existing ones. Never skips.
+ *   - 'add': Only creates new keys, skipping existing ones.
+ *   - 'update': Only modifies existing keys, skipping missing ones.
+ */
+export async function writeTranslations(opts: {
+  layer: string
+  translations: Record<string, Record<string, string>>
+  mode?: 'add' | 'update' | 'upsert'
+  dryRun?: boolean
+  projectDir?: string
+}): Promise<AddTranslationsResult> {
+  const { layer, translations } = opts
+  const dir = opts.projectDir ?? process.cwd()
+  const config = await detectI18nConfig(dir)
+  const mode = opts.mode ?? 'upsert'
+  const isDryRun = opts.dryRun ?? false
+
+  const { applied, skipped, warnings, filesWritten, preview, placeholderValidation } = await applyTranslations(
+    config, layer, translations, mode, findLocaleImpl, isDryRun,
+  )
+
+  if (isDryRun) {
+    const result: AddTranslationsResult = {
+      dryRun: true,
+      wouldAdd: preview,
+      skipped,
+      summary: {
+        keysToAdd: applied.length,
+        keysSkipped: skipped.length,
+        message: 'Call again with dryRun: false to apply these changes.',
+      },
+    }
+    if (skipped.length > 0) { result.skippedKeys = skipped }
+    if (warnings.length > 0) { result.warnings = warnings }
+    if (placeholderValidation) { result.placeholderValidation = placeholderValidation }
+    return result
+  }
+
+  const summary: AddTranslationsResult = {
+    added: applied,
+    skipped,
+    filesWritten,
+  }
+  if (warnings.length > 0) { summary.warnings = warnings }
+  if (placeholderValidation) { summary.placeholderValidation = placeholderValidation }
+  return summary
+}
+
+/**
  * Add new translation keys to the specified layer.
+ *
+ * @deprecated Use writeTranslations with mode: 'add' instead.
  */
 export async function addTranslations(opts: {
   layer: string
@@ -675,6 +729,8 @@ export async function addTranslations(opts: {
 
 /**
  * Update existing translation keys in the specified layer.
+ *
+ * @deprecated Use writeTranslations with mode: 'update' instead.
  */
 export async function updateTranslations(opts: {
   layer: string
@@ -1489,7 +1545,7 @@ export async function translateMissing(opts: {
     output.fallbackContexts = fallbackContexts
     output.summary = {
       ...(output.summary as Record<string, unknown>),
-      message: 'Sampling not supported by this host. Use the fallbackContexts to translate inline, then call add_translations to write the results.',
+      message: 'Sampling not supported by this host. Use the fallbackContexts to translate inline, then call write_translations (mode: "upsert") to write the results.',
     }
   }
 
@@ -1912,6 +1968,65 @@ export async function scanCodeUsage(opts: {
     await writeReportFile(reportPath, output, {
       tool: 'scan_code_usage',
       args: { keys, scanDirs, excludeDirs },
+    })
+    return { reportFile: reportPath, summary: output.summary }
+  }
+
+  return output
+}
+
+/**
+ * Scan source code for translation key usage AND find orphan keys (keys in locale files
+ * but not referenced in any source code). Runs both scans concurrently since they share
+ * the same expensive file-scanning operation, then merges the outputs.
+ */
+export async function scanKeys(opts: {
+  keys?: string[]
+  layer?: string
+  locale?: string
+  scanDirs?: string[]
+  excludeDirs?: string[]
+  projectDir?: string
+  outputFile?: string
+}): Promise<Record<string, unknown>> {
+  const dir = opts.projectDir ?? process.cwd()
+  const config = await detectI18nConfig(dir)
+
+  // Run both scans concurrently (they share the same expensive scanSourceFiles step internally)
+  const [usageResult, orphanResult] = await Promise.all([
+    scanCodeUsage({ keys: opts.keys, scanDirs: opts.scanDirs, excludeDirs: opts.excludeDirs, projectDir: dir }),
+    findOrphanKeys({ layer: opts.layer, locale: opts.locale, scanDirs: opts.scanDirs, excludeDirs: opts.excludeDirs, projectDir: dir }),
+  ])
+
+  const usageSummary = usageResult.summary as Record<string, unknown> | undefined
+  const orphanSummary = orphanResult.summary as Record<string, unknown> | undefined
+
+  const output = {
+    usages: usageResult.usages,
+    notFoundInCode: usageResult.notFoundInCode,
+    orphanKeys: orphanResult.orphanKeys,
+    uncertainKeys: orphanResult.uncertainKeys,
+    dynamicKeys: orphanResult.dynamicKeys || usageResult.dynamicKeys,
+    unresolvedKeyWarnings: orphanResult.unresolvedKeyWarnings,
+    summary: {
+      filesScanned: usageSummary?.filesScanned,
+      dirsScanned: usageSummary?.dirsScanned,
+      uniqueKeysFound: usageSummary?.uniqueKeysFound,
+      totalReferences: usageSummary?.totalReferences,
+      totalLocaleKeys: orphanSummary?.totalKeys,
+      orphanCount: orphanSummary?.orphanCount,
+      uncertainCount: orphanSummary?.uncertainCount,
+      dynamicMatchedCount: orphanSummary?.dynamicMatchedCount,
+      ignoredCount: orphanSummary?.ignoredCount,
+      layersChecked: (orphanSummary?.layersChecked as string[]) || [],
+    },
+  }
+
+  const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'scan_keys')
+  if (reportPath) {
+    await writeReportFile(reportPath, output, {
+      tool: 'scan_keys',
+      args: { keys: opts.keys, layer: opts.layer, locale: opts.locale },
     })
     return { reportFile: reportPath, summary: output.summary }
   }
