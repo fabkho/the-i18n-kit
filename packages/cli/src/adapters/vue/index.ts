@@ -5,7 +5,6 @@ import type { FrameworkAdapter, LocaleFileFormat } from '../types'
 import type { I18nConfig, LocaleDefinition } from '../../config/types'
 import { loadProjectConfig } from '../../config/project-config'
 import { applyLocaleOverride } from '../../config/locale-override'
-import { log } from '../../utils/logger'
 import { ConfigError } from '../../utils/errors'
 
 const COMMON_LOCALE_DIRS = [
