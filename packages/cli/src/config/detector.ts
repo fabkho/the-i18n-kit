@@ -3,6 +3,7 @@ import { registerAdapter, detectFramework } from '../adapters/registry'
 import { NuxtAdapter } from '../adapters/nuxt/index'
 import { LaravelAdapter } from '../adapters/laravel/index'
 import { GenericAdapter } from '../adapters/generic/index'
+import { VueAdapter } from '../adapters/vue/index'
 import { loadProjectConfig } from './project-config'
 import { log } from '../utils/logger'
 import { canonicalPath } from './discovery'
@@ -12,6 +13,7 @@ export { discoverNuxtApps } from './discovery'
 registerAdapter(new NuxtAdapter())
 registerAdapter(new LaravelAdapter())
 registerAdapter(new GenericAdapter())
+registerAdapter(new VueAdapter())
 
 const configCache = new Map<string, I18nConfig>()
 
