@@ -56,7 +56,7 @@ async function createOpenAiSamplingFn(config: LlmProviderConfig): Promise<Sampli
     })
 
     const text = response.choices[0]?.message?.content ?? ''
-    return { text, model: response.model || config.model }
+  return { text, model: response.model || config.model }
   }
 }
 

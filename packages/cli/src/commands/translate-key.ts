@@ -61,7 +61,7 @@ export default defineCommand({
     },
     apiKey: {
       type: 'string' as const,
-      description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env).',
+description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env).',
     },
   },
   async run({ args }) {
