@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.2.1...the-i18n-cli-1.3.0) (2026-06-12)
+
+
+### Features
+
+* add Google/Gemini provider support to translate command ([#154](https://github.com/fabkho/the-i18n-kit/issues/154)) ([#156](https://github.com/fabkho/the-i18n-kit/issues/156)) ([e5f044f](https://github.com/fabkho/the-i18n-kit/commit/e5f044f6afd19d32891a08e99c05557c899e1bda))
+
 ## [1.2.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.2.0...the-i18n-cli-1.2.1) (2026-06-11)
 
 
