@@ -35,6 +35,22 @@ function makeNuxtConfig(overrides: Partial<I18nConfig> = {}): I18nConfig {
   }
 }
 
+function makeNextJsConfig(overrides: Partial<I18nConfig> = {}): I18nConfig {
+  return {
+    rootDir: tempDir,
+    defaultLocale: 'en',
+    fallbackLocale: { default: ['en'] },
+    locales: [
+      { code: 'en', language: 'en' },
+      { code: 'de', language: 'de' },
+    ],
+    localeDirs: [{ path: join(tempDir, 'messages'), layer: 'root', layerRootDir: tempDir }],
+    layerRootDirs: [tempDir],
+    localeFileFormat: 'json',
+    ...overrides,
+  }
+}
+
 function makeLaravelConfig(overrides: Partial<I18nConfig> = {}): I18nConfig {
   return {
     rootDir: tempDir,
@@ -73,6 +89,17 @@ async function setupLaravelLocales() {
   await writeFile(join(enDir, 'auth.php'), `<?php\nreturn ['failed' => 'Invalid credentials', 'throttle' => 'Too many attempts'];\n`)
   await writeFile(join(enDir, 'validation.php'), `<?php\nreturn ['required' => 'This field is required'];\n`)
   await writeFile(join(deDir, 'auth.php'), `<?php\nreturn ['failed' => 'Ungueltige Anmeldedaten'];\n`)
+}
+
+async function setupNextJsLocales() {
+  const enDir = join(tempDir, 'messages', 'en')
+  const deDir = join(tempDir, 'messages', 'de')
+  await mkdir(enDir, { recursive: true })
+  await mkdir(deDir, { recursive: true })
+
+  await writeFile(join(enDir, 'common.json'), JSON.stringify({ save: 'Save', cancel: 'Cancel' }))
+  await writeFile(join(enDir, 'auth.json'), JSON.stringify({ login: 'Login', logout: 'Logout' }))
+  await writeFile(join(deDir, 'common.json'), JSON.stringify({ save: 'Speichern', cancel: 'Abbrechen' }))
 }
 
 describe('resolveLocaleEntries', () => {
@@ -142,6 +169,34 @@ describe('resolveLocaleEntries', () => {
     expect(entries).toHaveLength(1)
     expect(entries[0].path).toBe(join(tempDir, 'locales', 'en.json'))
   })
+
+  it('returns one entry per .json file for Next.js namespaced JSON', async () => {
+    await setupNextJsLocales()
+    const config = makeNextJsConfig()
+    const entries = await resolveLocaleEntries(config, 'root', config.locales[0])
+
+    expect(entries).toHaveLength(2)
+    expect(entries[0]).toEqual({
+      path: join(tempDir, 'messages', 'en', 'auth.json'),
+      namespace: 'auth',
+    })
+    expect(entries[1]).toEqual({
+      path: join(tempDir, 'messages', 'en', 'common.json'),
+      namespace: 'common',
+    })
+  })
+
+  it('falls back to flat JSON when no namespaced subdirectory exists', async () => {
+    await setupNuxtLocales()
+    const config = makeNuxtConfig()
+    const locale = config.locales[0]
+
+    const entries = await resolveLocaleEntries(config, 'root', locale)
+
+    expect(entries).toHaveLength(1)
+    expect(entries[0].namespace).toBeNull()
+    expect(entries[0].path).toBe(join(tempDir, 'locales', 'en.json'))
+  })
 })
 
 describe('readLocaleData', () => {
@@ -193,6 +248,29 @@ describe('readLocaleData', () => {
 
     const data = await readLocaleData(config, 'root', { code: 'fr', language: 'fr', file: 'fr.json' })
     expect(data).toEqual({})
+  })
+
+  it('reads Next.js namespaced JSON as namespace-keyed object', async () => {
+    await setupNextJsLocales()
+    const config = makeNextJsConfig()
+
+    const data = await readLocaleData(config, 'root', config.locales[0])
+
+    expect(data).toEqual({
+      auth: { login: 'Login', logout: 'Logout' },
+      common: { save: 'Save', cancel: 'Cancel' },
+    })
+  })
+
+  it('reads partial Next.js locale (missing namespace files)', async () => {
+    await setupNextJsLocales()
+    const config = makeNextJsConfig()
+
+    const data = await readLocaleData(config, 'root', config.locales[1])
+
+    expect(data).toEqual({
+      common: { save: 'Speichern', cancel: 'Abbrechen' },
+    })
   })
 })
 
@@ -353,5 +431,60 @@ describe('mutateLocaleData', () => {
 
     const written = await mutateLocaleData(config, 'root', locale, () => {})
     expect(written.size).toBe(0)
+  })
+
+  it('mutates Next.js namespace and writes only changed files', async () => {
+    await setupNextJsLocales()
+    const config = makeNextJsConfig()
+    const locale = config.locales[0]
+
+    const written = await mutateLocaleData(config, 'root', locale, (data) => {
+      ;(data.auth as Record<string, string>).login = 'Sign In'
+    })
+
+    expect(written.size).toBe(1)
+    expect(written.has(join(tempDir, 'messages', 'en', 'auth.json'))).toBe(true)
+    expect(written.has(join(tempDir, 'messages', 'en', 'common.json'))).toBe(false)
+
+    clearFileCache()
+    const result = await readLocaleData(config, 'root', locale)
+    expect((result.auth as Record<string, string>).login).toBe('Sign In')
+    expect((result.common as Record<string, string>).save).toBe('Save')
+  })
+
+  it('creates new namespace file for Next.js', async () => {
+    await setupNextJsLocales()
+    const config = makeNextJsConfig()
+    const locale = config.locales[0]
+
+    await mutateLocaleData(config, 'root', locale, (data) => {
+      ;(data as Record<string, unknown>).profile = { title: 'My Profile' }
+    })
+
+    clearFileCache()
+    const result = await readLocaleData(config, 'root', locale)
+    expect((result.profile as Record<string, string>).title).toBe('My Profile')
+
+    const content = await readFile(join(tempDir, 'messages', 'en', 'profile.json'), 'utf-8')
+    expect(JSON.parse(content)).toEqual({ title: 'My Profile' })
+  })
+
+  it('removes orphaned JSON files when namespace is deleted', async () => {
+    await setupNextJsLocales()
+    const config = makeNextJsConfig()
+    const locale = config.locales[0]
+
+    await mutateLocaleData(config, 'root', locale, (data) => {
+      delete data.auth
+    })
+
+    clearFileCache()
+    const after = await readLocaleData(config, 'root', locale)
+    expect(after.auth).toBeUndefined()
+    expect(after.common).toBeDefined()
+
+    const { existsSync } = await import('node:fs')
+    expect(existsSync(join(tempDir, 'messages', 'en', 'auth.json'))).toBe(false)
+    expect(existsSync(join(tempDir, 'messages', 'en', 'common.json'))).toBe(true)
   })
 })

@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { join, extname } from 'node:path'
 import { readdir, mkdir, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { readLocale, writeLocale } from './locale-io'
@@ -9,7 +9,7 @@ import { FileIOError } from '../utils/errors'
 /**
  * A single locale file entry with its path and optional namespace.
  * - Nuxt: one entry with namespace = null (flat file)
- * - Laravel: one entry per .php file, namespace = filename without extension
+ * - Laravel / Next.js / React: one entry per file, namespace = filename without extension
  */
 export interface LocaleEntry {
   /** Absolute path to the locale file */
@@ -23,7 +23,8 @@ export interface LocaleEntry {
  *
  * - Nuxt (json): Returns a single entry `[{path: ".../en-US.json", namespace: null}]`
  * - Laravel (php-array): Scans `{langDir}/{localeCode}/*.php` and returns one entry per file
- *   e.g., `[{path: ".../en/auth.php", namespace: "auth"}, ...]`
+ * - Next.js / React (json): Scans `{localeDir}/{localeCode}/*.json` and returns one entry per file
+ *   e.g., `[{path: ".../en/common.json", namespace: "common"}, ...]`
  *
  * Returns an empty array if the locale directory doesn't exist (e.g., new locale).
  */
@@ -39,6 +40,11 @@ export async function resolveLocaleEntries(
     return resolvePhpEntries(localeDir, locale.code)
   }
 
+  // Namespaced JSON (Next.js/React: messages/en/common.json)
+  const jsonEntries = await resolveJsonEntries(localeDir, locale.code)
+  if (jsonEntries.length > 0) return jsonEntries
+
+  // Flat JSON (Nuxt: i18n/en-US.json)
   if (!locale.file) return []
   return [{ path: join(localeDir, locale.file), namespace: null }]
 }
@@ -47,8 +53,8 @@ export async function resolveLocaleEntries(
  * Read all locale data for a locale in a layer, merged into a single object.
  *
  * - Nuxt: Returns the JSON file contents as-is
- * - Laravel: Reads each namespace .php file and mounts under its namespace key
- *   e.g., `{ auth: { failed: "..." }, validation: { required: "..." } }`
+ * - Laravel / Next.js / React: Reads each namespace file and mounts under its namespace key
+ *   e.g., `{ auth: { failed: "..." }, common: { welcome: "Hello" } }`
  *
  * Missing files are treated as empty objects (no error thrown).
  */
@@ -94,7 +100,7 @@ export async function readLocaleData(
  * and may modify it in-place. After mutation:
  *
  * - Nuxt: Writes the entire object back to the single JSON file
- * - Laravel: Splits by top-level namespace keys and writes each to its .php file.
+ * - Laravel / Next.js / React: Splits by top-level namespace keys and writes each to its file.
  *   New namespaces create new files. Empty namespaces delete the content (write empty object).
  *
  * Returns the set of file paths that were written.
@@ -109,11 +115,20 @@ export async function mutateLocaleData(
 
   const filesWritten = new Set<string>()
 
-  if (config.localeFileFormat === 'php-array') {
+  const entries = await resolveLocaleEntries(config, layer, locale)
+  const isNamespaced = config.localeFileFormat === 'php-array'
+    || entries.some(e => e.namespace !== null)
+    || await hasNamespacedJsonLayout(config, layer)
+
+  if (isNamespaced) {
+    // Per-namespace write (PHP arrays or namespaced JSON)
     const localeDir = resolveLayerDir(config, layer)
     if (!localeDir) return filesWritten
 
     const localePath = join(localeDir, locale.code)
+    const fileExt = entries.length > 0
+      ? extname(entries[0].path) // '.php' or '.json'
+      : config.localeFileFormat === 'php-array' ? '.php' : '.json'
 
     const preSnapshots = new Map<string, string>()
     for (const [ns, nsData] of Object.entries(data)) {
@@ -137,7 +152,7 @@ export async function mutateLocaleData(
         continue
       }
       if (JSON.stringify(nsData) !== preSnapshots.get(namespace)) {
-        const filePath = join(localePath, `${namespace}.php`)
+        const filePath = join(localePath, `${namespace}${fileExt}`)
         await writeLocale(filePath, nsData as Record<string, unknown>)
         filesWritten.add(filePath)
       }
@@ -146,12 +161,12 @@ export async function mutateLocaleData(
     const expectedFiles = new Set(
       Object.keys(data)
         .filter(ns => typeof data[ns] === 'object' && data[ns] !== null)
-        .map(ns => `${ns}.php`),
+        .map(ns => `${ns}${fileExt}`),
     )
     try {
       const existingFiles = await readdir(localePath)
       for (const file of existingFiles) {
-        if (file.endsWith('.php') && !expectedFiles.has(file)) {
+        if (file.endsWith(fileExt) && !expectedFiles.has(file)) {
           await unlink(join(localePath, file))
         }
       }
@@ -159,6 +174,7 @@ export async function mutateLocaleData(
     catch {}
   }
   else {
+    // Flat file write (Nuxt-style single JSON file)
     const snapshot = JSON.stringify(data)
     mutate(data)
 
@@ -166,9 +182,7 @@ export async function mutateLocaleData(
       return filesWritten
     }
 
-    const entries = await resolveLocaleEntries(config, layer, locale)
     if (entries.length === 0) return filesWritten
-
     const filePath = entries[0].path
     await writeLocale(filePath, data)
     filesWritten.add(filePath)
@@ -187,6 +201,51 @@ function resolveLayerDir(config: I18nConfig, layer: string): string | null {
     if (aliasDir) return aliasDir.path
   }
   return dir.path
+}
+
+async function hasNamespacedJsonLayout(config: I18nConfig, layer: string): Promise<boolean> {
+  const localeDir = resolveLayerDir(config, layer)
+  if (!localeDir) return false
+
+  try {
+    const entries = await readdir(localeDir)
+    for (const entry of entries) {
+      const subPath = join(localeDir, entry)
+      try {
+        if (existsSync(subPath)) {
+          const subFiles = await readdir(subPath)
+          if (subFiles.some(f => f.endsWith('.json'))) return true
+        }
+      }
+      catch { /* skip unreadable dirs */ }
+    }
+  }
+  catch { /* locale dir not readable */ }
+
+  return false
+}
+
+async function resolveJsonEntries(localeDir: string, localeCode: string): Promise<LocaleEntry[]> {
+  const localePath = join(localeDir, localeCode)
+
+  if (!existsSync(localePath)) return []
+
+  let files: string[]
+  try {
+    files = await readdir(localePath)
+  }
+  catch (err) {
+    log.debug(`Failed to read locale directory ${localePath}: ${err instanceof Error ? err.message : String(err)}`)
+    return []
+  }
+
+  return files
+    .filter(f => f.endsWith('.json'))
+    .sort()
+    .map(f => ({
+      path: join(localePath, f),
+      namespace: f.replace(/\.json$/, ''),
+    }))
 }
 
 async function resolvePhpEntries(langDir: string, localeCode: string): Promise<LocaleEntry[]> {
