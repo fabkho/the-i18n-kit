@@ -35,8 +35,8 @@ export default defineCommand({
     },
     provider: {
       type: 'string' as const,
-      description: 'LLM provider: "openai" or "anthropic". Without this, only returns fallback contexts.',
-      valueHint: 'openai|anthropic',
+      description: 'LLM provider: "openai", "anthropic", or "google". Without this, only returns fallback contexts.',
+      valueHint: 'openai|anthropic|google',
     },
     model: {
       type: 'string' as const,
@@ -44,7 +44,7 @@ export default defineCommand({
     },
     apiKey: {
       type: 'string' as const,
-      description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY env).',
+      description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env).',
     },
     dryRun: {
       type: 'boolean',

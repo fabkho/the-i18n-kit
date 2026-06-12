@@ -51,7 +51,8 @@
   "peerDependencies": {
     "@nuxt/kit": "^3.0.0 || ^4.0.0",
     "openai": "^4.0.0 || ^5.0.0",
-    "@anthropic-ai/sdk": "^0.30.0"
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@google/genai": "^2.0.0"
   },
   "peerDependenciesMeta": {
     "@nuxt/kit": {
@@ -61,6 +62,9 @@
       "optional": true
     },
     "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "@google/genai": {
       "optional": true
     }
   },
