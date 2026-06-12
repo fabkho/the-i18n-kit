@@ -1,6 +1,6 @@
 import type { SamplingFn, SamplingRequest, SamplingResponse } from '../core/types.js'
 
-export type LlmProvider = 'openai' | 'anthropic'
+export type LlmProvider = 'openai' | 'anthropic' | 'google'
 
 export interface LlmProviderConfig {
   provider: LlmProvider
@@ -11,9 +11,15 @@ export interface LlmProviderConfig {
   baseUrl?: string
 }
 
+const ENV_KEY_MAP: Record<LlmProvider, string> = {
+  openai: 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  google: 'GEMINI_API_KEY',
+}
+
 function resolveApiKey(provider: LlmProvider, configKey?: string): string {
   if (configKey) return configKey
-  const envKey = provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY'
+  const envKey = ENV_KEY_MAP[provider]
   const key = process.env[envKey]
   if (!key) {
     throw new Error(
@@ -51,6 +57,37 @@ async function createOpenAiSamplingFn(config: LlmProviderConfig): Promise<Sampli
 
     const text = response.choices[0]?.message?.content ?? ''
     return { text, model: response.model || config.model }
+  }
+}
+
+async function createGoogleSamplingFn(config: LlmProviderConfig): Promise<SamplingFn> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
+  let GoogleGenAI: any
+  try {
+    GoogleGenAI = (await import('@google/genai')).GoogleGenAI as any // eslint-disable-line @typescript-eslint/no-explicit-any
+  } catch {
+    throw new Error(
+      'Provider "google" requires the "@google/genai" package. Install it with:\n  npm install @google/genai\n  pnpm add @google/genai\n  yarn add @google/genai',
+    )
+  }
+
+  const apiKey = resolveApiKey('google', config.apiKey)
+  const client = new GoogleGenAI({ apiKey })
+
+  return async (opts: SamplingRequest): Promise<SamplingResponse> => {
+    const response = await client.models.generateContent({
+      model: config.model,
+      contents: opts.userMessage,
+      config: {
+        systemInstruction: opts.systemPrompt,
+        maxOutputTokens: opts.maxTokens,
+        temperature: 0,
+        responseMimeType: 'application/json',
+      },
+    })
+
+    const text = response.text ?? ''
+    return { text, model: response.modelVersion || config.model }
   }
 }
 
@@ -94,6 +131,8 @@ export async function createSamplingFn(config: LlmProviderConfig): Promise<Sampl
       return createOpenAiSamplingFn(config)
     case 'anthropic':
       return createAnthropicSamplingFn(config)
+    case 'google':
+      return createGoogleSamplingFn(config)
     default: {
       const _exhaustive: never = config.provider
       throw new Error(`Unknown provider: ${_exhaustive}`)
