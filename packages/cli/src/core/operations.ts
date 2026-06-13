@@ -587,6 +587,7 @@ export async function getTranslations(opts: {
   layer: string
   locale: string
   keys: string[]
+  compact?: boolean
   projectDir?: string
 }): Promise<Record<string, Record<string, unknown>>> {
   const { layer, locale, keys } = opts
@@ -613,6 +614,33 @@ export async function getTranslations(opts: {
     results[loc.code] = Object.fromEntries(
       keys.map(k => [k, getNestedValue(data, k) ?? null]),
     )
+  }
+
+  // Compact mode: summarize by key across all locales
+  if (opts.compact && locale === '*' && localesToRead.length > 1) {
+    const byKey: Record<string, { status: string; totalPresent: number; empty?: string[]; missing?: string[] }> = {}
+    for (const key of keys) {
+      let present = 0
+      const empty: string[] = []
+      const missing: string[] = []
+      for (const loc of localesToRead) {
+        const val = results[loc.code]?.[key]
+        if (val === undefined || val === null) {
+          missing.push(loc.code)
+        } else if (val === '') {
+          empty.push(loc.code)
+        } else {
+          present++
+        }
+      }
+      byKey[key] = {
+        status: present === localesToRead.length ? 'ok' : present > 0 ? 'partial' : 'missing',
+        totalPresent: present,
+        ...(empty.length > 0 && { empty }),
+        ...(missing.length > 0 && { missing }),
+      }
+    }
+    return { byKey } as unknown as Record<string, Record<string, unknown>>
   }
 
   return results
@@ -990,12 +1018,12 @@ export async function searchTranslations(opts: {
   const queryLower = query.toLowerCase()
 
   // Determine layers to search
-  const layersToSearch = layer
+  const layersToSearch = (layer && layer !== '*')
     ? config.localeDirs.filter(d => d.layer === layer)
     : config.localeDirs.filter(d => !d.aliasOf)
 
   if (layersToSearch.length === 0) {
-    if (layer) {
+    if (layer && layer !== '*') {
       findLayerOrThrow(config, layer)
     }
     throw new ToolError('No locale directories found. Run detect_i18n_config to verify the project setup.', 'LAYER_NOT_FOUND')
@@ -1250,6 +1278,7 @@ export async function translateMissing(opts: {
   keys?: string[]
   batchSize?: number
   dryRun?: boolean
+  compact?: boolean
   projectDir?: string
   samplingFn?: SamplingFn
   progressFn?: ProgressFn
@@ -1526,6 +1555,21 @@ export async function translateMissing(opts: {
     output.summary = {
       ...(output.summary as Record<string, unknown>),
       message: 'Sampling not supported by this host. Use the fallbackContexts to translate inline, then call write_translations (mode: "upsert") to write the results.',
+    }
+  }
+
+  if (opts.compact) {
+    const byLocale = Object.entries(results).map(([code, r]) => ({
+      locale: code,
+      translated: r.translated.length,
+      failed: r.failed.length,
+    }))
+    return {
+      summary: {
+        totalTranslated,
+        totalFailed,
+        byLocale,
+      },
     }
   }
 

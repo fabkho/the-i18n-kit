@@ -152,6 +152,10 @@ export function createServer(): McpServer {
         locale: z
           .string()
           .describe('Locale code, locale file name, or "*" to read all locales. Examples: "en", "en-US", "en-US.json", "*".'),
+        compact: z
+          .boolean()
+          .optional()
+          .describe('When true and locale is "*", returns a compact summary grouped by key instead of per-locale detail. Default: false.'),
         keys: z
           .array(z.string())
           .describe('Dot-separated key paths to read. Example: ["common.actions.save", "auth.login.title"].'),
@@ -161,9 +165,9 @@ export function createServer(): McpServer {
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
       },
     },
-    async ({ layer, locale, keys, projectDir }) => {
+    async ({ layer, locale, keys, compact, projectDir }) => {
       try {
-        const result = await getTranslations({ layer, locale, keys, projectDir })
+        const result = await getTranslations({ layer, locale, keys, compact, projectDir })
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('getting translations', error)
@@ -280,7 +284,7 @@ export function createServer(): McpServer {
         layer: z
           .string()
           .optional()
-          .describe('Layer name to search in (e.g., "root", "app-admin"). If omitted, searches all layers. Call discover to discover available layers.'),
+          .describe('Layer name to search in (e.g., "root", "app-admin"), or "*" for all layers. If omitted, searches all layers. Call discover to discover available layers.'),
         locale: z
           .string()
           .optional()
@@ -414,13 +418,17 @@ export function createServer(): McpServer {
           .boolean()
           .optional()
           .describe('When true, returns which keys would be translated without calling the LLM or writing files. Default: false.'),
+        compact: z
+          .boolean()
+          .optional()
+          .describe('When true, returns a compact summary (totalTranslated, totalFailed, byLocale) instead of full per-locale results. Default: false.'),
         projectDir: z
           .string()
           .optional()
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
       },
     },
-    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, projectDir }, extra) => {
+    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, compact, projectDir }, extra) => {
       try {
         // Check sampling support from MCP client capabilities
         const clientCapabilities = server.server.getClientCapabilities()
@@ -491,6 +499,7 @@ export function createServer(): McpServer {
           keys,
           batchSize,
           dryRun,
+          compact,
           projectDir,
           samplingFn,
           progressFn,
