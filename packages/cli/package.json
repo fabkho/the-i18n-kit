@@ -44,15 +44,17 @@
   },
   "dependencies": {
     "citty": "^0.2.2",
+    "consola": "^3.4.2",
     "dependency-graph": "^1.0.0",
     "php-array-reader": "^2.1.3",
-    "tinyglobby": "^0.2.15"
+    "tinyglobby": "^0.2.15",
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@nuxt/kit": "^3.0.0 || ^4.0.0",
-    "openai": "^4.0.0 || ^5.0.0",
     "@anthropic-ai/sdk": "^0.30.0",
-    "@google/genai": "^2.0.0"
+    "@google/genai": "^2.0.0",
+    "@nuxt/kit": "^3.0.0 || ^4.0.0",
+    "openai": "^4.0.0 || ^5.0.0"
   },
   "peerDependenciesMeta": {
     "@nuxt/kit": {

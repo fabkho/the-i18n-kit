@@ -35,11 +35,7 @@ export async function runCli(): Promise<void> {
   try {
     await runCommand(main, { rawArgs })
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error)
-    log.error(message)
-    if (rawArgs.includes('--debug') && error instanceof Error && error.stack) {
-      log.error(error.stack)
-    }
+    log.error(error)
     process.exitCode = 1
   }
 }

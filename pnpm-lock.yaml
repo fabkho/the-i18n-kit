@@ -41,6 +41,9 @@ importers:
       citty:
         specifier: ^0.2.2
         version: 0.2.2
+      consola:
+        specifier: ^3.4.2
+        version: 3.4.2
       dependency-graph:
         specifier: ^1.0.0
         version: 1.0.0
@@ -53,6 +56,9 @@ importers:
       tinyglobby:
         specifier: ^0.2.15
         version: 0.2.15
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@nuxt/kit':
         specifier: ^4.4.2

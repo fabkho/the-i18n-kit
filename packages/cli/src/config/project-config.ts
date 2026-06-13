@@ -1,12 +1,57 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import type { LocaleFileFormat } from '../adapters/types'
+import { z } from 'zod'
 import type { ProjectConfig } from './types.js'
 import { ConfigError } from '../utils/errors.js'
 import { log } from '../utils/logger.js'
 
 const CONFIG_FILENAME = '.i18n-mcp.json'
+
+// ─── Zod schema ─────────────────────────────────────────────────
+
+const nonEmptyString = z.string().min(1).refine(s => s.trim().length > 0, 'Must not be empty or whitespace-only')
+
+const layerRuleSchema = z.object({
+  layer: z.string(),
+  description: z.string(),
+  when: z.string(),
+})
+
+const localeDirEntrySchema = z.union([
+  nonEmptyString,
+  z.object({
+    path: nonEmptyString,
+    layer: nonEmptyString,
+  }),
+])
+
+const projectConfigSchema = z.object({
+  $schema: z.string().optional(),
+  framework: z.string().optional(),
+  context: z.string().optional(),
+  layerRules: z.array(layerRuleSchema).optional(),
+  glossary: z.record(z.string(), z.string()).optional(),
+  translationPrompt: z.string().optional(),
+  localeNotes: z.record(z.string(), z.string()).optional(),
+  examples: z.array(z.record(z.string(), z.string())).optional(),
+  orphanScan: z.record(z.string(), z.object({
+    ignorePatterns: z.array(z.string()).optional(),
+  }).passthrough()).optional(), // passthrough for backwards-compat with deprecated keys like includeParentLayer
+  localeDirs: z.array(localeDirEntrySchema).optional(),
+  defaultLocale: z.string().optional(),
+  locales: z.array(z.string()).optional(),
+  reportOutput: z.union([z.literal(true), nonEmptyString]).optional(),
+  localeFileFormat: z.enum(['json', 'php-array']).optional(),
+  samplingPreferences: z.object({
+    hints: z.array(z.string()).optional(),
+    costPriority: z.number().optional(),
+    speedPriority: z.number().optional(),
+    intelligencePriority: z.number().optional(),
+  }).optional(),
+}).strict()
+
+// ─── Config file discovery ──────────────────────────────────────
 
 /**
  * Walk up the directory tree from `startDir` to find the nearest config file.
@@ -63,205 +108,19 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
     )
   }
 
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new ConfigError(`${CONFIG_FILENAME} must contain a JSON object at the root level`)
-  }
+  const result = projectConfigSchema.safeParse(parsed)
 
-  const config = parsed as Record<string, unknown>
-
-  // Reject unknown top-level keys (matches schema additionalProperties: false)
-  const knownKeys = new Set([
-    '$schema', 'framework', 'context', 'layerRules', 'glossary',
-    'translationPrompt', 'localeNotes', 'examples', 'orphanScan',
-    'reportOutput', 'samplingPreferences', 'localeDirs', 'defaultLocale', 'locales',
-    'localeFileFormat',
-  ])
-  for (const key of Object.keys(config)) {
-    if (!knownKeys.has(key)) {
-      throw new ConfigError(`${CONFIG_FILENAME}: unknown property "${key}". Allowed: ${[...knownKeys].filter(k => k !== '$schema').join(', ')}`)
-    }
-  }
-
-  if ('framework' in config && typeof config.framework !== 'string') {
-    throw new ConfigError(`${CONFIG_FILENAME}: "framework" must be a string`)
-  }
-
-  if ('context' in config && typeof config.context !== 'string') {
-    throw new ConfigError(`${CONFIG_FILENAME}: "context" must be a string`)
-  }
-
-  // Validate layerRules
-  if ('layerRules' in config) {
-    if (!Array.isArray(config.layerRules)) {
-      throw new ConfigError(`${CONFIG_FILENAME}: "layerRules" must be an array`)
-    }
-    for (let i = 0; i < config.layerRules.length; i++) {
-      const rule = config.layerRules[i]
-      if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) {
-        throw new ConfigError(`${CONFIG_FILENAME}: "layerRules[${i}]" must be an object`)
-      }
-      const ruleObj = rule as Record<string, unknown>
-      if (typeof ruleObj.layer !== 'string') {
-        throw new ConfigError(`${CONFIG_FILENAME}: "layerRules[${i}].layer" must be a string`)
-      }
-      if (typeof ruleObj.description !== 'string') {
-        throw new ConfigError(`${CONFIG_FILENAME}: "layerRules[${i}].description" must be a string`)
-      }
-      if (typeof ruleObj.when !== 'string') {
-        throw new ConfigError(`${CONFIG_FILENAME}: "layerRules[${i}].when" must be a string`)
-      }
-    }
-  }
-
-  // Validate glossary
-  if ('glossary' in config) {
-    if (typeof config.glossary !== 'object' || config.glossary === null || Array.isArray(config.glossary)) {
-      throw new ConfigError(`${CONFIG_FILENAME}: "glossary" must be an object (Record<string, string>)`)
-    }
-    const glossary = config.glossary as Record<string, unknown>
-    for (const [key, value] of Object.entries(glossary)) {
-      if (typeof value !== 'string') {
-        throw new ConfigError(`${CONFIG_FILENAME}: "glossary.${key}" must be a string`)
-      }
-    }
-  }
-
-  // Validate translationPrompt
-  if ('translationPrompt' in config && typeof config.translationPrompt !== 'string') {
-    throw new ConfigError(`${CONFIG_FILENAME}: "translationPrompt" must be a string`)
-  }
-
-  // Validate localeNotes
-  if ('localeNotes' in config) {
-    if (typeof config.localeNotes !== 'object' || config.localeNotes === null || Array.isArray(config.localeNotes)) {
-      throw new ConfigError(`${CONFIG_FILENAME}: "localeNotes" must be an object (Record<string, string>)`)
-    }
-    const localeNotes = config.localeNotes as Record<string, unknown>
-    for (const [key, value] of Object.entries(localeNotes)) {
-      if (typeof value !== 'string') {
-        throw new ConfigError(`${CONFIG_FILENAME}: "localeNotes.${key}" must be a string`)
-      }
-    }
-  }
-
-  // Validate examples
-  if ('examples' in config) {
-    if (!Array.isArray(config.examples)) {
-      throw new ConfigError(`${CONFIG_FILENAME}: "examples" must be an array`)
-    }
-    for (let i = 0; i < config.examples.length; i++) {
-      const example = config.examples[i]
-      if (typeof example !== 'object' || example === null || Array.isArray(example)) {
-        throw new ConfigError(`${CONFIG_FILENAME}: "examples[${i}]" must be an object`)
-      }
-      const exampleObj = example as Record<string, unknown>
-      for (const [key, value] of Object.entries(exampleObj)) {
-        if (typeof value !== 'string') {
-          throw new ConfigError(`${CONFIG_FILENAME}: "examples[${i}].${key}" must be a string`)
-        }
-      }
-    }
-  }
-
-  // Validate orphanScan
-  if ('orphanScan' in config) {
-    if (typeof config.orphanScan !== 'object' || config.orphanScan === null || Array.isArray(config.orphanScan)) {
-      throw new ConfigError(`${CONFIG_FILENAME}: "orphanScan" must be an object`)
-    }
-    const orphanScan = config.orphanScan as Record<string, unknown>
-    for (const [layerName, layerConfig] of Object.entries(orphanScan)) {
-      if (typeof layerConfig !== 'object' || layerConfig === null || Array.isArray(layerConfig)) {
-        throw new ConfigError(`${CONFIG_FILENAME}: "orphanScan.${layerName}" must be an object`)
-      }
-      const layerObj = layerConfig as Record<string, unknown>
-      const knownLayerKeys = new Set(['ignorePatterns'])
-      const deprecatedLayerKeys = new Set(['includeParentLayer'])
-      for (const k of Object.keys(layerObj)) {
-        if (deprecatedLayerKeys.has(k)) {
-          continue // silently ignore removed options for backwards compatibility
-        }
-        if (!knownLayerKeys.has(k)) {
-          throw new ConfigError(`${CONFIG_FILENAME}: "orphanScan.${layerName}" has unknown property "${k}". Allowed: ignorePatterns`)
-        }
-      }
-      if ('ignorePatterns' in layerObj) {
-        if (!Array.isArray(layerObj.ignorePatterns)) {
-          throw new ConfigError(`${CONFIG_FILENAME}: "orphanScan.${layerName}.ignorePatterns" must be an array of strings`)
-        }
-        for (let i = 0; i < layerObj.ignorePatterns.length; i++) {
-          if (typeof layerObj.ignorePatterns[i] !== 'string') {
-            throw new ConfigError(`${CONFIG_FILENAME}: "orphanScan.${layerName}.ignorePatterns[${i}]" must be a string`)
-          }
-        }
-      }
-    }
-  }
-
-  // Validate localeDirs
-  if ('localeDirs' in config) {
-    if (!Array.isArray(config.localeDirs)) {
-      throw new ConfigError(`${CONFIG_FILENAME}: "localeDirs" must be an array`)
-    }
-    for (let i = 0; i < config.localeDirs.length; i++) {
-      const entry = config.localeDirs[i]
-      if (typeof entry === 'string') {
-        if (entry.trim() === '') {
-          throw new ConfigError(`${CONFIG_FILENAME}: "localeDirs[${i}]" must be a non-empty string`)
-        }
-      } else if (typeof entry === 'object' && entry !== null && !Array.isArray(entry)) {
-        const obj = entry as Record<string, unknown>
-        if (typeof obj.path !== 'string' || obj.path.trim() === '') {
-          throw new ConfigError(`${CONFIG_FILENAME}: "localeDirs[${i}].path" must be a non-empty string`)
-        }
-        if (typeof obj.layer !== 'string' || obj.layer.trim() === '') {
-          throw new ConfigError(`${CONFIG_FILENAME}: "localeDirs[${i}].layer" must be a non-empty string`)
-        }
-      } else {
-        throw new ConfigError(`${CONFIG_FILENAME}: "localeDirs[${i}]" must be a string or { path, layer } object`)
-      }
-    }
-  }
-
-  // Validate defaultLocale
-  if ('defaultLocale' in config && typeof config.defaultLocale !== 'string') {
-    throw new ConfigError(`${CONFIG_FILENAME}: "defaultLocale" must be a string`)
-  }
-
-  // Validate locales
-  if ('locales' in config) {
-    if (!Array.isArray(config.locales)) {
-      throw new ConfigError(`${CONFIG_FILENAME}: "locales" must be an array of strings`)
-    }
-    for (let i = 0; i < config.locales.length; i++) {
-      if (typeof config.locales[i] !== 'string') {
-        throw new ConfigError(`${CONFIG_FILENAME}: "locales[${i}]" must be a string`)
-      }
-    }
-  }
-
-  if ('reportOutput' in config) {
-    if (config.reportOutput !== true) {
-      if (typeof config.reportOutput !== 'string' || config.reportOutput.trim() === '') {
-        throw new ConfigError(`${CONFIG_FILENAME}: "reportOutput" must be a non-empty string (directory path) or true`)
-      }
-    }
+  if (!result.success) {
+    const messages = result.error.issues
+      .map(issue => {
+        const path = issue.path.length > 0 ? issue.path.join('.') : '(root)'
+        return `  ${path}: ${issue.message}`
+      })
+      .join('\n')
+    throw new ConfigError(`Invalid ${CONFIG_FILENAME}:\n${messages}`)
   }
 
   log.debug(`Project config loaded successfully from ${configPath}`)
 
-  return {
-    framework: config.framework as string | undefined,
-    context: config.context as string | undefined,
-    layerRules: config.layerRules as ProjectConfig['layerRules'],
-    glossary: config.glossary as Record<string, string> | undefined,
-    translationPrompt: config.translationPrompt as string | undefined,
-    localeNotes: config.localeNotes as Record<string, string> | undefined,
-    examples: config.examples as Array<Record<string, string>> | undefined,
-    orphanScan: config.orphanScan as ProjectConfig['orphanScan'],
-    reportOutput: config.reportOutput as string | boolean | undefined,
-    localeDirs: config.localeDirs as ProjectConfig['localeDirs'],
-    defaultLocale: config.defaultLocale as string | undefined,
-    locales: config.locales as string[] | undefined,
-    localeFileFormat: config.localeFileFormat as LocaleFileFormat | undefined,
-  }
+  return result.data as ProjectConfig
 }

@@ -134,7 +134,7 @@ describe('loadProjectConfig', () => {
     const configPath = resolve(tmpDir, '.i18n-mcp.json')
     try {
       await writeFile(configPath, JSON.stringify({ orphanScan: 'invalid' }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"orphanScan" must be an object')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/orphanScan/)
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }
@@ -169,7 +169,7 @@ describe('loadProjectConfig', () => {
     const configPath = resolve(tmpDir, '.i18n-mcp.json')
     try {
       await writeFile(configPath, JSON.stringify({ orphanScan: { root: 'invalid' } }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"orphanScan.root" must be an object')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/orphanScan/)
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }
@@ -241,7 +241,7 @@ describe('loadProjectConfig', () => {
       await writeFile(configPath, JSON.stringify({
         orphanScan: { root: { ignorePatterns: 'not-an-array' } }
       }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"orphanScan.root.ignorePatterns" must be an array of strings')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/orphanScan|ignorePatterns/)
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }
@@ -252,7 +252,7 @@ describe('loadProjectConfig', () => {
     const configPath = resolve(tmpDir, '.i18n-mcp.json')
     try {
       await writeFile(configPath, JSON.stringify({ reportOutput: false }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a non-empty string (directory path) or true')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/reportOutput/)
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }
@@ -265,7 +265,7 @@ describe('loadProjectConfig', () => {
       await writeFile(configPath, JSON.stringify({
         orphanScan: { root: { ignorePatterns: ['valid.*', 123] } }
       }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"orphanScan.root.ignorePatterns[1]" must be a string')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/orphanScan|ignorePatterns/)
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }
@@ -276,7 +276,7 @@ describe('loadProjectConfig', () => {
     const configPath = resolve(tmpDir, '.i18n-mcp.json')
     try {
       await writeFile(configPath, JSON.stringify({ reportOutput: 42 }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a non-empty string (directory path) or true')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/reportOutput/)
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }
@@ -287,7 +287,7 @@ describe('loadProjectConfig', () => {
     const configPath = resolve(tmpDir, '.i18n-mcp.json')
     try {
       await writeFile(configPath, JSON.stringify({ reportOutput: '' }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a non-empty string (directory path) or true')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/reportOutput/)
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }
@@ -298,7 +298,7 @@ describe('loadProjectConfig', () => {
     const configPath = resolve(tmpDir, '.i18n-mcp.json')
     try {
       await writeFile(configPath, JSON.stringify({ reportOutput: '   ' }), 'utf-8')
-      await expect(loadProjectConfig(tmpDir)).rejects.toThrow('"reportOutput" must be a non-empty string (directory path) or true')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/reportOutput/)
     } finally {
       if (existsSync(configPath)) await unlink(configPath)
     }
