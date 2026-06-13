@@ -19,6 +19,7 @@ export {
   scanCodeUsage,
   removeOrphanKeys,
   scaffoldLocaleFiles,
+  listNamespaces,
   findLocaleImpl,
 } from './core/operations.js'
 

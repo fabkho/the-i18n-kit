@@ -23,6 +23,7 @@ import {
   findOrphanKeys,
   removeOrphanKeys,
   scaffoldLocaleFiles,
+  listNamespaces,
   findLocaleImpl,
 } from 'the-i18n-cli'
 
@@ -133,6 +134,41 @@ export function createServer(): McpServer {
         })
       } catch (error) {
         return toolErrorResponse('discovering i18n setup', error)
+      }
+    },
+  )
+
+  // ─── Tool: list_namespaces ─────────────────────────────────────
+
+  server.registerTool(
+    'list_namespaces',
+    {
+      title: 'List Namespaces',
+      description:
+        'List the translation key tree grouped by namespace prefix. '
+        + 'Returns a hierarchical view of all keys with counts per namespace node. '
+        + 'Use this to explore available keys without guessing path prefixes.',
+      inputSchema: {
+        layer: z
+          .string()
+          .optional()
+          .describe('Layer name to filter by (e.g., "root", "app-admin"). If omitted or "*", scans all layers. Call discover to discover available layers.'),
+        locale: z
+          .string()
+          .optional()
+          .describe('Locale to read keys from (e.g., "en"). Defaults to the project default locale. Keys are the same across locales — only one is needed.'),
+        projectDir: z
+          .string()
+          .optional()
+          .describe('Absolute path to the project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+      },
+    },
+    async ({ layer, locale, projectDir }) => {
+      try {
+        const result = await listNamespaces({ layer, locale, projectDir })
+        return jsonContent(result)
+      } catch (error) {
+        return toolErrorResponse('listing namespaces', error)
       }
     },
   )

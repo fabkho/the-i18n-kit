@@ -2187,3 +2187,89 @@ export async function scaffoldLocaleFiles(opts: {
     dryRun: opts.dryRun ?? false,
   }
 }
+
+// ─── list_namespaces ────────────────────────────────────────────
+
+export interface NamespaceNode {
+  keyCount: number
+  children?: Record<string, NamespaceNode>
+}
+
+export interface ListNamespacesResult {
+  layers: Record<string, { namespaces: Record<string, NamespaceNode> }>
+}
+
+/**
+ * Build a prefix tree of all translation keys grouped by layer and namespace.
+ * Useful for agents to browse available keys without guesswork.
+ */
+export async function listNamespaces(opts: {
+  layer?: string
+  locale?: string
+  projectDir?: string
+}): Promise<ListNamespacesResult> {
+  const dir = opts.projectDir ?? process.cwd()
+  const config = await detectI18nConfig(dir)
+
+  const layersToScan = (opts.layer && opts.layer !== '*')
+    ? config.localeDirs.filter(d => d.layer === opts.layer)
+    : config.localeDirs.filter(d => !d.aliasOf)
+
+  const localeToUse = opts.locale
+    ? findLocaleImpl(config, opts.locale) ?? config.locales[0]
+    : config.locales[0]
+
+  if (!localeToUse) {
+    throw new ToolError('No locales found in configuration.', 'LOCALE_NOT_FOUND')
+  }
+
+  const layers: Record<string, { namespaces: Record<string, NamespaceNode> }> = {}
+
+  for (const ld of layersToScan) {
+    let data: Record<string, unknown>
+    try {
+      data = await readLocaleData(config, ld.layer, localeToUse)
+    }
+    catch {
+      continue
+    }
+
+    const keys = getLeafKeys(data)
+    if (keys.length === 0) continue
+
+    const root: NamespaceNode = { keyCount: 0, children: {} }
+
+    for (const key of keys) {
+      const segments = key.split('.')
+      let node = root
+      for (const seg of segments) {
+        if (!node.children) node.children = {}
+        if (!node.children[seg]) {
+          node.children[seg] = { keyCount: 0 }
+        }
+        node = node.children[seg]
+      }
+      node.keyCount++ // leaf count at terminal node
+    }
+
+    // Propagate leaf counts upward
+    propagateCounts(root)
+
+    layers[ld.layer] = { namespaces: root.children ?? {} }
+  }
+
+  return { layers }
+}
+
+function propagateCounts(node: NamespaceNode): number {
+  if (!node.children || Object.keys(node.children).length === 0) {
+    return node.keyCount
+  }
+
+  let total = 0
+  for (const child of Object.values(node.children)) {
+    total += propagateCounts(child)
+  }
+  node.keyCount = total
+  return total
+}
