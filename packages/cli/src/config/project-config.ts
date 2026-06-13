@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import type { LocaleFileFormat } from '../adapters/types'
 import type { ProjectConfig } from './types.js'
 import { ConfigError } from '../utils/errors.js'
 import { log } from '../utils/logger.js'
@@ -73,6 +74,7 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
     '$schema', 'framework', 'context', 'layerRules', 'glossary',
     'translationPrompt', 'localeNotes', 'examples', 'orphanScan',
     'reportOutput', 'samplingPreferences', 'localeDirs', 'defaultLocale', 'locales',
+    'localeFileFormat',
   ])
   for (const key of Object.keys(config)) {
     if (!knownKeys.has(key)) {
@@ -260,5 +262,6 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
     localeDirs: config.localeDirs as ProjectConfig['localeDirs'],
     defaultLocale: config.defaultLocale as string | undefined,
     locales: config.locales as string[] | undefined,
+    localeFileFormat: config.localeFileFormat as LocaleFileFormat | undefined,
   }
 }

@@ -73,6 +73,8 @@ export interface ProjectConfig {
   defaultLocale?: string
   /** Explicit list of locale codes. If set, overrides framework auto-detection (all adapters). Auto-discovered when absent. */
   locales?: string[]
+  /** Override the auto-detected locale file format. E.g., "json" or "php-array". Useful when both formats exist or auto-detection picks wrong. */
+  localeFileFormat?: LocaleFileFormat
   /** Model preferences for `translate_missing` sampling requests. Overrides the built-in defaults (fast/cheap model bias). */
   samplingPreferences?: {
     /** Ordered model name hints (substring match). First match wins. E.g., ["flash", "haiku"] */

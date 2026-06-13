@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
@@ -16,12 +16,10 @@ export class LaravelAdapter implements FrameworkAdapter {
   async detect(projectDir: string): Promise<number> {
     let score = 0
 
-    // Strong signal: artisan file is the hallmark of a Laravel project
     if (existsSync(join(projectDir, 'artisan'))) {
       score += 2
     }
 
-    // Strong signal: composer.json with laravel/framework dependency
     try {
       const raw = await readFile(join(projectDir, 'composer.json'), 'utf-8')
       const composer = JSON.parse(raw) as Record<string, unknown>
@@ -34,13 +32,11 @@ export class LaravelAdapter implements FrameworkAdapter {
       // composer.json missing or malformed — skip
     }
 
-    // Weak signal: lang/ directory with locale subdirectories
+    // Weak signal: lang/ with PHP subdirectories or JSON files
     const langDir = findLangDir(projectDir)
     if (langDir) {
-      const localeSubdirs = await findLocaleSubdirs(langDir)
-      if (localeSubdirs.length > 0) {
-        score += 1
-      }
+      const hasLocaleFiles = await hasLocaleContent(langDir)
+      if (hasLocaleFiles) score += 1
     }
 
     return score
@@ -57,22 +53,26 @@ export class LaravelAdapter implements FrameworkAdapter {
       )
     }
 
-    const localeSubdirs = await findLocaleSubdirs(langDir)
-    if (localeSubdirs.length === 0) {
+    // Determine file format: honor override, auto-detect, or default
+    const format = resolveFormat(langDir, projectConfig?.localeFileFormat)
+
+    // Discover locale codes based on format
+    const localeCodes = await discoverLocaleCodes(langDir, format)
+    if (localeCodes.length === 0) {
       throw new ConfigError(
-        `No locale subdirectories found in ${langDir}. `
-        + 'Expected directories like lang/en/, lang/de/, etc.',
+        getFormatError(langDir, format),
       )
     }
 
     const { defaultLocale, fallbackLocale, configLocales } = await extractLocaleConfig(projectDir)
 
-    const allCodes = mergeLocaleCodes(localeSubdirs, configLocales)
+    const allCodes = mergeLocaleCodes(localeCodes, configLocales)
 
     const locales: LocaleDefinition[] = applyLocaleOverride(
       allCodes.map(code => ({
         code,
         language: code,
+        ...(format === 'json' ? { file: `${code}.json` } : {}),
       })),
       projectConfig?.locales,
     )
@@ -84,7 +84,7 @@ export class LaravelAdapter implements FrameworkAdapter {
     }]
 
     log.info(
-      `Discovered ${locales.length} locale(s) in ${langDir}: `
+      `Discovered ${locales.length} locale(s) in ${langDir} (${format}): `
       + `${allCodes.join(', ')}`,
     )
 
@@ -96,10 +96,84 @@ export class LaravelAdapter implements FrameworkAdapter {
       localeDirs,
       layerRootDirs: [projectDir],
       projectConfig: projectConfig ?? undefined,
-      localeFileFormat: 'php-array',
+      localeFileFormat: format,
       apps: [{ name: 'root', rootDir: projectDir, layers: ['root'] }],
     }
   }
+}
+
+// ─── Format detection ───────────────────────────────────────────
+
+function resolveFormat(
+  langDir: string,
+  override?: LocaleFileFormat,
+): LocaleFileFormat {
+  if (override) return override
+
+  const hasJson = existsSync(join(langDir, 'en.json'))
+    || existsSync(join(langDir, 'de.json'))
+    || existsSync(join(langDir, 'fr.json'))
+  const hasPhp = hasPhpSubdirsSync(langDir)
+
+  // When both exist, prefer php-array (backward compatible)
+  if (hasPhp) return 'php-array'
+  if (hasJson) return 'json'
+
+  return 'php-array' // default
+}
+
+function hasPhpSubdirsSync(langDir: string): boolean {
+  try {
+    const entries = readdirSync(langDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === 'vendor') continue
+      const subEntries = readdirSync(join(langDir, entry.name))
+      if (subEntries.some(f => f.endsWith('.php'))) return true
+    }
+  }
+  catch { /* can't read */ }
+  return false
+}
+
+function getFormatError(langDir: string, format: LocaleFileFormat): string {
+  if (format === 'json') {
+    return `No JSON locale files found in ${langDir}. Expected files like lang/en.json, lang/de.json.`
+  }
+  return `No locale subdirectories found in ${langDir}. Expected directories like lang/en/, lang/de/.`
+}
+
+// ─── Locale discovery ───────────────────────────────────────────
+
+async function hasLocaleContent(langDir: string): Promise<boolean> {
+  // Check for JSON files (flat layout)
+  const entries = await readdir(langDir).catch(() => [] as string[])
+  if (entries.some(f => f.endsWith('.json'))) return true
+
+  // Check for PHP subdirectories (namespaced layout)
+  return hasPhpContent(langDir)
+}
+
+async function discoverLocaleCodes(
+  langDir: string,
+  format: LocaleFileFormat,
+): Promise<string[]> {
+  if (format === 'json') {
+    return discoverJsonLocales(langDir)
+  }
+  return findLocaleSubdirs(langDir)
+}
+
+async function discoverJsonLocales(langDir: string): Promise<string[]> {
+  const entries = await readdir(langDir).catch(() => [] as string[])
+  return entries
+    .filter(f => f.endsWith('.json'))
+    .map(f => f.replace(/\.json$/, ''))
+    .sort()
+}
+
+async function hasPhpContent(langDir: string): Promise<boolean> {
+  const subdirs = await findLocaleSubdirs(langDir)
+  return subdirs.length > 0
 }
 
 /**
@@ -139,12 +213,10 @@ async function findLocaleSubdirs(langDir: string): Promise<string[]> {
   return locales.sort()
 }
 
+// ─── Config parsing ─────────────────────────────────────────────
+
 /**
  * Extract default and fallback locale from config/app.php.
- * Uses regex to handle patterns like:
- *   'locale' => 'en',
- *   'locale' => env('APP_LOCALE', 'en'),
- *   'fallback_locale' => 'en',
  */
 async function extractLocaleConfig(projectDir: string): Promise<{
   defaultLocale: string
@@ -179,15 +251,7 @@ async function extractLocaleConfig(projectDir: string): Promise<{
   }
 }
 
-/**
- * Extract a string config value from a PHP config file.
- * Handles both direct string values and env() calls with defaults:
- *   'key' => 'value',
- *   'key' => env('ENV_VAR', 'default'),
- *   "key" => "value",
- */
 function extractPhpConfigValue(content: string, key: string): string | null {
-  // Match: 'key' => env('...', 'default')  or  "key" => env("...", "default")
   const envPattern = new RegExp(
     `['"]${key}['"]\\s*=>\\s*env\\s*\\(\\s*['"][^'"]*['"]\\s*,\\s*['"]([^'"]+)['"]\\s*\\)`,
   )
@@ -196,7 +260,6 @@ function extractPhpConfigValue(content: string, key: string): string | null {
     return envMatch[1]
   }
 
-  // Match: 'key' => 'value'  or  "key" => "value"
   const directPattern = new RegExp(
     `['"]${key}['"]\\s*=>\\s*['"]([^'"]+)['"]`,
   )

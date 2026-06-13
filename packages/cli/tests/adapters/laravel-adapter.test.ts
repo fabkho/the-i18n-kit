@@ -307,6 +307,86 @@ describe('LaravelAdapter.resolve', () => {
   })
 })
 
+describe('Laravel JSON locale files', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = join(tmpdir(), `laravel-json-test-${Date.now()}`)
+    mkdirSync(tempDir, { recursive: true })
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  function createJsonProject() {
+    writeFileSync(join(tempDir, 'artisan'), '#!/usr/bin/env php')
+    writeFileSync(join(tempDir, 'composer.json'), JSON.stringify({
+      require: { 'laravel/framework': '^11.0' },
+    }))
+    mkdirSync(join(tempDir, 'lang'), { recursive: true })
+    writeFileSync(join(tempDir, 'lang', 'en.json'), JSON.stringify({ greeting: 'Hello' }))
+    writeFileSync(join(tempDir, 'lang', 'de.json'), JSON.stringify({ greeting: 'Hallo' }))
+  }
+
+  it('detect scores for JSON locale files', async () => {
+    createJsonProject()
+    const adapter = new LaravelAdapter()
+    // artisan (2) + composer (2) + hasLocaleContent (1) = 5
+    expect(await adapter.detect(tempDir)).toBe(5)
+  })
+
+  it('resolve detects JSON format and discovers locales', async () => {
+    createJsonProject()
+    const adapter = new LaravelAdapter()
+    const config = await adapter.resolve(tempDir)
+
+    expect(config.localeFileFormat).toBe('json')
+    expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
+    expect(config.locales[0].file).toBe('de.json')
+    expect(config.localeDirs[0].path).toBe(join(tempDir, 'lang'))
+  })
+
+  it('resolve prefers php-array when both formats exist', async () => {
+    createJsonProject()
+    // Also add PHP subdirectory files
+    const enDir = join(tempDir, 'lang', 'en')
+    mkdirSync(enDir, { recursive: true })
+    writeFileSync(join(enDir, 'auth.php'), '<?php return [];')
+
+    const adapter = new LaravelAdapter()
+    const config = await adapter.resolve(tempDir)
+
+    expect(config.localeFileFormat).toBe('php-array')
+  })
+
+  it('resolve honors localeFileFormat override from .i18n-mcp.json', async () => {
+    createJsonProject()
+    // Add PHP subdirectory to trigger php-array auto-detection
+    const enDir = join(tempDir, 'lang', 'en')
+    mkdirSync(enDir, { recursive: true })
+    writeFileSync(join(enDir, 'auth.php'), '<?php return [];')
+
+    writeFileSync(
+      join(tempDir, '.i18n-mcp.json'),
+      JSON.stringify({ localeFileFormat: 'json' }),
+    )
+
+    const adapter = new LaravelAdapter()
+    const config = await adapter.resolve(tempDir)
+
+    expect(config.localeFileFormat).toBe('json')
+  })
+
+  it('throws ConfigError when lang/ has no locale content', async () => {
+    writeFileSync(join(tempDir, 'artisan'), '#!/usr/bin/env php')
+    mkdirSync(join(tempDir, 'lang'))
+
+    const adapter = new LaravelAdapter()
+    await expect(adapter.resolve(tempDir)).rejects.toThrow('No locale')
+  })
+})
+
 describe('Adapter registry: Laravel vs Nuxt', () => {
   beforeEach(() => {
     resetRegistry()
