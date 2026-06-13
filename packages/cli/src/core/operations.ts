@@ -2211,13 +2211,20 @@ export async function listNamespaces(opts: {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
+  // Validate and resolve layers
+  if (opts.layer && opts.layer !== '*') {
+    findLayerOrThrow(config, opts.layer)
+  }
   const layersToScan = (opts.layer && opts.layer !== '*')
     ? config.localeDirs.filter(d => d.layer === opts.layer)
     : config.localeDirs.filter(d => !d.aliasOf)
 
+  // Resolve locale: validate explicit, default to configured default locale
   const localeToUse = opts.locale
-    ? findLocaleImpl(config, opts.locale) ?? config.locales[0]
-    : config.locales[0]
+    ? findLocaleImpl(config, opts.locale) ?? (() => {
+        throw new ToolError(`Locale not found: "${opts.locale}". Available: ${config.locales.map(l => l.code).join(', ')}.`, 'LOCALE_NOT_FOUND')
+      })()
+    : findLocaleImpl(config, config.defaultLocale) ?? config.locales[0]
 
   if (!localeToUse) {
     throw new ToolError('No locales found in configuration.', 'LOCALE_NOT_FOUND')
