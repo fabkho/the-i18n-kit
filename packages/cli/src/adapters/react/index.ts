@@ -182,29 +182,41 @@ async function tryNextConfig(projectDir: string): Promise<string | null> {
     const fullPath = join(projectDir, file)
     if (!existsSync(fullPath)) continue
 
-    try {
-      const content = await readFile(fullPath, 'utf-8')
-
-      if (/createNextIntlPlugin/.test(content) && existsSync(join(projectDir, 'messages'))) {
-        return join(projectDir, 'messages')
-      }
-
-      if (/next-translate/.test(content) && existsSync(join(projectDir, 'locales'))) {
-        return join(projectDir, 'locales')
-      }
-
-      const pathMatch = content.match(/(?:messages|localeDir|locales)\s*:\s*['"]([^'"]+)/)
-      if (pathMatch) {
-        const path = pathMatch[1].replace(/\/\*\/\*$/, '').replace(/\/\*$/, '')
-        if (existsSync(join(projectDir, path))) return join(projectDir, path)
-      }
-    }
-    catch {
-      // Can't read — try next
-    }
+    const result = await tryExtractFromNextConfig(projectDir, fullPath)
+    if (result) return result
   }
 
   return null
+}
+
+async function tryExtractFromNextConfig(
+  projectDir: string,
+  configPath: string,
+): Promise<string | null> {
+  try {
+    const content = await readFile(configPath, 'utf-8')
+
+    if (/createNextIntlPlugin/.test(content) && existsSync(join(projectDir, 'messages'))) {
+      return join(projectDir, 'messages')
+    }
+
+    if (/next-translate/.test(content) && existsSync(join(projectDir, 'locales'))) {
+      return join(projectDir, 'locales')
+    }
+
+    return tryExtractPathFromConfig(projectDir, content)
+  }
+  catch {
+    return null
+  }
+}
+
+function tryExtractPathFromConfig(projectDir: string, content: string): string | null {
+  const pathMatch = content.match(/(?:messages|localeDir|locales)\s*:\s*['"]([^'"]+)/)
+  if (!pathMatch) return null
+
+  const path = pathMatch[1].replace(/\/\*\/\*$/, '').replace(/\/\*$/, '')
+  return existsSync(join(projectDir, path)) ? join(projectDir, path) : null
 }
 
 async function discoverLocales(localeDir: string): Promise<LocaleDefinition[]> {
