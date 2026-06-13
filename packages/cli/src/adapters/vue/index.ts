@@ -60,14 +60,15 @@ export class VueAdapter implements FrameworkAdapter {
       )
     }
 
-    const locales = await discoverLocales(localeDir)
-    if (locales.length === 0) {
+    const rawLocales = await discoverLocales(localeDir)
+    if (rawLocales.length === 0) {
       throw new ConfigError(
         `No JSON locale files found in ${localeDir}. `
         + 'Make sure your Vue i18n project has locale files like en.json, de.json etc.',
       )
     }
 
+    const locales = applyLocaleOverride(rawLocales, projectConfig?.locales)
     const defaultLocale = extractDefaultLocale(projectDir) ?? locales[0].code
     const fallbackLocale = { default: [defaultLocale] }
 
@@ -75,7 +76,7 @@ export class VueAdapter implements FrameworkAdapter {
       rootDir: projectDir,
       defaultLocale,
       fallbackLocale,
-      locales: applyLocaleOverride(locales, projectConfig?.locales),
+      locales,
       localeDirs: [{ path: localeDir, layer: 'root', layerRootDir: projectDir }],
       layerRootDirs: [projectDir],
       projectConfig: projectConfig ?? undefined,

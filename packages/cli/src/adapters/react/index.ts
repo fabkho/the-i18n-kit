@@ -129,7 +129,7 @@ async function computeScore(
     const localeDir = findLocaleDirSync(projectDir)
     if (localeDir) {
       const entries = readdirSync(localeDir)
-      if (entries.some(e => isLocaleSubdir(join(localeDir, e)))) score += 2
+      if (entries.some(e => isLocaleContent(join(localeDir, e)))) score += 2
     }
   }
   catch {
@@ -158,6 +158,11 @@ function findLocaleDirSync(projectDir: string): string | null {
     if (existsSync(fullPath)) return fullPath
   }
   return null
+}
+
+function isLocaleContent(path: string): boolean {
+  if (path.endsWith('.json')) return true
+  return isLocaleSubdir(path)
 }
 
 function isLocaleSubdir(path: string): boolean {
