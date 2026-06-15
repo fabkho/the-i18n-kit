@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { basename, join } from 'pathe'
+import { basename, join } from 'node:path'
 import type { I18nConfig, LocaleDefinition } from '../config/types'
 import { readLocaleData, resolveLocaleEntries } from '../io/locale-data'
 import { readLocale, writeLocale } from '../io/locale-io'

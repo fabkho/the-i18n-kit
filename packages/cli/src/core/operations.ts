@@ -5,7 +5,7 @@
  * Errors are thrown (ToolError etc.) rather than returned as isError responses.
  */
 
-import { resolve, relative } from 'pathe'
+import { resolve, relative } from 'node:path'
 import { readdir } from 'node:fs/promises'
 
 import { detectI18nConfig, clearConfigCache } from '../config/detector.js'

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'pathe'
+import { join } from 'node:path'
 import { writePhpLocaleFile, detectPhpStyle, mutatePhpLocaleFile } from '../../src/io/php-writer.js'
 import { readPhpLocaleFile, clearPhpFileCache } from '../../src/io/php-reader.js'
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'pathe'
+import { join } from 'node:path'
 import { readLocale, writeLocale, mutateLocale } from '../../src/io/locale-io.js'
 import { clearFileCache } from '../../src/io/json-reader.js'
 import { clearPhpFileCache } from '../../src/io/php-reader.js'

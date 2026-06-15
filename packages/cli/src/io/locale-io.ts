@@ -1,4 +1,4 @@
-import { extname } from 'pathe'
+import { extname } from 'node:path'
 import { readLocaleFile } from './json-reader'
 import { writeLocaleFile, mutateLocaleFile } from './json-writer'
 import { readPhpLocaleFile } from './php-reader'

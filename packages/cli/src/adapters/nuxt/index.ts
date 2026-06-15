@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile, realpath } from 'node:fs/promises'
-import { resolve, relative } from 'pathe'
+import { resolve, relative } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
 import type { I18nConfig, LocaleDefinition, LocaleDir, AppInfo } from '../../config/types'
 import { findNuxtConfig, discoverNuxtApps, deriveLayerName } from '../../config/discovery'

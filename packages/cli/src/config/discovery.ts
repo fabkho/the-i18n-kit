@@ -1,6 +1,6 @@
 import { existsSync, statSync, realpathSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
-import { resolve, relative } from 'pathe'
+import { resolve, relative } from 'node:path'
 
 const NUXT_CONFIG_FILES = ['nuxt.config.ts', 'nuxt.config.js', 'nuxt.config.mjs'] as const
 

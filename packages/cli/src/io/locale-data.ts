@@ -1,4 +1,4 @@
-import { join, extname } from 'pathe'
+import { join, extname } from 'node:path'
 import { readdir, mkdir, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { readLocale, writeLocale } from './locale-io'

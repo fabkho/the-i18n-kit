@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { resolve, join } from 'pathe'
+import { resolve, join } from 'node:path'
 import { readLocaleFile } from '../../src/io/json-reader.js'
 import { getLeafKeys, getNestedValue } from '../../src/io/key-operations.js'
 import type { I18nConfig } from '../../src/config/types.js'

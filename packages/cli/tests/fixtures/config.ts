@@ -1,4 +1,4 @@
-import { resolve } from 'pathe'
+import { resolve } from 'node:path'
 import type { I18nConfig } from '../../src/config/types.js'
 
 export const projectRootDir = resolve(import.meta.dirname, '../..')

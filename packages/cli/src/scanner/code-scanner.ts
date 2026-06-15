@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { join, relative } from 'pathe'
+import { join, relative } from 'node:path'
 import { glob } from 'tinyglobby'
 import { log } from '../utils/logger.js'
 import type { ScanPatternSet } from './patterns.js'

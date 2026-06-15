@@ -1,4 +1,4 @@
-import { sep } from 'pathe'
+import { sep } from 'node:path'
 
 export interface LayerRef {
   layer: string

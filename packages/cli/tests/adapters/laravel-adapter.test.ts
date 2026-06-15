@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
-import { join } from 'pathe'
+import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { LaravelAdapter } from '../../src/adapters/laravel/index'
 import { registerAdapter, resetRegistry, detectFramework } from '../../src/adapters/registry'

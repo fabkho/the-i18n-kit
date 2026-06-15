@@ -1,5 +1,5 @@
 import { readdir } from 'node:fs/promises'
-import { join, resolve } from 'pathe'
+import { join, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
 import type { I18nConfig, LocaleDefinition, LocaleDir } from '../../config/types'

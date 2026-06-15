@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { resolve } from 'pathe'
+import { resolve } from 'node:path'
 import { registerDetectorMock, playgroundDir, appAdminDir, monorepoDir } from '../fixtures/mock-detector.js'
 import type { I18nConfig } from '../../src/config/types.js'
 

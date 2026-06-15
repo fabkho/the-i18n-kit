@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { resolve } from 'pathe'
+import { resolve } from 'node:path'
 import { writeFile, unlink, mkdir, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { loadProjectConfig, findConfigFile } from '../../src/config/project-config.js'

@@ -1,5 +1,5 @@
 import { writeFile, rename, mkdir, unlink } from 'node:fs/promises'
-import { dirname, join } from 'pathe'
+import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { FileIOError } from '../utils/errors'
 import { sortKeysDeep } from './key-operations'
