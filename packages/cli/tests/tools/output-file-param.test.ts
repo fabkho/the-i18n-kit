@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { join } from 'node:path'
+import { join } from 'pathe'
 import { mkdtemp, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { registerDetectorMock, playgroundDir, appAdminDir } from '../fixtures/mock-detector.js'

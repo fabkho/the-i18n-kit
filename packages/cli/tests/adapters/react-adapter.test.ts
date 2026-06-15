@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { join } from 'pathe'
 import { tmpdir } from 'node:os'
 import { ReactAdapter } from '../../src/adapters/react/index'
 import { registerAdapter, resetRegistry, detectFramework } from '../../src/adapters/registry'

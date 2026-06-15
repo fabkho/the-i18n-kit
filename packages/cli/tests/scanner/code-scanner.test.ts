@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join } from 'pathe'
 import { fileURLToPath } from 'node:url'
 import { extractKeys, scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes } from '../../src/scanner/code-scanner.js'
 

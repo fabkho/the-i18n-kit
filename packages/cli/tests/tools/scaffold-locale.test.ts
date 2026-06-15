@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
-import { resolve, join } from 'node:path'
+import { resolve, join } from 'pathe'
 import { cp, rm, mkdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { readLocaleFile } from '../../src/io/json-reader.js'

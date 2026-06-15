@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { resolve } from 'node:path'
+import { resolve } from 'pathe'
 import { detectI18nConfig, clearConfigCache, discoverNuxtApps } from '../../src/config/detector.js'
 import type { I18nConfig } from '../../src/config/types.js'
 

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname } from 'pathe'
 import { z } from 'zod'
 import type { ProjectConfig } from './types.js'
 import { ConfigError } from '../utils/errors.js'

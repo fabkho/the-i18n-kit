@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, resolve } from 'pathe'
 import { writeLocaleFile, mutateLocaleFile, writeReportFile } from '../../src/io/json-writer.js'
 import { setNestedValue } from '../../src/io/key-operations.js'
 import { validateReportPath } from '../../src/core/operations.js'

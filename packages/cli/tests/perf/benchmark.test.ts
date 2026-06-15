@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { resolve, join } from 'node:path'
+import { resolve, join } from 'pathe'
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { detectI18nConfig, clearConfigCache } from '../../src/config/detector.js'
 import { readLocaleFile, clearFileCache, detectIndentation } from '../../src/io/json-reader.js'

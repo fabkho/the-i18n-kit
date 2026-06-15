@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { resolve } from 'node:path'
+import { resolve } from 'pathe'
 import { createPlaygroundConfig, createAppAdminConfig, createMonorepoConfig, projectRootDir } from './config.js'
 import type { I18nConfig } from '../../src/config/types.js'
 

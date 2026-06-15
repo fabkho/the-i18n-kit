@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { resolve, join } from 'node:path'
+import { resolve, join } from 'pathe'
 import { cp, rm, readFile, mkdir } from 'node:fs/promises'
 import { readLocaleFile } from '../../src/io/json-reader.js'
 import { mutateLocaleFile } from '../../src/io/json-writer.js'
