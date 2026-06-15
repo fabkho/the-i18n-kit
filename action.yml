@@ -32,6 +32,9 @@ inputs:
     description: 'Keys per LLM call (default: 50)'
     required: false
     default: '50'
+  concurrency:
+    description: 'Parallel LLM calls (default: provider default)'
+    required: false
   dry_run:
     description: 'Preview translations without writing files'
     required: false
@@ -40,34 +43,24 @@ inputs:
     description: 'Project root directory (default: github.workspace)'
     required: false
     default: ${{ github.workspace }}
-  create_pr:
-    description: 'Create a PR with the translated files'
-    required: false
-    default: 'true'
-  pr_branch:
-    description: 'Branch name for the PR (default: i18n/translate-missing-<timestamp>)'
-    required: false
   commit_message:
-    description: 'Commit message (default: "chore(i18n): translate missing keys via <provider>")'
+    description: 'Commit message (default: "i18n: auto-translate missing keys (<layer>) via <provider> [skip ci]")'
     required: false
-  pr_title:
-    description: 'PR title (default: "chore(i18n): translate missing keys")'
+  peer_deps:
+    description: 'Space-separated npm packages to install (e.g. "@google/genai" for the google provider)'
     required: false
   github_token:
-    description: 'GitHub token for creating PRs. Defaults to GITHUB_TOKEN.'
+    description: 'GitHub token for posting PR comments. Defaults to GITHUB_TOKEN.'
     required: false
     default: ${{ github.token }}
-  base_branch:
-    description: 'Base branch for the PR (default: the branch that triggered the workflow)'
-    required: false
 
 outputs:
   translated_count:
     description: 'Number of keys translated'
     value: ${{ steps.translate.outputs.translated_count }}
-  pr_url:
-    description: 'URL of the created PR (only when create_pr is true)'
-    value: ${{ steps.create-pr.outputs.pr_url }}
+  files_changed:
+    description: 'Number of locale files changed'
+    value: ${{ steps.push.outputs.files_changed }}
 
 runs:
   using: 'composite'
@@ -80,6 +73,12 @@ runs:
     - name: Install the-i18n-cli
       shell: bash
       run: npm install -g the-i18n-cli@latest
+
+    - name: Install peer dependencies
+      if: inputs.peer_deps != ''
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      run: npm install ${{ inputs.peer_deps }}
 
     - name: Detect i18n config
       id: detect
@@ -113,102 +112,74 @@ runs:
           --json
         )
 
-        if [ -n "${{ inputs.locales }}" ]; then
-          args+=(--targets "${{ inputs.locales }}")
-        fi
-        if [ -n "${{ inputs.source_locale }}" ]; then
-          args+=(--ref "${{ inputs.source_locale }}")
-        fi
-        if [ -n "${{ inputs.keys }}" ]; then
-          args+=(--keys "${{ inputs.keys }}")
-        fi
-        if [ "${{ inputs.dry_run }}" = "true" ]; then
-          args+=(--dry-run)
-        fi
+        [ -n "${{ inputs.locales }}" ]       && args+=(--targets "${{ inputs.locales }}")
+        [ -n "${{ inputs.source_locale }}" ] && args+=(--ref "${{ inputs.source_locale }}")
+        [ -n "${{ inputs.keys }}" ]          && args+=(--keys "${{ inputs.keys }}")
+        [ -n "${{ inputs.concurrency }}" ]   && args+=(--concurrency "${{ inputs.concurrency }}")
+        [ "${{ inputs.dry_run }}" = "true" ] && args+=(--dry-run)
 
+        mkdir -p .i18n-reports
         output=$(the-i18n-cli translate "${args[@]}")
+        echo "$output" | tee .i18n-reports/translate-output.json
 
-        # Extract translated count from JSON output
         count=$(echo "$output" | jq -r '.translated // .totalTranslated // 0')
         echo "translated_count=$count" >> "$GITHUB_OUTPUT"
 
-        echo "$output"
-
-    - name: Create PR with translations
-      id: create-pr
-      if: inputs.dry_run == 'false' && inputs.create_pr == 'true'
+    - name: Push translations
+      id: push
+      if: inputs.dry_run == 'false'
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       env:
         GH_TOKEN: ${{ inputs.github_token }}
-        BASE_BRANCH: ${{ inputs.base_branch }}
-        PR_BRANCH: ${{ inputs.pr_branch }}
         COMMIT_MSG: ${{ inputs.commit_message }}
-        PR_TITLE: ${{ inputs.pr_title }}
         PROVIDER: ${{ inputs.provider }}
         LAYER: ${{ inputs.layer }}
+        MODEL: ${{ inputs.model }}
+        TRANSLATED_COUNT: ${{ steps.translate.outputs.translated_count }}
       run: |
         set -euo pipefail
 
-        # Determine base branch
-        if [ -z "${BASE_BRANCH:-}" ]; then
-          BASE="${GITHUB_BASE_REF:-$GITHUB_REF_NAME}"
-        else
-          BASE="$BASE_BRANCH"
-        fi
-
-        # Branch name
-        if [ -z "${PR_BRANCH:-}" ]; then
-          TS=$(date +%s)
-          BRANCH="i18n/translate-missing-${TS}"
-        else
-          BRANCH="$PR_BRANCH"
-        fi
-
-        # Commit message
-        if [ -z "${COMMIT_MSG:-}" ]; then
-          MSG="chore(i18n): translate missing keys via ${PROVIDER}"
-        else
-          MSG="$COMMIT_MSG"
-        fi
-
-        # PR title
-        if [ -z "${PR_TITLE:-}" ]; then
-          TITLE="chore(i18n): translate missing keys (${LAYER})"
-        else
-          TITLE="$PR_TITLE"
+        if git diff --quiet && git diff --cached --quiet; then
+          echo "No translation changes to commit."
+          echo "files_changed=0" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
 
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
 
-        # Check if there are changes
-        if git diff --quiet && git diff --cached --quiet; then
-          echo "No translation changes to commit"
-          echo "pr_url=" >> "$GITHUB_OUTPUT"
-          exit 0
+        if [ -n "${COMMIT_MSG:-}" ]; then
+          MSG="$COMMIT_MSG"
+        else
+          MSG="i18n: auto-translate missing keys (${LAYER}) via ${PROVIDER} [skip ci]"
         fi
 
-        git checkout -b "$BRANCH"
         git add .
         git commit -m "$MSG"
-        git push origin "$BRANCH"
+        git push origin HEAD
 
-        PR_URL=$(gh pr create \
-          --base "$BASE" \
-          --head "$BRANCH" \
-          --title "$TITLE" \
-          --body "Automated translation of missing i18n keys in layer \`${LAYER}\` using \`${PROVIDER}\`.
+        CHANGED_FILES=$(git diff --name-only "HEAD~1" | wc -l | tr -d ' ')
+        echo "files_changed=$CHANGED_FILES" >> "$GITHUB_OUTPUT"
+
+        # Post PR comment (only in pull_request context)
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          gh pr comment "${{ github.event.pull_request.number }}" --body "## i18n Auto-Translate 🌐
+
+        Auto-translated missing keys from source locale to target locales.
 
         | | |
         |---|---|
         | Provider | ${PROVIDER} |
-        | Model | ${{ inputs.model }} |
+        | Model | ${MODEL} |
         | Layer | ${LAYER} |
-        | Keys translated | ${{ steps.translate.outputs.translated_count }} |")
+        | Keys translated | ${TRANSLATED_COUNT} |
+        | Files changed | ${CHANGED_FILES} |
 
-        echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-        echo "Created PR: $PR_URL"
+        Translations pushed to this branch."
+        fi
+
+        echo "Pushed ${CHANGED_FILES} locale file(s)."
 
     - name: Dry run summary
       if: inputs.dry_run == 'true'
