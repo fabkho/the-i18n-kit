@@ -1,5 +1,7 @@
 // Public API — re-export everything the MCP package (and other consumers) need
 
+// Error utilities (added for MCP error handling)
+
 // Core operations
 export {
   detectConfig,
