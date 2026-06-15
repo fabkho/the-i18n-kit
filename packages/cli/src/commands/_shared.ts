@@ -7,7 +7,7 @@ export function createCommand(opts: {
   name: string
   description: string
   args?: Record<string, unknown>
-  run: (args: Record<string, unknown>) => Promise<unknown>
+  run: (args: any) => Promise<unknown>
 }): CommandDef {
   return defineCommand({
     meta: { name: opts.name, description: opts.description },
@@ -16,7 +16,7 @@ export function createCommand(opts: {
       const result = await opts.run(args)
       outputResult(result, args)
     },
-  })
+  }) as any
 }
 
 export const sharedArgs = {
