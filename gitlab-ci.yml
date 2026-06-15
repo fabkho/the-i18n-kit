@@ -1,0 +1,139 @@
+# the-i18n-kit — Auto-Translate Missing Keys (GitLab CI template)
+#
+# Usage in your .gitlab-ci.yml:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/fabkho/the-i18n-kit/main/gitlab-ci.yml'
+#
+#   i18n-translate:
+#     extends: .i18n-translate
+#     variables:
+#       I18N_PROVIDER: google
+#       I18N_MODEL: gemini-2.0-flash
+#       I18N_LAYER: common
+#     rules:
+#       - if: $CI_PIPELINE_SOURCE == "schedule"  # e.g. nightly
+#       - when: manual                            # or manual trigger
+
+.i18n-translate:
+  image: node:22-alpine
+  stage: translate
+  variables:
+    # Required — no defaults, you must set these
+    I18N_PROVIDER: ""       # openai | anthropic | google
+    I18N_MODEL: ""          # e.g. gpt-4o, claude-3-5-sonnet-20241022, gemini-2.0-flash
+    I18N_API_KEY: ""        # API key for the chosen provider
+    I18N_LAYER: ""          # e.g. common, dashboard
+
+    # Optional
+    I18N_LOCALES: ""        # comma-separated target locales (default: all except source)
+    I18N_SOURCE_LOCALE: ""  # reference locale (default: from .i18n-mcp.json)
+    I18N_KEYS: ""           # comma-separated keys (default: all missing)
+    I18N_BATCH_SIZE: "50"   # keys per LLM call
+    I18N_DRY_RUN: "false"   # preview without writing files
+    I18N_CREATE_MR: "true"  # auto-create MR with translated files
+    I18N_MR_TARGET_BRANCH: ""  # MR target (default: repo default branch)
+    I18N_GITLAB_TOKEN: ""     # GitLab API token for MR creation (required when I18N_CREATE_MR is true). Must have api + write_repository scopes.
+
+  before_script:
+    - npm install -g the-i18n-cli@latest
+    - the-i18n-cli detect
+
+  script:
+    - |
+      set -euo pipefail
+
+      # Route API key to provider-specific env var
+      case "$I18N_PROVIDER" in
+        openai)    export OPENAI_API_KEY="$I18N_API_KEY" ;;
+        anthropic) export ANTHROPIC_API_KEY="$I18N_API_KEY" ;;
+        google)    export GEMINI_API_KEY="$I18N_API_KEY" ;;
+        *)
+          echo "ERROR: Unknown provider: $I18N_PROVIDER"
+          echo "Must be one of: openai, anthropic, google"
+          exit 1
+          ;;
+      esac
+
+      if [ -z "$I18N_PROVIDER" ] || [ -z "$I18N_MODEL" ] || [ -z "$I18N_API_KEY" ] || [ -z "$I18N_LAYER" ]; then
+        echo "ERROR: I18N_PROVIDER, I18N_MODEL, I18N_API_KEY, and I18N_LAYER are required"
+        exit 1
+      fi
+
+      args=(
+        --provider "$I18N_PROVIDER"
+        --model "$I18N_MODEL"
+        --layer "$I18N_LAYER"
+        --batch-size "$I18N_BATCH_SIZE"
+        --json
+      )
+
+      [ -n "$I18N_LOCALES" ]      && args+=(--targets "$I18N_LOCALES")
+      [ -n "$I18N_SOURCE_LOCALE" ] && args+=(--ref "$I18N_SOURCE_LOCALE")
+      [ -n "$I18N_KEYS" ]         && args+=(--keys "$I18N_KEYS")
+      [ "$I18N_DRY_RUN" = "true" ] && args+=(--dry-run)
+
+      the-i18n-cli translate "${args[@]}"
+
+  after_script:
+    - |
+      set -euo pipefail
+
+      if [ "$I18N_DRY_RUN" = "true" ]; then
+        echo "Dry run complete. No files written."
+        exit 0
+      fi
+
+      if [ "$I18N_CREATE_MR" != "true" ]; then
+        echo "create_mr is false. Translated files are in the working tree but not committed."
+        exit 0
+      fi
+
+      # Check if there are changes
+      if git diff --quiet && git diff --cached --quiet; then
+        echo "No translation changes to commit."
+        exit 0
+      fi
+
+      # Configure git
+      git config user.name "gitlab-ci[bot]"
+      git config user.email "gitlab-ci[bot]@gitlab.com"
+
+      # Create branch and commit
+      BRANCH="i18n/translate-missing-$(date +%s)"
+      git checkout -b "$BRANCH"
+      git add .
+      git commit -m "chore(i18n): translate missing keys ($I18N_LAYER) via $I18N_PROVIDER"
+
+      # Push using CI_JOB_TOKEN for authentication
+      PUSH_URL="https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git push "$PUSH_URL" "$BRANCH" -o ci.skip
+
+      # Determine MR target branch
+      if [ -n "$I18N_MR_TARGET_BRANCH" ]; then
+        TARGET="$I18N_MR_TARGET_BRANCH"
+      else
+        TARGET="$CI_DEFAULT_BRANCH"
+      fi
+
+      # Create MR via GitLab API
+      MR_RESPONSE=$(curl --silent --request POST \
+        --header "PRIVATE-TOKEN: $I18N_GITLAB_TOKEN" \
+        --header "Content-Type: application/json" \
+        --data "{
+          \"source_branch\": \"$BRANCH\",
+          \"target_branch\": \"$TARGET\",
+          \"title\": \"chore(i18n): translate missing keys ($I18N_LAYER)\",
+          \"description\": \"Automated translation of missing i18n keys in layer \`$I18N_LAYER\` using \`$I18N_PROVIDER\` ($I18N_MODEL).\",
+          \"remove_source_branch\": true
+        }" \
+        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests")
+
+      MR_URL=$(echo "$MR_RESPONSE" | jq -r '.web_url // empty')
+      if [ -n "$MR_URL" ]; then
+        echo "Created MR: $MR_URL"
+      else
+        echo "ERROR: Failed to create MR"
+        echo "$MR_RESPONSE"
+        exit 1
+      fi
