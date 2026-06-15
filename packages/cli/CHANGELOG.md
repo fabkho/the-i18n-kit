@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.4.0...the-i18n-cli-1.5.0) (2026-06-15)
+
+
+### Features
+
+* **cli:** expose toErrorMessage in public API ([#183](https://github.com/fabkho/the-i18n-kit/issues/183)) ([5062c10](https://github.com/fabkho/the-i18n-kit/commit/5062c107a88c3f3ae7b61171a1f30cc128e7cb62))
+
 ## [1.4.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.3.0...the-i18n-cli-1.4.0) (2026-06-15)
 
 
