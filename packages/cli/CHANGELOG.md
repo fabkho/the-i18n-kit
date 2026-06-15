@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.3.0...the-i18n-cli-1.4.0) (2026-06-15)
+
+
+### Features
+
+* add Laravel JSON locale file support ([#164](https://github.com/fabkho/the-i18n-kit/issues/164)) ([914ca0c](https://github.com/fabkho/the-i18n-kit/commit/914ca0c2fb7ae63aa7449fae742d5cdb43b40aca)), closes [#96](https://github.com/fabkho/the-i18n-kit/issues/96)
+* add list_namespaces MCP tool ([#153](https://github.com/fabkho/the-i18n-kit/issues/153)) ([#163](https://github.com/fabkho/the-i18n-kit/issues/163)) ([474b021](https://github.com/fabkho/the-i18n-kit/commit/474b021e0aa50cb5c05ef484fa9451738aaa3180))
+* add namespaced JSON support — unlocks Next.js, React, Remix ([#145](https://github.com/fabkho/the-i18n-kit/issues/145)) ([#158](https://github.com/fabkho/the-i18n-kit/issues/158)) ([b4f00d9](https://github.com/fabkho/the-i18n-kit/commit/b4f00d99f79aa960b0bf5df752024a1b761820a7))
+* add React/Next.js auto-detection adapter ([#149](https://github.com/fabkho/the-i18n-kit/issues/149)) ([#161](https://github.com/fabkho/the-i18n-kit/issues/161)) ([0964473](https://github.com/fabkho/the-i18n-kit/commit/0964473f5bf52aa0740421e77679f9341607af11))
+* add Vue standalone adapter for vue-i18n ([#146](https://github.com/fabkho/the-i18n-kit/issues/146)) ([#160](https://github.com/fabkho/the-i18n-kit/issues/160)) ([735e90e](https://github.com/fabkho/the-i18n-kit/commit/735e90e13b8f7daaef2050fc077bd2624b546ba4))
+* **cli:** replace custom logger with consola, manual config validation with zod ([#172](https://github.com/fabkho/the-i18n-kit/issues/172)) ([fb6c5d7](https://github.com/fabkho/the-i18n-kit/commit/fb6c5d70cb774f4b7e46a8fe5694da2540980b91))
+* search all layers, compact outputs for get_translations and translate_missing ([#162](https://github.com/fabkho/the-i18n-kit/issues/162)) ([5c8cfaf](https://github.com/fabkho/the-i18n-kit/commit/5c8cfafc36a8bb30be01538da94f7c0cbe4fea6d))
+
+
+### Bug Fixes
+
+* remove repository directory field to fix Glama repo URL resolution ([0807be4](https://github.com/fabkho/the-i18n-kit/commit/0807be407244fa31747dc9b9e50839cdec32dcfb))
+
 ## [1.3.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.2.1...the-i18n-cli-1.3.0) (2026-06-12)
 
 

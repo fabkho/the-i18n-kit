@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.4.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-3.3.1...the-i18n-mcp-3.4.0) (2026-06-15)
+
+
+### Features
+
+* add list_namespaces MCP tool ([#153](https://github.com/fabkho/the-i18n-kit/issues/153)) ([#163](https://github.com/fabkho/the-i18n-kit/issues/163)) ([474b021](https://github.com/fabkho/the-i18n-kit/commit/474b021e0aa50cb5c05ef484fa9451738aaa3180))
+* search all layers, compact outputs for get_translations and translate_missing ([#162](https://github.com/fabkho/the-i18n-kit/issues/162)) ([5c8cfaf](https://github.com/fabkho/the-i18n-kit/commit/5c8cfafc36a8bb30be01538da94f7c0cbe4fea6d))
+
+
+### Bug Fixes
+
+* remove repository directory field to fix Glama repo URL resolution ([0807be4](https://github.com/fabkho/the-i18n-kit/commit/0807be407244fa31747dc9b9e50839cdec32dcfb))
+
 ## [3.3.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-3.3.0...the-i18n-mcp-3.3.1) (2026-06-11)
 
 

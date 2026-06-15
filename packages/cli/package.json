@@ -1,6 +1,6 @@
 {
   "name": "the-i18n-cli",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Find missing translations, remove dead keys, rename across all locales at once — for Nuxt, Laravel, or any project with JSON/PHP locale files",
   "keywords": [
     "i18n",
