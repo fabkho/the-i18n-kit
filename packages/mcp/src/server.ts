@@ -34,6 +34,30 @@ const DEFAULT_PROJECT_DIR = process.env.I18N_PROJECT_DIR ?? process.cwd()
 
 // ─── Shared helpers ───────────────────────────────────────────────
 
+function createMcpSamplingFn(server: McpServer, samplingSupported: boolean): SamplingFn | undefined {
+  if (!samplingSupported) return undefined
+  return async (opts) => {
+    const SAMPLING_TIMEOUT_MS = 120_000
+    const result = await server.server.createMessage({
+      messages: [{ role: 'user', content: { type: 'text', text: opts.userMessage } }],
+      systemPrompt: opts.systemPrompt,
+      maxTokens: opts.maxTokens,
+      temperature: 0,
+      includeContext: 'none',
+      modelPreferences: {
+        hints: opts.preferences.hints,
+        costPriority: opts.preferences.costPriority,
+        speedPriority: opts.preferences.speedPriority,
+        intelligencePriority: opts.preferences.intelligencePriority,
+      },
+    }, { timeout: SAMPLING_TIMEOUT_MS })
+    return {
+      text: result.content.type === 'text' ? result.content.text : '',
+      model: result.model,
+    }
+  }
+}
+
 function buildProjectConfigSection(pc: ProjectConfig | undefined): string {
   if (!pc) return ''
   let s = ''
@@ -494,40 +518,7 @@ export function createServer(): McpServer {
         }
 
         // Build samplingFn from MCP server sampling
-        const samplingFn: SamplingFn | undefined = samplingSupported
-          ? async (opts) => {
-              const SAMPLING_TIMEOUT_MS = 120_000 // 2 minutes per batch
-              const samplingResult = await server.server.createMessage({
-                messages: [
-                  {
-                    role: 'user',
-                    content: { type: 'text', text: opts.userMessage },
-                  },
-                ],
-                systemPrompt: opts.systemPrompt,
-                maxTokens: opts.maxTokens,
-                temperature: 0,
-                includeContext: 'none',
-                modelPreferences: {
-                  hints: opts.preferences.hints,
-                  costPriority: opts.preferences.costPriority,
-                  speedPriority: opts.preferences.speedPriority,
-                  intelligencePriority: opts.preferences.intelligencePriority,
-                },
-              }, {
-                timeout: SAMPLING_TIMEOUT_MS,
-              })
-
-              const responseText = samplingResult.content.type === 'text'
-                ? samplingResult.content.text
-                : ''
-
-              return {
-                text: responseText,
-                model: samplingResult.model,
-              }
-            }
-          : undefined
+        const samplingFn = createMcpSamplingFn(server, samplingSupported)
 
         const result = await translateMissing({
           layer,
@@ -602,40 +593,7 @@ export function createServer(): McpServer {
       try {
         const clientCapabilities = server.server.getClientCapabilities()
         const samplingSupported = !!clientCapabilities?.sampling
-        const samplingFn: SamplingFn | undefined = samplingSupported
-          ? async (opts) => {
-              const SAMPLING_TIMEOUT_MS = 120_000
-              const samplingResult = await server.server.createMessage({
-                messages: [
-                  {
-                    role: 'user',
-                    content: { type: 'text', text: opts.userMessage },
-                  },
-                ],
-                systemPrompt: opts.systemPrompt,
-                maxTokens: opts.maxTokens,
-                temperature: 0,
-                includeContext: 'none',
-                modelPreferences: {
-                  hints: opts.preferences.hints,
-                  costPriority: opts.preferences.costPriority,
-                  speedPriority: opts.preferences.speedPriority,
-                  intelligencePriority: opts.preferences.intelligencePriority,
-                },
-              }, {
-                timeout: SAMPLING_TIMEOUT_MS,
-              })
-
-              const responseText = samplingResult.content.type === 'text'
-                ? samplingResult.content.text
-                : ''
-
-              return {
-                text: responseText,
-                model: samplingResult.model,
-              }
-            }
-          : undefined
+        const samplingFn = createMcpSamplingFn(server, samplingSupported)
 
         const result = await translateKey({
           layer,
