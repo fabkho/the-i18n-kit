@@ -1,3 +1,5 @@
+import sortKeys from 'sort-keys'
+
 /**
  * Get a value from a nested object using a dot-separated path.
  */
@@ -100,20 +102,8 @@ export function getLeafKeys(obj: Record<string, unknown>, prefix = '', depth = 0
  * Sort keys alphabetically at every nesting level (deep).
  * Returns a new object — does not mutate the input.
  */
-export function sortKeysDeep(obj: Record<string, unknown>, depth = 0): Record<string, unknown> {
-  if (depth > 200) return {} // guard against deeply nested objects
-  const sorted: Record<string, unknown> = {}
-  const keys = Object.keys(obj).sort((a, b) => a.localeCompare(b))
-  for (const key of keys) {
-    const value = obj[key]
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      sorted[key] = sortKeysDeep(value as Record<string, unknown>, depth + 1)
-    } else {
-      sorted[key] = value
-    }
-  }
-  return sorted
-}
+export const sortKeysDeep = (obj: Record<string, unknown>): Record<string, unknown> =>
+  sortKeys(obj, { deep: true }) as Record<string, unknown>
 
 /**
  * Rename a key in a nested object. Preserves the value.

@@ -34,7 +34,7 @@ export type { I18nConfig, LocaleDefinition, LocaleDir, ProjectConfig } from './c
 export { readLocaleData } from './io/locale-data.js'
 
 // Errors
-export { ToolError } from './utils/errors.js'
+export { ToolError, toErrorMessage } from './utils/errors.js'
 
 // LLM providers
 export { createSamplingFn } from './llm/providers.js'

@@ -1,5 +1,5 @@
 import type { FrameworkAdapter } from './types'
-import { ConfigError } from '../utils/errors'
+import { ConfigError, toErrorMessage } from '../utils/errors'
 import { log } from '../utils/logger'
 
 const adapters: FrameworkAdapter[] = []
@@ -41,7 +41,7 @@ export async function detectFramework(
         return { adapter, confidence: await adapter.detect(projectDir) }
       }
       catch (error) {
-        log.warn(`Adapter '${adapter.name}' detection failed: ${error instanceof Error ? error.message : String(error)}`)
+        log.warn(`Adapter '${adapter.name}' detection failed: ${toErrorMessage(error)}`)
         return { adapter, confidence: 0 }
       }
     }),

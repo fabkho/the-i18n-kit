@@ -25,6 +25,7 @@ import {
   scaffoldLocaleFiles,
   listNamespaces,
   findLocaleImpl,
+  toErrorMessage,
 } from 'the-i18n-cli'
 
 import type { SamplingFn, ProgressFn, ProjectConfig } from 'the-i18n-cli'
@@ -79,7 +80,7 @@ function toolErrorResponse(context: string, error: unknown) {
         type: 'text' as const,
         text: error instanceof ToolError
           ? `[${error.code}] ${error.message}`
-          : `Error ${context}: ${error instanceof Error ? error.message : String(error)}`,
+          : `Error ${context}: ${toErrorMessage(error)}`,
       },
     ],
     isError: true,

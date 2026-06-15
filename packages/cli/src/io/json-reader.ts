@@ -1,53 +1,26 @@
-import { readFile, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { FileIOError } from '../utils/errors'
+import { toErrorMessage } from '../utils/errors'
+import { createReadCache } from './read-cache'
 
-/** Cache of parsed locale files: path → { data, mtime } */
-const fileCache = new Map<string, { data: Record<string, unknown>; mtime: number }>()
-
-/** Clear the entire file cache. */
-export function clearFileCache(): void {
-  fileCache.clear()
-}
-
-/** Clear a single entry from the file cache. */
-export function clearFileCacheEntry(filePath: string): void {
-  fileCache.delete(filePath)
-}
-
-/**
- * Read and parse a JSON locale file.
- * Uses an mtime-based cache to avoid re-reading unchanged files.
- */
-export async function readLocaleFile(filePath: string): Promise<Record<string, unknown>> {
-  if (!existsSync(filePath)) {
-    throw new FileIOError(`File not found: ${filePath}`, filePath, 'FILE_NOT_FOUND')
-  }
-
-  try {
-    const fileStat = await stat(filePath)
-    const mtime = fileStat.mtimeMs
-
-    const cached = fileCache.get(filePath)
-    if (cached && cached.mtime === mtime) {
-      return structuredClone(cached.data)
+const { read: readLocaleFile, clear: clearFileCache, clearEntry: clearFileCacheEntry } = createReadCache<Record<string, unknown>>(
+  (content) => {
+    try {
+      return JSON.parse(content) as Record<string, unknown>
+    } catch {
+      throw new SyntaxError('Invalid JSON')
     }
-
-    const content = await readFile(filePath, 'utf-8')
-    const data = JSON.parse(content) as Record<string, unknown>
-    fileCache.set(filePath, { data: structuredClone(data), mtime })
-    return data
-  } catch (error) {
-    if (error instanceof FileIOError) throw error
-    if (error instanceof SyntaxError) {
-      throw new FileIOError(`Invalid JSON in file: ${filePath}`, filePath, 'INVALID_JSON')
+  },
+  'JSON',
+  (parsed, filePath) => {
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new FileIOError(`JSON file must contain an object: ${filePath}`, filePath, 'INVALID_JSON')
     }
-    throw new FileIOError(
-      `Failed to read file: ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-      filePath,
-    )
-  }
-}
+  },
+)
+
+export { readLocaleFile, clearFileCache, clearFileCacheEntry }
 
 /**
  * Detect the indentation style used in a JSON file.
@@ -102,11 +75,12 @@ export async function readLocaleFileWithMeta(filePath: string): Promise<{
 
     return { data, rawContent, indent, trailingNewline }
   } catch (error) {
+    if (error instanceof FileIOError) throw error
     if (error instanceof SyntaxError) {
       throw new FileIOError(`Invalid JSON in file: ${filePath}`, filePath, 'INVALID_JSON')
     }
     throw new FileIOError(
-      `Failed to read file: ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to read file: ${filePath}: ${toErrorMessage(error)}`,
       filePath,
     )
   }

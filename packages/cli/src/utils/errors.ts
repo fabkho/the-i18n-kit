@@ -1,3 +1,8 @@
+/** Extract a human-readable message from any thrown value. */
+export function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 export class ConfigError extends Error {
   constructor(message: string) {
     super(message)

@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { fromString } from 'php-array-reader'
-import { FileIOError } from '../utils/errors'
+import { FileIOError, toErrorMessage } from '../utils/errors'
 
 const fileCache = new Map<string, { data: Record<string, unknown>; mtime: number }>()
 
@@ -44,7 +44,7 @@ export async function readPhpLocaleFile(filePath: string): Promise<Record<string
   catch (error) {
     if (error instanceof FileIOError) throw error
     throw new FileIOError(
-      `Failed to read PHP locale file: ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to read PHP locale file: ${filePath}: ${toErrorMessage(error)}`,
       filePath,
     )
   }

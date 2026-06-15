@@ -53,6 +53,9 @@ importers:
       php-array-reader:
         specifier: ^2.1.3
         version: 2.1.3
+      sort-keys:
+        specifier: ^6.0.0
+        version: 6.0.0
       tinyglobby:
         specifier: ^0.2.15
         version: 0.2.15
@@ -4442,6 +4445,10 @@ packages:
   smob@1.6.1:
     resolution: {integrity: sha512-KAkBqZl3c2GvNgNhcoyJae1aKldDW0LO279wF9bk1PnluRTETKBq0WyzRXxEhoQLk56yHaOY4JCBEKDuJIET5g==}
     engines: {node: '>=20.0.0'}
+
+  sort-keys@6.0.0:
+    resolution: {integrity: sha512-ueSlHJMwpIw42CJ4B11Uxzh/S0p0AlOyiNktlv2KOu5e1JpUE6DlC4AAUjXqesHdBRv/g0wC9Q4vwq0NP2pA9w==}
+    engines: {node: '>=20'}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -9740,6 +9747,10 @@ snapshots:
   slash@5.1.0: {}
 
   smob@1.6.1: {}
+
+  sort-keys@6.0.0:
+    dependencies:
+      is-plain-obj: 4.1.0
 
   source-map-js@1.2.1: {}
 

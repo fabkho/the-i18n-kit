@@ -8,7 +8,7 @@ import { loadKit } from '../../config/nuxt-loader'
 import { loadProjectConfig } from '../../config/project-config'
 import { applyLocaleOverride } from '../../config/locale-override'
 import { log } from '../../utils/logger'
-import { ConfigError } from '../../utils/errors'
+import { ConfigError, toErrorMessage } from '../../utils/errors'
 import { resolveLayerOwnership } from './layer-dedup'
 
 export class NuxtAdapter implements FrameworkAdapter {
@@ -132,7 +132,7 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
       appConfig = await loadSingleApp(appDir, discoveryRoot)
     }
     catch (error) {
-      log.warn(`Failed to load app at ${appDir}: ${error instanceof Error ? error.message : String(error)}`)
+      log.warn(`Failed to load app at ${appDir}: ${toErrorMessage(error)}`)
       continue
     }
 

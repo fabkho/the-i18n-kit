@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { z } from 'zod'
 import type { ProjectConfig } from './types.js'
-import { ConfigError } from '../utils/errors.js'
+import { ConfigError, toErrorMessage } from '../utils/errors.js'
 import { log } from '../utils/logger.js'
 
 const CONFIG_FILENAME = '.i18n-mcp.json'
@@ -95,7 +95,7 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
     raw = await readFile(configPath, 'utf-8')
   } catch (error) {
     throw new ConfigError(
-      `Failed to read ${CONFIG_FILENAME}: ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to read ${CONFIG_FILENAME}: ${toErrorMessage(error)}`,
     )
   }
 
@@ -104,7 +104,7 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
     parsed = JSON.parse(raw)
   } catch (error) {
     throw new ConfigError(
-      `Invalid JSON in ${CONFIG_FILENAME}: ${error instanceof Error ? error.message : String(error)}`,
+      `Invalid JSON in ${CONFIG_FILENAME}: ${toErrorMessage(error)}`,
     )
   }
 

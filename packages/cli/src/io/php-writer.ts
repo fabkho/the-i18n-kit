@@ -1,10 +1,10 @@
-import { writeFile, readFile, rename, mkdir, unlink } from 'node:fs/promises'
+import { writeFile, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { randomUUID } from 'node:crypto'
 import { FileIOError } from '../utils/errors'
+import { toErrorMessage } from '../utils/errors'
 import { sortKeysDeep } from './key-operations'
 import { clearPhpFileCacheEntry } from './php-reader'
+import { atomicWrite } from './atomic-write'
 
 export interface PhpWriteOptions {
   quoteStyle?: 'single' | 'double'
@@ -27,24 +27,12 @@ export async function writePhpLocaleFile(
     const outputData = sortKeys ? sortKeysDeep(data) : data
     const content = serializePhpArray(outputData, quoteStyle, indent)
 
-    await mkdir(dirname(filePath), { recursive: true })
-    const tmpPath = join(dirname(filePath), `.${randomUUID()}.tmp`)
-
-    try {
-      await writeFile(tmpPath, content, 'utf-8')
-      await rename(tmpPath, filePath)
-      clearPhpFileCacheEntry(filePath)
-    }
-    catch (error) {
-      try { await unlink(tmpPath) }
-      catch { /* ignore cleanup errors */ }
-      throw error
-    }
+    await atomicWrite(filePath, content, () => clearPhpFileCacheEntry(filePath))
   }
   catch (error) {
     if (error instanceof FileIOError) throw error
     throw new FileIOError(
-      `Failed to write PHP locale file: ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to write PHP locale file: ${filePath}: ${toErrorMessage(error)}`,
       filePath,
     )
   }

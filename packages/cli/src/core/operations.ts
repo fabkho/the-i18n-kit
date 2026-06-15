@@ -25,7 +25,7 @@ import {
 import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from '../scanner/code-scanner.js'
 import { getPatternSet } from '../scanner/patterns.js'
 import { log } from '../utils/logger.js'
-import { ToolError } from '../utils/errors.js'
+import { ToolError, toErrorMessage } from '../utils/errors.js'
 import { scaffoldLocale } from '../tools/scaffold-locale.js'
 
 import type {
@@ -1501,8 +1501,8 @@ export async function translateMissing(opts: {
             }
           })
         } catch (error) {
-          log.warn(`Failed to write translations for ${target.code}: ${error instanceof Error ? error.message : String(error)}`)
-          return { result: { translated: [], failed: [...Object.keys(keysAndValues)], samplingUsed: true, reason: 'translated-with-sampling', batches: totalBatches, model: samplingModel, writeError: error instanceof Error ? error.message : String(error) } }
+          log.warn(`Failed to write translations for ${target.code}: ${toErrorMessage(error)}`)
+          return { result: { translated: [], failed: [...Object.keys(keysAndValues)], samplingUsed: true, reason: 'translated-with-sampling', batches: totalBatches, model: samplingModel, writeError: toErrorMessage(error) } }
         }
       }
 
@@ -1638,7 +1638,7 @@ export async function translateKey(opts: {
       const data = await readLocaleData(config, opts.layer, locale)
       existingTargets.push({ locale, existingValue: getNestedValue(data, opts.key) })
     } catch (error) {
-      failed.push({ locale: locale.code, error: error instanceof Error ? error.message : String(error) })
+      failed.push({ locale: locale.code, error: toErrorMessage(error) })
     }
   }
 
@@ -1735,7 +1735,7 @@ export async function translateKey(opts: {
         targetValue = parsedValue
       }
     } catch (error) {
-      log.warn(`Sampling failed for ${locale.code}: ${error instanceof Error ? error.message : String(error)}`)
+      log.warn(`Sampling failed for ${locale.code}: ${toErrorMessage(error)}`)
     }
 
     if (!targetValue) {
@@ -1758,7 +1758,7 @@ export async function translateKey(opts: {
       filesWritten += written.size
       translated.push(locale.code)
     } catch (error) {
-      failed.push({ locale: locale.code, error: error instanceof Error ? error.message : String(error) })
+      failed.push({ locale: locale.code, error: toErrorMessage(error) })
     }
   }
 
