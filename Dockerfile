@@ -10,15 +10,11 @@ COPY packages/mcp/package.json packages/mcp/tsconfig.json packages/mcp/tsdown.co
 COPY packages/mcp/src/ ./packages/mcp/src/
 RUN pnpm install --frozen-lockfile
 RUN pnpm build
+RUN pnpm --filter the-i18n-mcp deploy --legacy /app/prod
 
 # Runtime stage
 FROM node:22-alpine
+COPY --from=build /app/prod /app
 WORKDIR /app
-COPY --from=build /app/packages/mcp/dist/ ./dist/
-COPY --from=build /app/packages/mcp/package.json ./
-COPY --from=build /app/packages/cli/dist/ ./node_modules/the-i18n-cli/dist/
-COPY --from=build /app/packages/cli/package.json ./node_modules/the-i18n-cli/package.json
-COPY --from=build /app/node_modules/zod ./node_modules/zod
-COPY --from=build /app/node_modules/@modelcontextprotocol ./node_modules/@modelcontextprotocol
 ENV I18N_PROJECT_DIR=/project
 ENTRYPOINT ["node", "dist/index.js"]

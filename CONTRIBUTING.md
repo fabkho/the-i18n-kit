@@ -1,0 +1,99 @@
+# Contributing
+
+## Setup
+
+```bash
+pnpm install
+pnpm build
+```
+
+The monorepo uses pnpm workspaces with two packages:
+
+| Package | Description |
+|---------|-------------|
+| `packages/cli` (`the-i18n-cli`) | CLI tool for i18n management — JSON/PHP locale files, code scanning, LLM translation, config detection |
+| `packages/mcp` (`the-i18n-mcp`) | MCP server wrapping the CLI as 12 tools for AI agents |
+
+## Development
+
+```bash
+pnpm build          # build both packages
+pnpm test           # run all tests (CLI only)
+pnpm lint           # lint all source files
+pnpm typecheck      # build CLI + typecheck both packages
+```
+
+To work on a single package:
+
+```bash
+pnpm --filter the-i18n-cli dev     # watch mode
+pnpm --filter the-i18n-cli test    # run CLI tests only
+```
+
+## Architecture
+
+### CLI (`packages/cli/src/`)
+
+```
+adapters/     # Framework detection (Nuxt, Laravel, Vue, React, Generic)
+commands/     # 14 CLI subcommands, one file each — use createCommand() factory from _shared.ts
+config/       # Project config loading, Nuxt app discovery, locale override
+core/         # operations.ts — all i18n operations as pure async functions. types.ts — result shapes.
+io/           # Locale file reading/writing (JSON + PHP), atomicWrite, readCache, key-operations
+llm/          # LLM provider setup (OpenAI, Anthropic, Google)
+scanner/      # Source code scanning for i18n key usage, orphan detection
+tools/        # Locale scaffold utility
+utils/        # errors.ts (custom error classes + toErrorMessage), logger.ts (consola wrapper)
+```
+
+### MCP (`packages/mcp/src/`)
+
+```
+server.ts     # MCP server with 12 tool registrations, zod input schemas, createMcpSamplingFn factory
+index.ts      # Entry point — creates server + stdio transport
+```
+
+### Data flow
+
+1. CLI commands call operations in `core/operations.ts`
+2. Operations detect config via adapters → load project config → read/write locale files via `io/`
+3. MCP server registers tools that call the same operations, with MCP-specific sampling/progress integration
+
+## Testing
+
+Tests use Vitest. Test fixtures live in `packages/cli/tests/fixtures/`.
+
+### Mock pattern
+
+When mocking the config detector (common), use `vi.mock` with dynamic import:
+
+```typescript
+registerDetectorMock()
+
+// Import AFTER mock so the mock is in place (Vitest hoists vi.mock)
+const { detectI18nConfig } = await import('../../src/config/detector.js')
+```
+
+### Temp directories
+
+Some tests create temporary directories via `mkdtemp`. Always clean up in `afterEach`:
+
+```typescript
+afterEach(async () => {
+  await rm(tempDir, { recursive: true, force: true })
+})
+```
+
+## Adding a new adapter
+
+1. Create `adapters/<framework>/index.ts` implementing `FrameworkAdapter`
+2. Register it in `config/detector.ts` via `registerAdapter()`
+3. Add types for any framework-specific config to `config/types.ts`
+4. Add tests in `tests/adapters/<framework>-adapter.test.ts`
+
+## PRs
+
+- Branch from `main`
+- Run `pnpm lint && pnpm typecheck` before committing (enforced by pre-commit hook)
+- All tests must pass
+- Keep PRs focused — one concern per PR

@@ -150,29 +150,6 @@
 
 ### Features
 
-* add buildDynamicKeyRegexes() for dynamic key pattern matching ([b281b8e](https://github.com/fabkho/nuxt-i18n-mcp/commit/b281b8eeac746b029b35bec7eb7af436abd7afc7))
-* add find_empty_translations tool ([7ce0c9f](https://github.com/fabkho/nuxt-i18n-mcp/commit/7ce0c9fd36579987c3f728a3c9ecb771070c50f8))
-* add find_empty_translations tool ([4c554ab](https://github.com/fabkho/nuxt-i18n-mcp/commit/4c554ab2d1dc0819f2f36a3b33bacf4e01db81d9))
-* add orphanScan config for per-layer scan scope ([6b6cfb1](https://github.com/fabkho/nuxt-i18n-mcp/commit/6b6cfb167ca3d34503893b703b27f9695188c631))
-* configurable orphanScan scope per layer ([c92f230](https://github.com/fabkho/nuxt-i18n-mcp/commit/c92f23000c29cb0e1b7a69388396550dfa1f73c1))
-* detect concatenation-based dynamic keys (t('prefix.' + var)) ([62b5c0a](https://github.com/fabkho/nuxt-i18n-mcp/commit/62b5c0af683519eda7bf54245c67af310e2bd787))
-* use buildDynamicKeyRegexes in find_orphan_keys and cleanup_unused_translations ([b99d7a5](https://github.com/fabkho/nuxt-i18n-mcp/commit/b99d7a5be9dec7b2aca41ba82aff56be62e707a9))
-* wire 3-tier scan directory fallback in orphan detection tools ([c8e90a9](https://github.com/fabkho/nuxt-i18n-mcp/commit/c8e90a9bd23a75299ce1b5219a28abec2c065208))
-
-
-### Bug Fixes
-
-* fallback layerRootDirs to projectDir when layers array is empty ([6cf4e3a](https://github.com/fabkho/nuxt-i18n-mcp/commit/6cf4e3a2f0e1b18cdc5d98bc138cddd59148abc2))
-* handle nested braces in interpolation splitting and improve zero-orphan message ([29523b2](https://github.com/fabkho/nuxt-i18n-mcp/commit/29523b2645275ae51cae53ac8fb28ea89698d32e))
-* scan all Nuxt layers for source code, not just those with locale dirs ([83f09c3](https://github.com/fabkho/nuxt-i18n-mcp/commit/83f09c3e6a26fa58eb14b52b0cf94e4ecdcdd902))
-* scan all Nuxt layers for source code, not just those with locale dirs ([932d855](https://github.com/fabkho/nuxt-i18n-mcp/commit/932d8558967b821e445f02c814e1c102a671235c))
-* use dynamic key patterns to reduce orphan detection false positives ([2a5586c](https://github.com/fabkho/nuxt-i18n-mcp/commit/2a5586c429ac2e27a14b3b522021e81da8e8da03))
-
-## [1.2.0](https://github.com/fabkho/nuxt-i18n-mcp/compare/v1.1.0...v1.2.0) (2026-03-21)
-
-
-### Features
-
 * add buildDynamicKeyRegexes() for dynamic key pattern matching ([4233c6f](https://github.com/fabkho/nuxt-i18n-mcp/commit/4233c6f1504bd42746dc67b8bb11d2c89febbd99))
 * add find_empty_translations tool ([be271c0](https://github.com/fabkho/nuxt-i18n-mcp/commit/be271c049704dae815232efce3d96bdd394ecd12))
 * add find_empty_translations tool ([b8f6677](https://github.com/fabkho/nuxt-i18n-mcp/commit/b8f6677724938f9b3c3a553342b919692d296f78))
@@ -230,8 +207,3 @@
 * treat empty-string and null values as missing translations ([adba2ec](https://github.com/fabkho/nuxt-i18n-mcp/commit/adba2ec52a80fbcf17d8df61f50e43f027269ad4))
 * use ready:false instead of modules:[] in loadNuxt retry to fix CI ([1f274f4](https://github.com/fabkho/nuxt-i18n-mcp/commit/1f274f4d893f82bc579e825b49de1c662e555c89))
 
-## Changelog
-
-All notable changes to this project will be documented in this file.
-
-This project uses [Release Please](https://github.com/googleapis/release-please) for automated versioning and changelog generation based on [Conventional Commits](https://www.conventionalcommits.org/).
