@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-3.4.0...the-i18n-mcp-3.5.0) (2026-06-15)
+
+
+### Features
+
+* replace node:path with pathe, add exports field to MCP package ([#173](https://github.com/fabkho/the-i18n-kit/issues/173)) ([46e9ac9](https://github.com/fabkho/the-i18n-kit/commit/46e9ac9607b2e7bd68e8df395c09fe23c41d159d))
+
 ## [3.4.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-3.3.1...the-i18n-mcp-3.4.0) (2026-06-15)
 
 
