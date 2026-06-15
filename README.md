@@ -95,6 +95,118 @@ Add to your MCP host (VS Code, Cursor, Claude Desktop, Zed):
 
 ---
 
+## CI / Automation
+
+Auto-translate missing keys and find orphans in CI — no manual work. Runs on every MR/PR that touches locale files or source code.
+
+Provider-agnostic. Bring your own API key for OpenAI, Anthropic, or Google.
+
+### GitHub Actions
+
+```yaml
+# .github/workflows/i18n.yml
+name: i18n
+
+on:
+  pull_request:
+    paths:
+      - i18n/locales/en.json
+      - components/**/*.vue
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: fabkho/the-i18n-kit@main
+        with:
+          provider: google
+          model: gemini-2.0-flash
+          api_key: ${{ secrets.GEMINI_API_KEY }}
+          layer: common
+```
+
+Translations are committed and pushed back to the PR branch. A summary comment is posted on the PR.
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `provider` | ✅ | — | `openai`, `anthropic`, or `google` |
+| `model` | ✅ | — | Model name |
+| `api_key` | ✅ | — | API key for the provider |
+| `layer` | ✅ | — | Layer name (e.g. `common`, `dashboard`) |
+| `locales` | — | all except source | Comma-separated target locales |
+| `source_locale` | — | from `.i18n-mcp.json` | Reference locale |
+| `keys` | — | all missing | Comma-separated keys to translate |
+| `batch_size` | — | `50` | Keys per LLM call |
+| `concurrency` | — | provider default | Parallel LLM calls |
+| `dry_run` | — | `false` | Preview without writing files |
+| `commit_message` | — | auto-generated | Custom commit message |
+| `peer_deps` | — | — | Space-separated npm packages (e.g. `@google/genai`) |
+
+### GitLab CI
+
+Two reusable jobs: `.i18n-translate` and `.i18n-cleanup`.
+
+```yaml
+# .gitlab-ci.yml
+include:
+  - remote: 'https://raw.githubusercontent.com/fabkho/the-i18n-kit/main/gitlab-ci.yml'
+
+i18n-translate:
+  extends: .i18n-translate
+  variables:
+    I18N_PROVIDER: google
+    I18N_MODEL: gemini-2.0-flash
+    I18N_API_KEY: $GEMINI_API_KEY
+    I18N_LAYER: common
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - i18n/locales/en.json
+
+i18n-cleanup:
+  extends: .i18n-cleanup
+  variables:
+    I18N_LAYER: root
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - components/**/*.vue
+        - i18n/locales/*.json
+```
+
+Translations are pushed to the MR branch. Orphan findings are posted as an MR comment with expandable details. Cleanup artifacts (`.i18n-reports/orphans.json`) are retained for 7 days.
+
+**`.i18n-translate` variables:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `I18N_PROVIDER` | ✅ | — | `openai`, `anthropic`, or `google` |
+| `I18N_MODEL` | ✅ | — | Model name |
+| `I18N_API_KEY` | ✅ | — | API key for the provider |
+| `I18N_LAYER` | ✅ | — | Layer name |
+| `I18N_LOCALES` | — | all except source | Comma-separated target locales |
+| `I18N_SOURCE_LOCALE` | — | from `.i18n-mcp.json` | Reference locale |
+| `I18N_KEYS` | — | all missing | Comma-separated keys |
+| `I18N_BATCH_SIZE` | — | `50` | Keys per LLM call |
+| `I18N_CONCURRENCY` | — | provider default | Parallel LLM calls |
+| `I18N_DRY_RUN` | — | `false` | Preview without writing |
+| `I18N_INSTALL_PEER_DEPS` | — | — | Space-separated npm packages |
+| `I18N_COMMIT_MESSAGE` | — | auto-generated | Custom commit message |
+| `I18N_MR_COMMENT` | — | `true` | Post summary comment on MR |
+
+**`.i18n-cleanup` variables:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `I18N_LAYER` | ✅ | — | Layer name |
+| `I18N_INSTALL_PEER_DEPS` | — | — | Space-separated npm packages |
+
+> **Enterprise setups** (private registries, yarn, custom images): override `before_script` on the extending job. The template's `image`, `before_script`, `tags`, and `cache` are all overridable.
+
+---
+
 ## Supported Frameworks
 
 | Framework | Locale Format | Auto-Detection |

@@ -1,4 +1,23 @@
+import { defineCommand } from 'citty'
+import type { CommandDef } from 'citty'
 import { log } from '../utils/logger.js'
+
+/** Factory for commands that call an operation and output its result. */
+export function createCommand(opts: {
+  name: string
+  description: string
+  args?: Record<string, unknown>
+  run: (args: Record<string, unknown>) => Promise<unknown>
+}): CommandDef {
+  return defineCommand({
+    meta: { name: opts.name, description: opts.description },
+    args: { ...sharedArgs, ...(opts.args ?? {}) },
+    async run({ args }) {
+      const result = await opts.run(args)
+      outputResult(result, args)
+    },
+  })
+}
 
 export const sharedArgs = {
   projectDir: {

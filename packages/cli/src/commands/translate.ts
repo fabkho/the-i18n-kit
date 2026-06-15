@@ -1,64 +1,29 @@
-import { defineCommand } from 'citty'
+import { createCommand, splitList } from './_shared.js'
 import { createSamplingFn } from '../llm/providers.js'
 import type { SamplingFn } from '../core/types.js'
 import type { LlmProvider } from '../llm/providers.js'
 import { translateMissing } from '../core/operations.js'
-import { sharedArgs, outputResult, splitList } from './_shared.js'
 
-export default defineCommand({
-  meta: {
-    name: 'translate',
-    description: 'Find missing translations and translate them via LLM. Requires --provider and --model for auto-translation.',
-  },
+export default createCommand({
+  name: 'translate',
+  description: 'Find missing translations and translate them via LLM. Requires --provider and --model for auto-translation.',
   args: {
-    ...sharedArgs,
-    layer: {
-      type: 'string',
-      description: 'Layer name',
-      required: true,
-    },
-    ref: {
-      type: 'string',
-      description: 'Reference locale (default: project default)',
-    },
-    targets: {
-      type: 'string',
-      description: 'Comma-separated target locales (default: all except ref)',
-    },
-    keys: {
-      type: 'string',
-      description: 'Comma-separated keys to translate (default: all missing)',
-    },
-    batchSize: {
-      type: 'string',
-      description: 'Batch size (default: 50)',
-    },
-    provider: {
-      type: 'string' as const,
-      description: 'LLM provider: "openai", "anthropic", or "google". Without this, only returns fallback contexts.',
-      valueHint: 'openai|anthropic|google',
-    },
-    model: {
-      type: 'string' as const,
-      description: 'Model name (required when --provider is set)',
-    },
-    apiKey: {
-      type: 'string' as const,
-      description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env).',
-    },
-    dryRun: {
-      type: 'boolean',
-      description: 'Preview what would be translated',
-      default: false,
-    },
+    layer: { type: 'string', description: 'Layer name', required: true },
+    ref: { type: 'string', description: 'Reference locale (default: project default)' },
+    targets: { type: 'string', description: 'Comma-separated target locales (default: all except ref)' },
+    keys: { type: 'string', description: 'Comma-separated keys to translate (default: all missing)' },
+    batchSize: { type: 'string', description: 'Batch size (default: 50)' },
+    provider: { type: 'string' as const, description: 'LLM provider: "openai", "anthropic", or "google". Without this, only returns fallback contexts.', valueHint: 'openai|anthropic|google' },
+    model: { type: 'string' as const, description: 'Model name (required when --provider is set)' },
+    apiKey: { type: 'string' as const, description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env).' },
+    dryRun: { type: 'boolean', description: 'Preview what would be translated', default: false },
   },
-  async run({ args }) {
+  async run(args) {
     let batchSize: number | undefined
     if (args.batchSize) {
-      const raw = args.batchSize
-      const num = Number(raw)
-      if (!Number.isInteger(num) || num <= 0 || String(num) !== raw) {
-        throw new Error(`Invalid --batchSize: "${raw}". Must be a positive integer`)
+      const num = Number(args.batchSize)
+      if (!Number.isInteger(num) || num <= 0 || String(num) !== args.batchSize) {
+        throw new Error(`Invalid --batchSize: "${args.batchSize}". Must be a positive integer`)
       }
       batchSize = num
     }
@@ -75,7 +40,7 @@ export default defineCommand({
       })
     }
 
-    const result = await translateMissing({
+    return translateMissing({
       layer: args.layer,
       referenceLocale: args.ref,
       targetLocales: splitList(args.targets),
@@ -85,6 +50,5 @@ export default defineCommand({
       projectDir: args.projectDir,
       samplingFn,
     })
-    outputResult(result, args)
   },
 })
