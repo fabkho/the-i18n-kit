@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-3.5.0...the-i18n-mcp-3.5.1) (2026-06-16)
+
+
+### Bug Fixes
+
+* **mcp:** bump to republish with CLI 1.5.0 dependency ([#185](https://github.com/fabkho/the-i18n-kit/issues/185)) ([00b519d](https://github.com/fabkho/the-i18n-kit/commit/00b519dd55ccd019a8c234014f1f7c2b32c75e1f))
+
 ## [3.5.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-3.4.0...the-i18n-mcp-3.5.0) (2026-06-15)
 
 
