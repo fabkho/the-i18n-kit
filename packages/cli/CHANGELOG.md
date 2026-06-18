@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.0...the-i18n-cli-1.5.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* **cli:** log actual error message when sampling fails ([f34342a](https://github.com/fabkho/the-i18n-kit/commit/f34342a9882dfbe5b4e6c6c2ea5e22a115dfd2b5))
+
 ## [1.5.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.4.0...the-i18n-cli-1.5.0) (2026-06-15)
 
 
