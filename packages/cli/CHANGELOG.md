@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.1...the-i18n-cli-1.5.2) (2026-06-18)
+
+
+### Bug Fixes
+
+* **cli:** include response preview in 'no valid JSON' error ([73d5878](https://github.com/fabkho/the-i18n-kit/commit/73d58784ab75b42e4ad15a230be7c261a2794e9e))
+
 ## [1.5.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.0...the-i18n-cli-1.5.1) (2026-06-18)
 
 
