@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.3](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.2...the-i18n-cli-1.5.3) (2026-06-18)
+
+
+### Bug Fixes
+
+* **cli:** increase maxOutputTokens budget per key (40→100) ([fe14ec8](https://github.com/fabkho/the-i18n-kit/commit/fe14ec8dc3f80934cf47fd48ddb11f87365b12b4))
+* **cli:** use fixed 16384 maxOutputTokens — no reason to scale ([b156c7e](https://github.com/fabkho/the-i18n-kit/commit/b156c7ec2282232e256142f2ad34a7eb8c2bbdf1))
+
 ## [1.5.2](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.1...the-i18n-cli-1.5.2) (2026-06-18)
 
 
