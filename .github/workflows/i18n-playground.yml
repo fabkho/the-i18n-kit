@@ -1,0 +1,158 @@
+name: i18n Playground E2E
+
+# Tests the auto-translate GitHub Action against playground/nuxt using the
+# LOCAL build of the-i18n-cli (not the npm release).
+#
+# - pull_request: dry run only — no secrets needed, verifies install/invoke/JSON plumbing.
+# - workflow_dispatch: real translation + PR creation. Requires the provider's
+#   API key as a repo secret (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY)
+#   and "Allow GitHub Actions to create and approve pull requests" enabled in
+#   Settings → Actions → General.
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: 'LLM provider'
+        type: choice
+        options: [google, anthropic, openai]
+        default: google
+      model:
+        description: 'Model (empty = provider default)'
+        type: string
+        default: ''
+      dry_run:
+        description: 'Dry run (no writes, no PR)'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - action.yml
+      - packages/cli/**
+      - playground/**
+      - .github/workflows/i18n-playground.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: i18n-playground
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the-i18n-cli
+        run: pnpm --filter the-i18n-cli build
+
+      - name: Install local CLI build globally
+        run: |
+          set -euo pipefail
+          cd packages/cli
+          TARBALL=$(npm pack --pack-destination /tmp | tail -1)
+          # --legacy-peer-deps: openai@5 declares peerOptional zod@^3, the CLI uses zod@^4
+          npm install -g --legacy-peer-deps "/tmp/${TARBALL}" @anthropic-ai/sdk openai @google/genai
+          the-i18n-cli --version || true
+
+      - name: Resolve provider config
+        id: config
+        env:
+          ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+          IN_PROVIDER: ${{ inputs.provider }}
+          IN_MODEL: ${{ inputs.model }}
+          IN_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # Dry run on PRs: the LLM is never called, so a placeholder key is fine.
+            {
+              echo "provider=google"
+              echo "model=gemini-2.5-flash"
+              echo "api_key=dry-run-placeholder"
+              echo "dry_run=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PROVIDER="$IN_PROVIDER"
+          case "$PROVIDER" in
+            anthropic) KEY="$ANTHROPIC_KEY"; DEFAULT_MODEL="claude-haiku-4-5-20251001" ;;
+            openai)    KEY="$OPENAI_KEY";    DEFAULT_MODEL="gpt-4o-mini" ;;
+            google)    KEY="$GEMINI_KEY";    DEFAULT_MODEL="gemini-2.5-flash" ;;
+            *)         echo "::error::Unknown provider: $PROVIDER"; exit 1 ;;
+          esac
+
+          if [ -z "$KEY" ] && [ "$IN_DRY_RUN" != "true" ]; then
+            echo "::error::Missing API key secret for provider '$PROVIDER'."
+            exit 1
+          fi
+
+          {
+            echo "provider=$PROVIDER"
+            echo "model=${IN_MODEL:-$DEFAULT_MODEL}"
+            echo "api_key=${KEY:-dry-run-placeholder}"
+            echo "dry_run=$IN_DRY_RUN"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Seed a missing key in the reference locale
+        working-directory: playground/nuxt
+        run: |
+          set -euo pipefail
+          PROBE="CI-Testübersetzung vom $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          jq --arg v "$PROBE" '.playgroundE2E.ciProbe = $v' i18n/locales/de-DE.json > /tmp/de-DE.json
+          mv /tmp/de-DE.json i18n/locales/de-DE.json
+          echo "Seeded playgroundE2E.ciProbe = \"$PROBE\" (missing in en/fr/es)"
+
+      - name: Run auto-translate action (local build)
+        id: translate
+        uses: ./
+        with:
+          provider: ${{ steps.config.outputs.provider }}
+          model: ${{ steps.config.outputs.model }}
+          api_key: ${{ steps.config.outputs.api_key }}
+          layer: root
+          working_directory: ${{ github.workspace }}/playground/nuxt
+          dry_run: ${{ steps.config.outputs.dry_run }}
+          cli_version: skip
+          pr_branch: i18n-playground/run-${{ github.run_id }}
+          pr_title: 'test(playground): auto-translated keys (run ${{ github.run_id }})'
+          commit_message: 'test(playground): translate seeded keys via ${{ steps.config.outputs.provider }}'
+
+      - name: Assert results
+        env:
+          TRANSLATED: ${{ steps.translate.outputs.translated_count }}
+          FAILED: ${{ steps.translate.outputs.failed_count }}
+          PR_URL: ${{ steps.translate.outputs.pr_url }}
+          DRY_RUN: ${{ steps.config.outputs.dry_run }}
+        run: |
+          set -euo pipefail
+          echo "translated=$TRANSLATED failed=$FAILED pr_url=${PR_URL:-<none>}"
+          if [ "${TRANSLATED:-0}" -lt 1 ]; then
+            echo "::error::Expected at least 1 translated key (the seeded probe), got ${TRANSLATED:-0}."
+            exit 1
+          fi
+          if [ "$DRY_RUN" != "true" ] && [ -z "${PR_URL:-}" ]; then
+            echo "::error::Expected a PR to be created, but pr_url is empty."
+            exit 1
+          fi

@@ -70,8 +70,8 @@ export function resolveSamplingPreferences(projectConfig?: ProjectConfig): Sampl
 }
 
 /**
- * Compute maxTokens for a sampling request based on batch key count.
- * Scales linearly (40 tokens per key + 512 base) capped at 16384.
+ * Fixed maxTokens budget for a sampling request. Batch size no longer
+ * scales the budget — models simply stop when the JSON object is closed.
  */
 export function computeMaxTokens(_batchKeyCount: number): number {
   return 16384
