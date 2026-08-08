@@ -42,6 +42,9 @@ concurrency:
 
 jobs:
   e2e:
+    # Don't run on the translation PRs this workflow creates — they already
+    # contain the probe key in every locale, so nothing would be missing.
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'i18n-playground/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -122,6 +125,12 @@ jobs:
           PROBE="CI-Testübersetzung vom $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           jq --arg v "$PROBE" '.playgroundE2E.ciProbe = $v' i18n/locales/de-DE.json > /tmp/de-DE.json
           mv /tmp/de-DE.json i18n/locales/de-DE.json
+          # Guarantee the probe is missing in the targets, even when a previous
+          # e2e translation PR added it to main.
+          for f in en-US fr-FR es-ES; do
+            jq 'del(.playgroundE2E)' "i18n/locales/${f}.json" > /tmp/probe.json
+            mv /tmp/probe.json "i18n/locales/${f}.json"
+          done
           echo "Seeded playgroundE2E.ciProbe = \"$PROBE\" (missing in en/fr/es)"
 
       - name: Run auto-translate action (local build)
