@@ -32,29 +32,22 @@ export const sharedArgs = {
   },
 }
 
-/** Output result — JSON for piped/--json, pretty-printed for TTY */
+/** Output result — stdout always carries the result, machine-parseable when piped/--json */
 export function outputResult(data: unknown, args: { json?: boolean }): void {
-  // When result has reportFile key, format it nicely
+  const jsonMode = args.json || !process.stdout.isTTY
   if (
+    !jsonMode &&
     data !== null &&
     typeof data === 'object' &&
     'reportFile' in (data as Record<string, unknown>)
   ) {
     const { reportFile, ...rest } = data as Record<string, unknown>
-    const summaryJson = JSON.stringify(rest, null, 2)
-    if (args.json || !process.stdout.isTTY) {
-      process.stdout.write(`Wrote report to: ${reportFile}\n${summaryJson}\n`)
-    } else {
-      log.info(`Wrote report to: ${reportFile}\n${summaryJson}`)
-    }
+    log.info(`Wrote report to: ${reportFile}`)
+    process.stdout.write(JSON.stringify(rest, null, 2) + '\n')
     return
   }
-  const json = JSON.stringify(data, null, 2)
-  if (args.json || !process.stdout.isTTY) {
-    process.stdout.write(json + '\n')
-  } else {
-    log.info(json)
-  }
+  // JSON mode emits the full result (including reportFile when present) as pure JSON
+  process.stdout.write(JSON.stringify(data, null, 2) + '\n')
 }
 
 /** Split a comma-separated string into a trimmed array, or return undefined */

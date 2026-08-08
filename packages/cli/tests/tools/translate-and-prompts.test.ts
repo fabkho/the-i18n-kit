@@ -991,20 +991,9 @@ describe('extractJsonFromResponse', () => {
 })
 
 describe('computeMaxTokens', () => {
-  it('returns 552 for 1 key', () => {
-    expect(computeMaxTokens(1)).toBe(552)
-  })
-
-  it('returns 2512 for 50 keys', () => {
-    expect(computeMaxTokens(50)).toBe(2512)
-  })
-
-  it('returns 8512 for 200 keys', () => {
-    expect(computeMaxTokens(200)).toBe(8512)
-  })
-
-  it('caps at 16384 for very large batches', () => {
-    expect(computeMaxTokens(500)).toBe(16384)
+  it('returns the fixed budget regardless of batch size', () => {
+    expect(computeMaxTokens(1)).toBe(16384)
+    expect(computeMaxTokens(50)).toBe(16384)
     expect(computeMaxTokens(1000)).toBe(16384)
   })
 })
