@@ -100,7 +100,8 @@ runs:
           google)    SDK="@google/genai" ;;
           *)         echo "::error::Unknown provider: $PROVIDER"; exit 1 ;;
         esac
-        npm install -g "the-i18n-cli@${CLI_VERSION}" "$SDK"
+        # --legacy-peer-deps: openai@5 declares peerOptional zod@^3, the CLI uses zod@^4
+        npm install -g --legacy-peer-deps "the-i18n-cli@${CLI_VERSION}" "$SDK"
 
     - name: Translate missing keys
       id: translate

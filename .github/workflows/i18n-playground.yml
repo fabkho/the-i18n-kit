@@ -67,7 +67,8 @@ jobs:
           set -euo pipefail
           cd packages/cli
           TARBALL=$(npm pack --pack-destination /tmp | tail -1)
-          npm install -g "/tmp/${TARBALL}" @anthropic-ai/sdk openai @google/genai
+          # --legacy-peer-deps: openai@5 declares peerOptional zod@^3, the CLI uses zod@^4
+          npm install -g --legacy-peer-deps "/tmp/${TARBALL}" @anthropic-ai/sdk openai @google/genai
           the-i18n-cli --version || true
 
       - name: Resolve provider config
