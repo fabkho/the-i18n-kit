@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.4](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.3...the-i18n-cli-1.5.4) (2026-08-08)
+
+
+### Bug Fixes
+
+* CI pipeline repairs — pure-JSON stdout, GitLab template, Action, playground e2e ([#190](https://github.com/fabkho/the-i18n-kit/issues/190)) ([d64a763](https://github.com/fabkho/the-i18n-kit/commit/d64a763b5c85f077d9971460a4f98c76f3258fed))
+
 ## [1.5.3](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.2...the-i18n-cli-1.5.3) (2026-06-18)
 
 
