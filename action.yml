@@ -60,11 +60,18 @@ inputs:
   base_branch:
     description: 'Base branch for the PR (default: the branch that triggered the workflow)'
     required: false
+  cli_version:
+    description: 'the-i18n-cli version to install (npm dist-tag or version). Use "skip" if the CLI is already installed (e.g. a local build).'
+    required: false
+    default: 'latest'
 
 outputs:
   translated_count:
     description: 'Number of keys translated'
     value: ${{ steps.translate.outputs.translated_count }}
+  failed_count:
+    description: 'Number of keys that failed to translate'
+    value: ${{ steps.translate.outputs.failed_count }}
   pr_url:
     description: 'URL of the created PR (only when create_pr is true)'
     value: ${{ steps.create-pr.outputs.pr_url }}
@@ -78,8 +85,22 @@ runs:
         node-version: 22
 
     - name: Install the-i18n-cli
+      if: inputs.cli_version != 'skip'
       shell: bash
-      run: npm install -g the-i18n-cli@latest
+      env:
+        CLI_VERSION: ${{ inputs.cli_version }}
+        PROVIDER: ${{ inputs.provider }}
+      run: |
+        set -euo pipefail
+        # The provider SDKs are optional peer dependencies of the CLI — install
+        # the one matching the chosen provider alongside it.
+        case "$PROVIDER" in
+          openai)    SDK="openai" ;;
+          anthropic) SDK="@anthropic-ai/sdk" ;;
+          google)    SDK="@google/genai" ;;
+          *)         echo "::error::Unknown provider: $PROVIDER"; exit 1 ;;
+        esac
+        npm install -g "the-i18n-cli@${CLI_VERSION}" "$SDK"
 
     - name: Translate missing keys
       id: translate
@@ -121,12 +142,20 @@ runs:
         fi
 
         output=$(the-i18n-cli translate "${args[@]}")
-
-        # Extract translated count from JSON output
-        count=$(echo "$output" | jq -r '.translated // .totalTranslated // 0')
-        echo "translated_count=$count" >> "$GITHUB_OUTPUT"
-
         echo "$output"
+
+        count=$(echo "$output" | jq -r '.summary.totalTranslated // 0')
+        failed=$(echo "$output" | jq -r '.summary.totalFailed // 0')
+        echo "translated_count=$count" >> "$GITHUB_OUTPUT"
+        echo "failed_count=$failed" >> "$GITHUB_OUTPUT"
+
+        if [ "$failed" -gt 0 ] && [ "$count" -eq 0 ]; then
+          echo "::error::All $failed keys failed to translate — check provider, model, and API key."
+          exit 1
+        fi
+        if [ "$failed" -gt 0 ]; then
+          echo "::warning::$failed keys failed to translate ($count succeeded)."
+        fi
 
     - name: Create PR with translations
       id: create-pr
