@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-3.1.0...the-i18n-cli-3.2.0) (2026-08-09)
+
+
+### Features
+
+* **cli:** protectedLocales — human-maintained locales excluded from auto-translation ([#226](https://github.com/fabkho/the-i18n-kit/issues/226)) ([8a9152e](https://github.com/fabkho/the-i18n-kit/commit/8a9152e8b71c911eaae842c563e2672126fa7e47)), closes [#211](https://github.com/fabkho/the-i18n-kit/issues/211)
+* **cli:** provider error classification, truncation detection, CI exit codes ([#225](https://github.com/fabkho/the-i18n-kit/issues/225)) ([b42991d](https://github.com/fabkho/the-i18n-kit/commit/b42991d520fad1004298fa069a3c23918b8b24cd))
+
 ## [3.1.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-3.0.0...the-i18n-cli-3.1.0) (2026-08-09)
 
 
