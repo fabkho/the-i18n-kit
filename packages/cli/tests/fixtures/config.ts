@@ -102,6 +102,75 @@ export function createMonorepoConfig(): I18nConfig {
     apps: [{ name: 'playground', rootDir: playgroundDir, layers: ['playground'] }],
   }
 }
+const appShopDir = resolve(playgroundDir, 'app-shop')
+const appOutlookDir = resolve(playgroundDir, 'app-outlook')
+
+/**
+ * Multi-app fixture: a root layer shared by all apps, app-private layers
+ * (`app-admin`, `app-shop`), and an alias entry — `app-outlook` reuses
+ * `app-shop`'s locale dir (aliasOf: 'app-shop') and consumes it under the
+ * alias name in its app layer list.
+ */
+export function createMultiAppConfig(): I18nConfig {
+  return {
+    rootDir: playgroundDir,
+    defaultLocale: 'de',
+    fallbackLocale: { default: ['en'] },
+    locales: structuredClone(locales),
+    localeDirs: [
+      {
+        path: resolve(playgroundDir, 'i18n/locales'),
+        layer: 'root',
+        layerRootDir: playgroundDir,
+      },
+      {
+        path: resolve(appAdminDir, 'i18n/locales'),
+        layer: 'app-admin',
+        layerRootDir: appAdminDir,
+      },
+      {
+        path: resolve(appShopDir, 'i18n/locales'),
+        layer: 'app-shop',
+        layerRootDir: appShopDir,
+      },
+      {
+        path: resolve(appShopDir, 'i18n/locales'),
+        layer: 'app-outlook',
+        layerRootDir: appOutlookDir,
+        aliasOf: 'app-shop',
+      },
+    ],
+    layerRootDirs: [playgroundDir, appAdminDir, appShopDir, appOutlookDir],
+    apps: [
+      { name: 'app-admin', rootDir: appAdminDir, layers: ['app-admin', 'root'] },
+      { name: 'app-shop', rootDir: appShopDir, layers: ['app-shop', 'root'] },
+      { name: 'app-outlook', rootDir: appOutlookDir, layers: ['app-outlook', 'root'] },
+    ],
+  }
+}
+
+/**
+ * Degenerate fixture without app info (generic/Laravel-style config where
+ * no app → layer consumption edges exist).
+ */
+export function createNoAppsConfig(): I18nConfig {
+  return {
+    rootDir: playgroundDir,
+    defaultLocale: 'de',
+    fallbackLocale: { default: ['en'] },
+    locales: structuredClone(locales),
+    localeDirs: [
+      {
+        path: resolve(playgroundDir, 'lang'),
+        layer: 'default',
+        layerRootDir: playgroundDir,
+      },
+    ],
+    layerRootDirs: [playgroundDir],
+    apps: [],
+  }
+}
+
 export function createAppAdminConfig(): I18nConfig {
   return {
     rootDir: appAdminDir,
