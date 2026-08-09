@@ -58,7 +58,6 @@ export function removeNestedValue(obj: Record<string, unknown>, path: string): b
 
   delete current[lastKey]
 
-  // Clean up empty parent objects - parent can be cleaned up if childs are empty
   for (let i = parents.length - 1; i >= 0; i--) {
     const { obj: parentObj, key } = parents[i]
     const child = parentObj[key] as Record<string, unknown>
@@ -132,14 +131,12 @@ export function validateTranslationValue(value: unknown): string | null {
     return `Value must be a string, got ${typeof value}`
   }
 
-  // Check for unbalanced placeholder braces
   const openBraces = (value.match(/\{/g) || []).length
   const closeBraces = (value.match(/\}/g) || []).length
   if (openBraces !== closeBraces) {
     return `Unbalanced placeholder braces: ${openBraces} opening vs ${closeBraces} closing in "${value}"`
   }
 
-  // Check for malformed linked references
   if (value.includes('@:') && /@:\s*$/.test(value)) {
     return `Malformed linked reference: "@:" at end of string with no target`
   }

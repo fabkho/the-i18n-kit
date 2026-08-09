@@ -1,12 +1,9 @@
 /**
- * Tests for ancestor-based layer dedup (issue #70).
+ * Tests for ancestor-based layer dedup.
  *
  * When two layers claim the same locale directory path, the layer whose
  * `layerRootDir` is an ancestor of (or equal to) the locale dir path is the
  * true owner. The other layer gets `aliasOf` pointing to the owner.
- *
- * The tests exercise `resolveLayerOwnership` — the pure helper extracted
- * from the dedup logic in `src/adapters/nuxt/index.ts`.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -207,8 +204,8 @@ describe('claimLocaleDir — stateful claim of a locale dir path', () => {
       [sharedLocaleDir, { layer: 'app-outlook', layerRootDir: appOutlook }],
     ])
 
-    // Incoming true owner cannot find a non-alias entry for the recorded owner.
-    // Before the fix it vanished silently; now it must be kept as an alias.
+    // The incoming true owner cannot find a non-alias entry for the recorded
+    // owner — it must still be kept as an alias, never silently dropped.
     claimLocaleDir(dirs, claims, shopDir, sharedLocaleDir)
 
     expect(dirs).toHaveLength(2)

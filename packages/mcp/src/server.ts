@@ -209,9 +209,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     },
     async ({ projectDir }) => {
       try {
-        // Detect config first (warms cache)
+        // detectConfig first: it warms the config cache listLocaleDirs reuses
         const config = await detectConfig(projectDir)
-        // Then get layer directory info
         const dirs = await listLocaleDirs(projectDir)
         return jsonContent({
           ...config,
@@ -560,11 +559,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     },
     async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, compact, projectDir }, extra) => {
       try {
-        // Build progressFn from MCP progress notifications.
-        // progressTotal is set by the onProgressTotal callback below, which runs
-        // during the pre-scan phase of translateMissing — before any progress
-        // notifications are sent. This temporal coupling is safe because the core
-        // operation always pre-scans before emitting progress.
+        // Invariant: translateMissing invokes onProgressTotal during its
+        // pre-scan, before the first progressFn call — progressTotal is
+        // always set by the time a notification is sent.
         const progressToken = extra._meta?.progressToken
         let progressCurrent = 0
         let progressTotal: number | undefined

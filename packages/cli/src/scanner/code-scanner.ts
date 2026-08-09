@@ -46,8 +46,7 @@ export interface ScanResult {
  * Extract all i18n key references from file content.
  * Returns static usages and dynamic (unresolvable) references.
  *
- * When no `patterns` argument is provided, defaults to Vue/Nuxt patterns
- * for backward compatibility.
+ * When `patterns` is omitted, defaults to Vue/Nuxt patterns.
  */
 export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[] } {
   const pat = patterns ?? VUE_NUXT_PATTERNS
@@ -215,8 +214,7 @@ function buildUnresolvedWarnings(dynamicKeys: DynamicKeyUsage[]): UnresolvedKeyW
 /**
  * Scan source files in a directory for i18n key usage.
  *
- * When `patterns` is omitted, defaults to Vue/Nuxt patterns for backward
- * compatibility.
+ * When `patterns` is omitted, defaults to Vue/Nuxt patterns.
  */
 export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], patterns?: ScanPatternSet): Promise<ScanResult> {
   const pat = patterns ?? VUE_NUXT_PATTERNS
@@ -283,7 +281,6 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
       bareDynamicCandidates.add(`\`${normalized}\``)
     }
 
-    // Concat prefix: 'some.key.' + var  (catches multiline t() calls)
     BARE_CONCAT_PREFIX.lastIndex = 0
     for (const match of content.matchAll(BARE_CONCAT_PREFIX)) {
       bareDynamicCandidates.add(`\`${match[2]}.\${_}\``)

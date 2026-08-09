@@ -83,8 +83,7 @@ describe('ReactAdapter.detect', () => {
 
   it('returns 8 for Next.js without i18n dep but with locale files', async () => {
     createReactProject(tempDir, { i18nDep: null })
-    // next (5) + next.config (1) + locale files (2) = 8... wait
-    // Actually without i18n dep: next (5) + hasNextConfig (1) + locale files (2) = 8
+    // next (5) + next.config (1) + locale files (2) = 8
     const adapter = new ReactAdapter()
     expect(await adapter.detect(tempDir)).toBe(8)
   })

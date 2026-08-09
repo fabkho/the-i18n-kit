@@ -3,7 +3,7 @@ import { defineCommand, runCommand, runMain } from 'citty'
 import { log } from './utils/logger.js'
 import { commands as allCommands } from './commands/index.js'
 
-// Hidden diagnostic commands: detect, list-dirs, empty, scan
+// Diagnostic commands kept out of the public CLI surface
 const hiddenCommands = new Set(['detect', 'list-dirs', 'empty', 'scan'])
 const commands = Object.fromEntries(
   Object.entries(allCommands).filter(([key]) => !hiddenCommands.has(key)),

@@ -203,6 +203,7 @@ async function discoverLocales(localeDir: string): Promise<LocaleDefinition[]> {
 }
 
 function extractDefaultLocale(projectDir: string): string | null {
-  // Not critical — return null if .env doesn't exist or can't be read
+  // Stub: default-locale extraction from Vue project config is not
+  // implemented — callers fall back to the first discovered locale.
   return null
 }

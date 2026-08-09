@@ -17,7 +17,8 @@ import { findLayerOrThrow, findLocaleImpl, localeRefInfo } from './shared.js'
 import { resolveReportFilePath } from './report.js'
 
 /**
- * Detect the i18n configuration from the project.
+ * Detect the i18n configuration from the project, always bypassing the
+ * config cache (clears it first).
  */
 export async function detectConfig(projectDir?: string): Promise<I18nConfig> {
   const dir = projectDir ?? process.cwd()
@@ -104,7 +105,6 @@ export async function getTranslations(opts: {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
-  // Validate layer exists
   findLayerOrThrow(config, layer)
 
   const localesToRead = locale === '*'
@@ -171,14 +171,12 @@ export async function getMissingTranslations(opts: {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
-  // Determine reference locale
   const refCode = opts.referenceLocale ?? config.defaultLocale
   const refLocale = findLocaleImpl(config, refCode)
   if (!refLocale) {
     throw new ToolError(`Reference locale not found: "${refCode}". Available: ${config.locales.map(l => l.code).join(', ')}. Pass a valid locale code as referenceLocale, or omit it to use the project default.`, 'REFERENCE_LOCALE_NOT_FOUND')
   }
 
-  // Determine target locales
   const resolvedTargets = opts.targetLocales ?? opts.locales
   const targets = resolvedTargets
     ? resolvedTargets.map((code) => {
@@ -190,7 +188,6 @@ export async function getMissingTranslations(opts: {
       })
     : config.locales.filter(l => l.code !== refLocale.code)
 
-  // Determine layers to scan
   const layersToScan = layer
     ? config.localeDirs.filter(d => d.layer === layer)
     : config.localeDirs.filter(d => !d.aliasOf)
@@ -277,7 +274,6 @@ export async function findEmptyTranslations(opts: {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
-  // Determine locales to check
   const localesToCheck = locale
     ? (() => {
         const loc = findLocaleImpl(config, locale)
@@ -291,7 +287,6 @@ export async function findEmptyTranslations(opts: {
       })()
     : config.locales
 
-  // Determine layers to scan
   const layersToScan = layer
     ? config.localeDirs.filter(d => d.layer === layer)
     : config.localeDirs.filter(d => !d.aliasOf)
@@ -366,7 +361,6 @@ export async function searchTranslations(opts: {
   const mode = opts.searchIn ?? 'both'
   const queryLower = query.toLowerCase()
 
-  // Determine layers to search
   const layersToSearch = (layer && layer !== '*')
     ? config.localeDirs.filter(d => d.layer === layer)
     : config.localeDirs.filter(d => !d.aliasOf)
@@ -378,7 +372,6 @@ export async function searchTranslations(opts: {
     throw new ToolError('No locale directories found. Run detect_i18n_config to verify the project setup.', 'LAYER_NOT_FOUND')
   }
 
-  // Determine locales to search
   const localesToSearch = locale
     ? (() => {
         const found = findLocaleImpl(config, locale)
@@ -463,7 +456,6 @@ export async function listNamespaces(opts: {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
-  // Validate and resolve layers
   if (opts.layer && opts.layer !== '*') {
     findLayerOrThrow(config, opts.layer)
   }
@@ -471,7 +463,6 @@ export async function listNamespaces(opts: {
     ? config.localeDirs.filter(d => d.layer === opts.layer)
     : config.localeDirs.filter(d => !d.aliasOf)
 
-  // Resolve locale: validate explicit, default to configured default locale
   const localeToUse = opts.locale
     ? findLocaleImpl(config, opts.locale) ?? (() => {
         throw new ToolError(`Locale not found: "${opts.locale}". Available: ${config.locales.map(l => l.code).join(', ')}.`, 'LOCALE_NOT_FOUND')
@@ -511,7 +502,6 @@ export async function listNamespaces(opts: {
       node.keyCount++ // leaf count at terminal node
     }
 
-    // Propagate leaf counts upward
     propagateCounts(root)
 
     layers[ld.layer] = { namespaces: root.children ?? {} }

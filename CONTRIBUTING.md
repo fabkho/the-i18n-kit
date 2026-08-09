@@ -91,6 +91,14 @@ afterEach(async () => {
 3. Add types for any framework-specific config to `config/types.ts`
 4. Add tests in `tests/adapters/<framework>-adapter.test.ts`
 
+## Comments
+
+- Comments state constraints, invariants, and non-obvious "why"s — things the code cannot say itself.
+- No narration of the next line ("// increment the counter") and no restating what a well-named symbol already says.
+- No development-history references ("removed in #208", "per review", "the old X did Y"). If a historical note guards a live invariant, rewrite it as the invariant.
+- Redundant JSDoc that adds nothing over the signature: enrich it with the non-obvious part or delete it.
+- `// ─── Section ───` divider comments are the established navigation style and welcome.
+
 ## PRs
 
 - Branch from `main`
