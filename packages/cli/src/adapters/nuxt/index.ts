@@ -9,7 +9,7 @@ import { loadProjectConfig } from '../../config/project-config'
 import { applyLocaleOverride } from '../../config/locale-override'
 import { log } from '../../utils/logger'
 import { ConfigError, toErrorMessage } from '../../utils/errors'
-import { resolveLayerOwnership } from './layer-dedup'
+import { claimLocaleDir } from './layer-dedup'
 
 export class NuxtAdapter implements FrameworkAdapter {
   readonly name = 'nuxt'
@@ -145,46 +145,21 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
 
     for (const dir of appConfig.localeDirs) {
       const realPath = await realpath(dir.path).catch(() => dir.path)
-      const existing = seenLocalePaths.get(realPath)
-      if (existing) {
-        const { owner, alias } = resolveLayerOwnership(
-          { layer: existing.layer, layerRootDir: existing.layerRootDir },
-          { layer: dir.layer, layerRootDir: dir.layerRootDir },
-          realPath,
-        )
-        if (owner !== existing.layer) {
-          const ownerIndex = allLocaleDirs.findIndex(d => d.layer === existing.layer && !d.aliasOf)
-          if (ownerIndex !== -1) {
-            const prev = allLocaleDirs[ownerIndex]
-            allLocaleDirs[ownerIndex] = { ...dir, layer: owner === dir.layer ? dir.layer : owner }
-            allLocaleDirs.push({ ...prev, aliasOf: owner === dir.layer ? dir.layer : owner })
-            seenLocalePaths.set(realPath, { layer: allLocaleDirs[ownerIndex].layer, layerRootDir: allLocaleDirs[ownerIndex].layerRootDir })
-            log.debug(`Layer '${alias}' is alias of '${owner}' (ancestor-based ownership, same path: ${dir.path})`)
-          }
+
+      let claimDir = dir
+      if (!seenLocalePaths.has(realPath)) {
+        let layerName = dir.layer
+        if (usedLayerNames.has(layerName)) {
+          layerName = deriveLayerName(dir.layerRootDir, discoveryRoot, usedLayerNames)
         }
-        else {
-          if (dir.layer !== existing.layer) {
-            allLocaleDirs.push({
-              ...dir,
-              layer: alias === dir.layer ? dir.layer : alias,
-              aliasOf: owner,
-            })
-            log.debug(`Layer '${alias}' is alias of '${owner}' (same path: ${dir.path})`)
-          }
+        if (layerName !== dir.layer) {
+          layerNameRemap.set(dir.layer, layerName)
         }
-        continue
+        usedLayerNames.add(layerName)
+        claimDir = { ...dir, layer: layerName }
       }
 
-      let layerName = dir.layer
-      if (usedLayerNames.has(layerName)) {
-        layerName = deriveLayerName(dir.layerRootDir, discoveryRoot, usedLayerNames)
-      }
-      if (layerName !== dir.layer) {
-        layerNameRemap.set(dir.layer, layerName)
-      }
-      usedLayerNames.add(layerName)
-      seenLocalePaths.set(realPath, { layer: layerName, layerRootDir: dir.layerRootDir })
-      allLocaleDirs.push({ ...dir, layer: layerName })
+      claimLocaleDir(allLocaleDirs, seenLocalePaths, claimDir, realPath)
     }
 
     for (const locale of appConfig.locales) {
@@ -347,54 +322,18 @@ async function discoverLocaleDirs(
     }
 
     const realDir = await realpath(resolvedDir).catch(() => resolvedDir)
-    const existing = resolvedPaths.get(realDir)
-    if (existing) {
-      const { owner, alias } = resolveLayerOwnership(
-        { layer: existing.layer, layerRootDir: existing.layerRootDir },
-        { layer: layerName, layerRootDir },
-        realDir,
-      )
-      if (owner !== existing.layer) {
-        const ownerIndex = dirs.findIndex(d => d.layer === existing.layer && !d.aliasOf)
-        if (ownerIndex !== -1) {
-          const prev = dirs[ownerIndex]
-          dirs[ownerIndex] = {
-            path: resolvedDir,
-            layer: layerName,
-            layerRootDir,
-          }
-          dirs.push({ ...prev, aliasOf: layerName })
-          resolvedPaths.set(realDir, { layer: layerName, layerRootDir })
-          log.debug(`Layer '${alias}' is alias of '${owner}' (ancestor-based ownership)`)
-        }
+
+    if (!resolvedPaths.has(realDir)) {
+      const files = await readdir(resolvedDir)
+      const jsonFiles = files.filter(f => f.endsWith('.json'))
+      if (jsonFiles.length === 0) {
+        log.debug(`No JSON files in locale dir for layer '${layerName}': ${resolvedDir}`)
+        continue
       }
-      else {
-        dirs.push({
-          path: resolvedDir,
-          layer: layerName,
-          layerRootDir,
-          aliasOf: existing.layer,
-        })
-        log.debug(`Layer '${alias}' is alias of '${owner}'`)
-      }
-      continue
+      log.debug(`Found locale dir for layer '${layerName}': ${resolvedDir} (${jsonFiles.length} files)`)
     }
 
-    const files = await readdir(resolvedDir)
-    const jsonFiles = files.filter(f => f.endsWith('.json'))
-    if (jsonFiles.length === 0) {
-      log.debug(`No JSON files in locale dir for layer '${layerName}': ${resolvedDir}`)
-      continue
-    }
-
-    resolvedPaths.set(realDir, { layer: layerName, layerRootDir })
-    dirs.push({
-      path: resolvedDir,
-      layer: layerName,
-      layerRootDir,
-    })
-
-    log.debug(`Found locale dir for layer '${layerName}': ${resolvedDir} (${jsonFiles.length} files)`)
+    claimLocaleDir(dirs, resolvedPaths, { path: resolvedDir, layer: layerName, layerRootDir }, realDir)
   }
 
   if (dirs.length === 0) {
