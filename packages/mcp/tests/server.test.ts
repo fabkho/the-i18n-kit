@@ -1,31 +1,28 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { join } from 'node:path'
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { clearConfigCache } from 'the-i18n-cli'
+import type { TranslateFn } from 'the-i18n-cli'
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 /**
  * Transport-level tests: a linked client/server pair over the SDK's in-memory
  * transport, against a real temp project resolved by the CLI's generic
- * adapter. The client provides no translation backend — the agent-mode default.
+ * adapter. Covers both translation modes: agent (no backend configured) and
+ * provider (a TranslateFn injected through the test-only createServer seam).
  */
 
 let projectDir: string
 let client: Client
 
-async function callTool(name: string, args: Record<string, unknown>) {
-  const result = await client.callTool({ name, arguments: args })
-  const text = (result.content as Array<{ type: string, text: string }>)[0]?.text ?? ''
-  return { result, json: result.isError ? undefined : JSON.parse(text) as Record<string, any>, text }
-}
-
-beforeAll(async () => {
-  projectDir = await mkdtemp(join(tmpdir(), 'i18n-mcp-test-'))
-  const localesDir = join(projectDir, 'i18n', 'locales')
+async function makeProject(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'i18n-mcp-test-'))
+  const localesDir = join(dir, 'i18n', 'locales')
   await mkdir(localesDir, { recursive: true })
-  await writeFile(join(projectDir, '.i18n-mcp.json'), JSON.stringify({
+  await writeFile(join(dir, '.i18n-mcp.json'), JSON.stringify({
     localeDirs: [{ path: 'i18n/locales', layer: 'root' }],
     defaultLocale: 'de',
     locales: ['de', 'en'],
@@ -35,18 +32,51 @@ beforeAll(async () => {
     actions: { save: 'Speichern' },
   }))
   await writeFile(join(localesDir, 'en.json'), '{}\n')
+  return dir
+}
+
+async function connectClient(server: McpServer): Promise<Client> {
+  const c = new Client({ name: 'test-client', version: '0.0.0' })
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+  await Promise.all([
+    server.connect(serverTransport),
+    c.connect(clientTransport),
+  ])
+  return c
+}
+
+async function callToolOn(c: Client, name: string, args: Record<string, unknown>) {
+  const result = await c.callTool({ name, arguments: args })
+  const text = (result.content as Array<{ type: string, text: string }>)[0]?.text ?? ''
+  return { result, json: result.isError ? undefined : JSON.parse(text) as Record<string, any>, text }
+}
+
+async function callTool(name: string, args: Record<string, unknown>) {
+  return callToolOn(client, name, args)
+}
+
+/** A well-behaved fake backend: translates every key in the request batch. */
+const fakeTranslateFn: TranslateFn = async ({ userMessage }) => {
+  const line = userMessage.split('\n').find(l => l.trimStart().startsWith('{"'))
+  if (!line) throw new Error(`No batch JSON found in user message:\n${userMessage}`)
+  const batch = JSON.parse(line.slice(line.indexOf('{'), line.lastIndexOf('}') + 1)) as Record<string, string>
+  const out = Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, `[t] ${v}`]))
+  return { text: JSON.stringify(out), model: 'fake-model' }
+}
+
+beforeAll(async () => {
+  projectDir = await makeProject()
+
+  // Guard against provider config leaking in from the host environment —
+  // this file's default client must run in agent mode.
+  delete process.env.I18N_PROVIDER
+  delete process.env.I18N_MODEL
 
   // The server captures its default project dir from the environment at
   // module load — set it before importing so resources can self-resolve.
   process.env.I18N_PROJECT_DIR = projectDir
   const { createServer } = await import('../src/server.js')
-  const server = createServer()
-  client = new Client({ name: 'test-client', version: '0.0.0' })
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  await Promise.all([
-    server.connect(serverTransport),
-    client.connect(clientTransport),
-  ])
+  client = await connectClient(await createServer())
 })
 
 afterAll(async () => {
@@ -76,6 +106,14 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     ])
   })
 
+  it('exposes no sampling wording in the translate tool descriptions', async () => {
+    const { tools } = await client.listTools()
+    for (const tool of tools) {
+      expect(tool.description?.toLowerCase()).not.toContain('sampling')
+      expect(tool.description?.toLowerCase()).not.toContain('host llm')
+    }
+  })
+
   it('reads a locale resource with a cold cache — no prior discover call', async () => {
     clearConfigCache()
     const result = await client.readResource({ uri: 'i18n:///root/de' })
@@ -83,7 +121,7 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(JSON.parse(content.text)).toMatchObject({ greeting: 'Hallo {name}' })
   })
 
-  it('discover returns the project configuration', async () => {
+  it('discover returns the project configuration and the agent translation mode', async () => {
     const { json } = await callTool('discover', { projectDir })
 
     expect(json?.defaultLocale).toBe('de')
@@ -94,6 +132,9 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.layers).toEqual([
       expect.objectContaining({ layer: 'root' }),
     ])
+    expect(json?.translationMode).toBe('agent')
+    expect(json?.translationProvider).toBeUndefined()
+    expect(json?.translationModel).toBeUndefined()
   })
 
   it('translate_missing without a translation backend returns fallback contexts', async () => {
@@ -140,5 +181,115 @@ describe('the-i18n-mcp server over in-memory transport', () => {
 
     expect(result.isError).toBe(true)
     expect(text).toContain('no-such-layer')
+  })
+})
+
+describe('provider mode via injected TranslateFn', () => {
+  let providerProjectDir: string
+  let providerClient: Client
+
+  beforeAll(async () => {
+    providerProjectDir = await makeProject()
+    const { createServer } = await import('../src/server.js')
+    providerClient = await connectClient(await createServer({ translateFn: fakeTranslateFn }))
+  })
+
+  afterAll(async () => {
+    await providerClient.close()
+    await rm(providerProjectDir, { recursive: true, force: true })
+  })
+
+  it('discover reports provider translation mode', async () => {
+    const { json } = await callToolOn(providerClient, 'discover', { projectDir: providerProjectDir })
+
+    expect(json?.translationMode).toBe('provider')
+  })
+
+  it('translate_missing translates through the backend and writes the target locale file', async () => {
+    const { json } = await callToolOn(providerClient, 'translate_missing', {
+      layer: 'root',
+      projectDir: providerProjectDir,
+    })
+
+    expect(json?.summary.mode).toBe('provider')
+    expect(json?.summary.totalTranslated).toBe(2)
+    expect(json?.summary.totalFailed).toBe(0)
+    expect(json?.fallbackContexts).toBeUndefined()
+    expect(json?.results.en).toMatchObject({
+      mode: 'provider',
+      model: 'fake-model',
+      failed: [],
+      skipped: [],
+    })
+
+    const en = JSON.parse(
+      await readFile(join(providerProjectDir, 'i18n', 'locales', 'en.json'), 'utf-8'),
+    ) as Record<string, unknown>
+    expect(en).toMatchObject({
+      greeting: '[t] Hallo {name}',
+      actions: { save: '[t] Speichern' },
+    })
+  })
+})
+
+describe('partial provider env config', () => {
+  let partialProjectDir: string
+  let partialClient: Client
+  let stderrOutput: string
+  const savedEnv: Record<string, string | undefined> = {}
+
+  beforeAll(async () => {
+    partialProjectDir = await makeProject()
+
+    // Provider named, but no model and no API key — must warn at startup and
+    // serve agent mode.
+    for (const name of ['I18N_PROVIDER', 'I18N_MODEL', 'OPENAI_API_KEY']) {
+      savedEnv[name] = process.env[name]
+    }
+    process.env.I18N_PROVIDER = 'openai'
+    delete process.env.I18N_MODEL
+    delete process.env.OPENAI_API_KEY
+
+    stderrOutput = ''
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderrOutput += String(chunk)
+      return true
+    })
+    try {
+      const { createServer } = await import('../src/server.js')
+      partialClient = await connectClient(await createServer())
+    } finally {
+      stderrSpy.mockRestore()
+    }
+  })
+
+  afterAll(async () => {
+    for (const [name, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+    await partialClient.close()
+    await rm(partialProjectDir, { recursive: true, force: true })
+  })
+
+  it('logs a startup warning to stderr', () => {
+    expect(stderrOutput).toContain('Partial provider config')
+    expect(stderrOutput).toContain('agent mode')
+  })
+
+  it('discover reports agent mode', async () => {
+    const { json } = await callToolOn(partialClient, 'discover', { projectDir: partialProjectDir })
+
+    expect(json?.translationMode).toBe('agent')
+  })
+
+  it('translate_missing falls back to agent mode with fallback contexts', async () => {
+    const { json } = await callToolOn(partialClient, 'translate_missing', {
+      layer: 'root',
+      projectDir: partialProjectDir,
+    })
+
+    expect(json?.summary.mode).toBe('agent')
+    expect(json?.fallbackContexts?.en).toBeDefined()
   })
 })
