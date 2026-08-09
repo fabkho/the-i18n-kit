@@ -577,6 +577,13 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
 
   misplacedUsages.sort((a, b) => a.layer.localeCompare(b.layer) || a.key.localeCompare(b.key))
 
+  // File glob ordering varies between runs — sort the diagnostic arrays so
+  // report output is byte-deterministic (CI artifact diffing relies on it).
+  const byLocation = (a: { file: string; line: number; expression: string }, b: { file: string; line: number; expression: string }) =>
+    a.file.localeCompare(b.file) || a.line - b.line || a.expression.localeCompare(b.expression)
+  allDynamicKeysRaw.sort(byLocation)
+  unresolvedWarnings.sort((a, b) => byLocation(a, b))
+
   return {
     orphansByLayer,
     orphanCount,
