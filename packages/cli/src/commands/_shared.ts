@@ -16,8 +16,37 @@ export function createCommand(opts: {
     async run({ args }) {
       const result = await opts.run(args)
       outputResult(result, args)
+      if (isTotalFailure(result)) {
+        process.exitCode = 1
+      }
     },
   }) as any
+}
+
+/**
+ * True when a run completed but achieved nothing: failures present and zero
+ * successes. Covers translate-missing-style results (summary.totalFailed /
+ * summary.totalTranslated) and translate-key-style results (top-level
+ * failed[] / translated[]). Results without those fields are never a
+ * total failure, so unrelated commands are unaffected.
+ */
+export function isTotalFailure(result: unknown): boolean {
+  if (result === null || typeof result !== 'object') return false
+  const r = result as Record<string, unknown>
+
+  const summary = r.summary
+  if (summary !== null && typeof summary === 'object') {
+    const s = summary as Record<string, unknown>
+    if (typeof s.totalFailed === 'number' && typeof s.totalTranslated === 'number') {
+      return s.totalFailed > 0 && s.totalTranslated === 0
+    }
+  }
+
+  if (Array.isArray(r.failed) && Array.isArray(r.translated)) {
+    return r.failed.length > 0 && r.translated.length === 0
+  }
+
+  return false
 }
 
 export const sharedArgs = {

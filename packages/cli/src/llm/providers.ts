@@ -2,6 +2,56 @@ import type { TranslateFn, TranslateRequest, TranslateResponse } from '../core/t
 
 export type LlmProvider = 'openai' | 'anthropic' | 'google'
 
+// ─── Error classification ───────────────────────────────────────
+
+/** How a provider failure should be handled by the caller. */
+export type TranslateProviderErrorKind = 'auth' | 'rate-limit' | 'provider'
+
+/**
+ * A classified provider failure. `auth` errors are not retryable (the caller
+ * should abort the run), `rate-limit` errors should be retried with backoff,
+ * and `provider` covers everything else (server errors, network, …).
+ */
+export class TranslateProviderError extends Error {
+  public readonly kind: TranslateProviderErrorKind
+  public readonly status?: number
+
+  constructor(message: string, kind: TranslateProviderErrorKind, status?: number) {
+    super(message)
+    this.name = 'TranslateProviderError'
+    this.kind = kind
+    this.status = status
+  }
+}
+
+/** Defensively extract an HTTP status code from an unknown SDK error shape. */
+function extractStatus(error: unknown): number | undefined {
+  if (error === null || typeof error !== 'object') return undefined
+  const e = error as { status?: unknown, response?: unknown }
+  if (typeof e.status === 'number') return e.status
+  if (e.response !== null && typeof e.response === 'object') {
+    const status = (e.response as { status?: unknown }).status
+    if (typeof status === 'number') return status
+  }
+  return undefined
+}
+
+/**
+ * Classify an SDK error into a TranslateProviderError:
+ * 401/403 → auth, 429 → rate-limit, anything else → provider.
+ * Already-classified errors pass through unchanged.
+ */
+export function classifyProviderError(error: unknown): TranslateProviderError {
+  if (error instanceof TranslateProviderError) return error
+  const status = extractStatus(error)
+  const message = error instanceof Error ? error.message : String(error)
+  const kind: TranslateProviderErrorKind
+    = status === 401 || status === 403 ? 'auth'
+      : status === 429 ? 'rate-limit'
+        : 'provider'
+  return new TranslateProviderError(message, kind, status)
+}
+
 export interface LlmProviderConfig {
   provider: LlmProvider
   model: string
@@ -44,19 +94,27 @@ async function createOpenAiTranslateFn(config: LlmProviderConfig): Promise<Trans
   const client = new OpenAI({ apiKey, baseURL: config.baseUrl })
 
   return async (opts: TranslateRequest): Promise<TranslateResponse> => {
-    const response = await client.chat.completions.create({
-      model: config.model,
-      messages: [
-        { role: 'system', content: opts.systemPrompt },
-        { role: 'user', content: opts.userMessage },
-      ],
-      max_tokens: opts.maxTokens,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK types not available
+    let response: any
+    try {
+      response = await client.chat.completions.create({
+        model: config.model,
+        messages: [
+          { role: 'system', content: opts.systemPrompt },
+          { role: 'user', content: opts.userMessage },
+        ],
+        max_tokens: opts.maxTokens,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+      })
+    } catch (error) {
+      throw classifyProviderError(error)
+    }
 
-    const text = response.choices[0]?.message?.content ?? ''
-    return { text, model: response.model || config.model }
+    const choice = response.choices?.[0]
+    const text = choice?.message?.content ?? ''
+    const truncated = choice?.finish_reason === 'length'
+    return { text, model: response.model || config.model, ...(truncated ? { truncated: true } : {}) }
   }
 }
 
@@ -75,19 +133,26 @@ async function createGoogleTranslateFn(config: LlmProviderConfig): Promise<Trans
   const client = new GoogleGenAI({ apiKey })
 
   return async (opts: TranslateRequest): Promise<TranslateResponse> => {
-    const response = await client.models.generateContent({
-      model: config.model,
-      contents: opts.userMessage,
-      config: {
-        systemInstruction: opts.systemPrompt,
-        maxOutputTokens: opts.maxTokens,
-        temperature: 0,
-        responseMimeType: 'application/json',
-      },
-    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK types not available
+    let response: any
+    try {
+      response = await client.models.generateContent({
+        model: config.model,
+        contents: opts.userMessage,
+        config: {
+          systemInstruction: opts.systemPrompt,
+          maxOutputTokens: opts.maxTokens,
+          temperature: 0,
+          responseMimeType: 'application/json',
+        },
+      })
+    } catch (error) {
+      throw classifyProviderError(error)
+    }
 
     const text = response.text ?? ''
-    return { text, model: response.modelVersion || config.model }
+    const truncated = response.candidates?.[0]?.finishReason === 'MAX_TOKENS'
+    return { text, model: response.modelVersion || config.model, ...(truncated ? { truncated: true } : {}) }
   }
 }
 
@@ -106,18 +171,25 @@ async function createAnthropicTranslateFn(config: LlmProviderConfig): Promise<Tr
   const client = new Anthropic({ apiKey, baseURL: config.baseUrl })
 
   return async (opts: TranslateRequest): Promise<TranslateResponse> => {
-    const response = await client.messages.create({
-      model: config.model,
-      system: opts.systemPrompt,
-      messages: [{ role: 'user', content: opts.userMessage }],
-      max_tokens: opts.maxTokens,
-      temperature: 0,
-    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK types not available
+    let response: any
+    try {
+      response = await client.messages.create({
+        model: config.model,
+        system: opts.systemPrompt,
+        messages: [{ role: 'user', content: opts.userMessage }],
+        max_tokens: opts.maxTokens,
+        temperature: 0,
+      })
+    } catch (error) {
+      throw classifyProviderError(error)
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK types not available
-    const textBlock = response.content.find((block: any) => block.type === 'text')
+    const textBlock = response.content?.find((block: any) => block.type === 'text')
     const text = textBlock?.text ?? ''
-    return { text, model: response.model || config.model }
+    const truncated = response.stop_reason === 'max_tokens'
+    return { text, model: response.model || config.model, ...(truncated ? { truncated: true } : {}) }
   }
 }
 
