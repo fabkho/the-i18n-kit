@@ -1,19 +1,22 @@
 {
-  "common": {
-    "actions": {
-      "cancel": "Cancelar",
-      "delete": "Eliminar",
-      "save": "Guardar"
-    },
-    "messages": {
-      "loading": "Cargando...",
-      "noData": "No hay datos disponibles",
-      "success": "Guardado correctamente"
-    },
-    "navigation": {
-      "back": "Atrás",
-      "home": "Inicio",
-      "settings": "Configuración"
-    }
-  }
+	"common": {
+		"actions": {
+			"cancel": "Cancelar",
+			"delete": "Eliminar",
+			"save": "Guardar"
+		},
+		"messages": {
+			"loading": "Cargando...",
+			"noData": "No hay datos disponibles",
+			"success": "Guardado correctamente"
+		},
+		"navigation": {
+			"back": "Atrás",
+			"home": "Inicio",
+			"settings": "Configuración"
+		}
+	},
+	"playgroundE2E": {
+		"ciProbe": "Traducción de prueba de CI del 2026-08-09T17:02:23Z"
+	}
 }

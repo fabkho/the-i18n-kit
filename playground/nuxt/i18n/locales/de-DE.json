@@ -15,5 +15,8 @@
       "home": "Startseite",
       "settings": "Einstellungen"
     }
+  },
+  "playgroundE2E": {
+    "ciProbe": "CI-Testübersetzung vom 2026-08-09T17:02:23Z"
   }
 }

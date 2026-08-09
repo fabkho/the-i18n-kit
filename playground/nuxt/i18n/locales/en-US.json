@@ -1,19 +1,22 @@
 {
-  "common": {
-    "actions": {
-      "cancel": "Cancel",
-      "delete": "Delete",
-      "save": "Save"
-    },
-    "messages": {
-      "loading": "Loading...",
-      "noData": "No data available",
-      "success": "Successfully saved"
-    },
-    "navigation": {
-      "back": "Back",
-      "home": "Home",
-      "settings": "Settings"
-    }
-  }
+	"common": {
+		"actions": {
+			"cancel": "Cancel",
+			"delete": "Delete",
+			"save": "Save"
+		},
+		"messages": {
+			"loading": "Loading...",
+			"noData": "No data available",
+			"success": "Successfully saved"
+		},
+		"navigation": {
+			"back": "Back",
+			"home": "Home",
+			"settings": "Settings"
+		}
+	},
+	"playgroundE2E": {
+		"ciProbe": "CI Test Translation from 2026-08-09T17:02:23Z"
+	}
 }
