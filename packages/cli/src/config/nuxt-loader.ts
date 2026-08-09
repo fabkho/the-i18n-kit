@@ -2,9 +2,7 @@ import { log } from '../utils/logger'
 
 type NuxtKit = typeof import('@nuxt/kit')
 
-/**
- * Dynamically import a module from a given root directory.
- */
+/** Import `id` resolved against the project's node_modules rather than our own. */
 async function importModuleFrom(id: string, rootDir: string): Promise<unknown> {
   const { createRequire } = await import('node:module')
   const require = createRequire(rootDir + '/')

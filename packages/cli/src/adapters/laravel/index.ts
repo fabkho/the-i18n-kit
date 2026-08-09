@@ -53,10 +53,8 @@ export class LaravelAdapter implements FrameworkAdapter {
       )
     }
 
-    // Determine file format: honor override, auto-detect, or default
     const format = resolveFormat(langDir, projectConfig?.localeFileFormat)
 
-    // Discover locale codes based on format
     const localeCodes = await discoverLocaleCodes(langDir, format)
     if (localeCodes.length === 0) {
       throw new ConfigError(

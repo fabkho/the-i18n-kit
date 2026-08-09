@@ -33,15 +33,16 @@ import { findLayerOrThrow, findLocaleImpl, findLocaleOrThrow, localeRefInfo } fr
 // ─── Shared helpers (exported for reuse) ────────────────────────
 
 /**
- * Fixed maxTokens budget for a translate request. Batch size no longer
- * scales the budget — models simply stop when the JSON object is closed.
+ * Fixed maxTokens budget for a translate request. Deliberately independent
+ * of batch size — models simply stop when the JSON object is closed.
  */
 export function computeMaxTokens(_batchKeyCount: number): number {
   return 16384
 }
 
 /**
- * Compute the total number of progress steps for translate_missing.
+ * Total progress steps for translate_missing: per locale with missing keys,
+ * one step per batch plus a start and a complete step (the +2).
  */
 export function computeProgressTotal(missingKeyCounts: number[], maxBatch: number): number {
   return missingKeyCounts.reduce((sum, count) => {
@@ -463,13 +464,11 @@ export async function translateMissing(opts: {
     throw new ToolError(`Invalid batchSize: ${opts.batchSize}. Must be a positive integer.`, 'INVALID_BATCH_SIZE')
   }
 
-  // Validate layer
   const localeDir = findLayerOrThrow(config, layer)
   if (localeDir.aliasOf) {
     throw new ToolError(`Layer "${layer}" is an alias of "${localeDir.aliasOf}". Modify the source layer "${localeDir.aliasOf}" instead.`, 'LAYER_IS_ALIAS')
   }
 
-  // Determine reference locale
   const refCode = opts.referenceLocale ?? config.defaultLocale
   const refLocale = findLocaleImpl(config, refCode)
   if (!refLocale) {
@@ -491,7 +490,6 @@ export async function translateMissing(opts: {
   const mode: TranslateMode = isDryRun ? 'dry-run' : opts.translateFn ? 'provider' : 'agent'
   const reportProgress = opts.progressFn ?? (async () => {})
 
-  /** Check whether a key is missing in a given locale data object */
   function isKeyMissingIn(data: Record<string, unknown>, k: string): boolean {
     const v = getNestedValue(data, k)
     return v === undefined || v === '' || v === null
@@ -556,7 +554,6 @@ export async function translateMissing(opts: {
 
     await reportProgress(`Starting ${target.code}: ${missingKeys.length} missing keys`)
 
-    // Build key-value pairs from reference
     const keysAndValues: Record<string, string> = {}
     for (const key of missingKeys) {
       const value = getNestedValue(refData, key)
