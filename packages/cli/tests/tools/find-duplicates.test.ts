@@ -214,6 +214,35 @@ describe('findDuplicateKeys — multi-layer collisions', () => {
 })
 
 describe('findDuplicateKeys — degenerate config without app info', () => {
+  it('reports each unordered pair once, with the wider layer as the shared side', async () => {
+    // Make app-shop shared too: a third app consumes both root and app-shop.
+    // Without unordered dedupe this reports every root↔app-shop collision
+    // twice (once per direction).
+    const dir = multiDir
+    const config = structuredClone(state.configs.get(dir)) as I18nConfig
+    config.apps!.push({
+      name: 'app-outlook',
+      rootDir: join(dir, 'app-outlook'),
+      layers: ['app-shop', 'root'],
+    })
+    const symDir = `${dir}-sym`
+    state.configs.set(symDir, config)
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: symDir }))
+
+      const pairIds = result.collisions.map(c => [c.sharedLayer, c.childLayer].sort().join('↔'))
+      const keyPair = result.collisions.map(c => `${c.key}|${pairIds[0]}`)
+      expect(new Set(keyPair).size).toBe(keyPair.length) // no direction duplicates
+      // root is consumed by 3 apps, app-shop by 2 → root is the shared side
+      for (const c of result.collisions.filter(c => c.childLayer === 'app-shop' || c.sharedLayer === 'app-shop')) {
+        expect(c.sharedLayer).toBe('root')
+      }
+      expect(result.summary.totalCollisions).toBe(2) // same as without symmetry
+    } finally {
+      state.configs.delete(symDir)
+    }
+  })
+
   it('returns an empty result with a clear message instead of guessing pairs', async () => {
     const result = asResult(await findDuplicateKeys({ projectDir: noAppsDir }))
 
