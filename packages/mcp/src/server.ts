@@ -29,13 +29,15 @@ import {
   toErrorMessage,
 } from 'the-i18n-cli'
 
-import type { SamplingFn, ProgressFn, ProjectConfig } from 'the-i18n-cli'
+import type { TranslateFn, ProgressFn, ProjectConfig } from 'the-i18n-cli'
 
 const DEFAULT_PROJECT_DIR = process.env.I18N_PROJECT_DIR ?? process.cwd()
 
 // ─── Shared helpers ───────────────────────────────────────────────
 
-function createMcpSamplingFn(server: McpServer, samplingSupported: boolean): SamplingFn | undefined {
+// TranslateFn implemented via the deprecated MCP sampling request.
+// Removed entirely by the provider-mode work (#208).
+function createMcpTranslateFn(server: McpServer, samplingSupported: boolean): TranslateFn | undefined {
   if (!samplingSupported) return undefined
   return async (opts) => {
     const SAMPLING_TIMEOUT_MS = 120_000
@@ -45,12 +47,6 @@ function createMcpSamplingFn(server: McpServer, samplingSupported: boolean): Sam
       maxTokens: opts.maxTokens,
       temperature: 0,
       includeContext: 'none',
-      modelPreferences: {
-        hints: opts.preferences.hints,
-        costPriority: opts.preferences.costPriority,
-        speedPriority: opts.preferences.speedPriority,
-        intelligencePriority: opts.preferences.intelligencePriority,
-      },
     }, { timeout: SAMPLING_TIMEOUT_MS })
     return {
       text: result.content.type === 'text' ? result.content.text : '',
@@ -518,8 +514,8 @@ export function createServer(): McpServer {
           })
         }
 
-        // Build samplingFn from MCP server sampling
-        const samplingFn = createMcpSamplingFn(server, samplingSupported)
+        // Build translateFn from MCP server sampling
+        const translateFn = createMcpTranslateFn(server, samplingSupported)
 
         const result = await translateMissing({
           layer,
@@ -530,7 +526,7 @@ export function createServer(): McpServer {
           dryRun,
           compact,
           projectDir,
-          samplingFn,
+          translateFn,
           progressFn,
           onProgressTotal: (total) => { progressTotal = total },
         })
@@ -594,7 +590,7 @@ export function createServer(): McpServer {
       try {
         const clientCapabilities = server.server.getClientCapabilities()
         const samplingSupported = !!clientCapabilities?.sampling
-        const samplingFn = createMcpSamplingFn(server, samplingSupported)
+        const translateFn = createMcpTranslateFn(server, samplingSupported)
 
         const result = await translateKey({
           layer,
@@ -606,7 +602,7 @@ export function createServer(): McpServer {
           dryRun,
           includePreview,
           projectDir,
-          samplingFn,
+          translateFn,
         })
 
         return jsonContent(result)

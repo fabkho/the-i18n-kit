@@ -360,26 +360,18 @@ export interface ScaffoldLocaleResult {
   dryRun: boolean
 }
 
-// ─── Sampling callback types for translate_missing ───────────────
+// ─── Translation backend callback types ──────────────────────────
 
-export interface SamplingRequest {
+export interface TranslateRequest {
   systemPrompt: string
   userMessage: string
   maxTokens: number
-  preferences: SamplingPreferences
 }
 
-export interface SamplingResponse {
+export interface TranslateResponse {
   text: string
   model: string
 }
 
-export type SamplingFn = (opts: SamplingRequest) => Promise<SamplingResponse>
+export type TranslateFn = (opts: TranslateRequest) => Promise<TranslateResponse>
 export type ProgressFn = (message: string) => Promise<void>
-
-export interface SamplingPreferences {
-  hints?: Array<{ name: string }>
-  costPriority?: number
-  speedPriority?: number
-  intelligencePriority?: number
-}

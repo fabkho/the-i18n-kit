@@ -43,6 +43,24 @@ describe('loadProjectConfig', () => {
     }
   })
 
+  // Deprecation shim: samplingPreferences must keep validating (strict schema)
+  it('accepts deprecated samplingPreferences with a warning and strips it', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({
+        context: 'shim test',
+        samplingPreferences: { hints: ['flash'], costPriority: 0.8 },
+      }), 'utf-8')
+      const config = await loadProjectConfig(tmpDir)
+      expect(config).not.toBeNull()
+      expect(config!.context).toBe('shim test')
+      expect('samplingPreferences' in config!).toBe(false)
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
   // Test 4: throws on invalid JSON
   it('throws on invalid JSON', async () => {
     await mkdir(tmpDir, { recursive: true })

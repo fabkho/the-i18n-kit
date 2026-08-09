@@ -32,9 +32,8 @@ import type {
   LocaleDirInfo,
   MutationResult,
   SearchMatch,
-  SamplingFn,
+  TranslateFn,
   ProgressFn,
-  SamplingPreferences,
   TranslateMissingLocaleResult,
   AddTranslationsResult,
   WriteTranslationsResult,
@@ -47,30 +46,12 @@ import type {
 
 // ─── Constants ──────────────────────────────────────────────────
 
-export const DEFAULT_SAMPLING_PREFERENCES: SamplingPreferences = {
-  hints: [{ name: 'flash' }, { name: 'haiku' }, { name: 'gpt-4o-mini' }],
-  costPriority: 0.8,
-  speedPriority: 0.9,
-  intelligencePriority: 0.3,
-}
-
 const DEFAULT_REPORT_DIR = '.i18n-reports'
 
 // ─── Shared helpers (exported for reuse) ────────────────────────
 
-export function resolveSamplingPreferences(projectConfig?: ProjectConfig): SamplingPreferences {
-  const userPrefs = projectConfig?.samplingPreferences
-  if (!userPrefs) return DEFAULT_SAMPLING_PREFERENCES
-  return {
-    hints: userPrefs.hints?.map(name => ({ name })) ?? DEFAULT_SAMPLING_PREFERENCES.hints,
-    costPriority: userPrefs.costPriority ?? DEFAULT_SAMPLING_PREFERENCES.costPriority,
-    speedPriority: userPrefs.speedPriority ?? DEFAULT_SAMPLING_PREFERENCES.speedPriority,
-    intelligencePriority: userPrefs.intelligencePriority ?? DEFAULT_SAMPLING_PREFERENCES.intelligencePriority,
-  }
-}
-
 /**
- * Fixed maxTokens budget for a sampling request. Batch size no longer
+ * Fixed maxTokens budget for a translate request. Batch size no longer
  * scales the budget — models simply stop when the JSON object is closed.
  */
 export function computeMaxTokens(_batchKeyCount: number): number {
@@ -1267,8 +1248,8 @@ export async function renameTranslationKey(opts: {
 /**
  * Find keys missing in target locales and translate them.
  *
- * When samplingFn is provided, uses it to translate via LLM.
- * When samplingFn is absent, returns fallback contexts for the agent.
+ * When translateFn is provided, uses it to translate via LLM.
+ * When translateFn is absent, returns fallback contexts for the agent.
  */
 export async function translateMissing(opts: {
   layer: string
@@ -1280,7 +1261,7 @@ export async function translateMissing(opts: {
   dryRun?: boolean
   compact?: boolean
   projectDir?: string
-  samplingFn?: SamplingFn
+  translateFn?: TranslateFn
   progressFn?: ProgressFn
   /** Called once after the pre-scan with the computed total number of progress steps. */
   onProgressTotal?: (total: number) => void
@@ -1327,7 +1308,7 @@ export async function translateMissing(opts: {
       })
     : config.locales.filter(l => l.code !== refLocale.code)
 
-  const samplingSupported = !!opts.samplingFn
+  const samplingSupported = !!opts.translateFn
   const reportProgress = opts.progressFn ?? (async () => {})
 
   /** Check whether a key is missing in a given locale data object */
@@ -1407,7 +1388,7 @@ export async function translateMissing(opts: {
       return { result: { translated: Object.keys(keysAndValues), failed: [], samplingUsed: samplingSupported, reason: 'dry-run' } }
     }
 
-    if (samplingSupported && opts.samplingFn) {
+    if (samplingSupported && opts.translateFn) {
       const translated: string[] = []
       const failed: string[] = []
       const keyEntries = Object.entries(keysAndValues)
@@ -1434,11 +1415,10 @@ export async function translateMissing(opts: {
             await new Promise(r => setTimeout(r, delayMs))
           }
           try {
-            const samplingResult = await opts.samplingFn({
+            const samplingResult = await opts.translateFn({
               systemPrompt,
               userMessage,
               maxTokens: computeMaxTokens(Object.keys(batch).length),
-              preferences: resolveSamplingPreferences(config.projectConfig),
             })
 
             samplingModel = samplingResult.model
@@ -1596,7 +1576,7 @@ export async function translateKey(opts: {
   dryRun?: boolean
   includePreview?: boolean
   projectDir?: string
-  samplingFn?: SamplingFn
+  translateFn?: TranslateFn
 }): Promise<TranslateKeyResult> {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
@@ -1667,7 +1647,7 @@ export async function translateKey(opts: {
       failed,
       filesWritten: 0,
       dryRun: true,
-      samplingUsed: !!opts.samplingFn,
+      samplingUsed: !!opts.translateFn,
       reason: 'dry-run',
       placeholderValidation: basePlaceholderValidation,
       ...(opts.includePreview ? { preview } : {}),
@@ -1690,7 +1670,7 @@ export async function translateKey(opts: {
     }
   }
 
-  if (!opts.samplingFn) {
+  if (!opts.translateFn) {
     return {
       key: opts.key,
       sourceLocale: localeRefInfo(sourceLocale),
@@ -1728,11 +1708,10 @@ export async function translateKey(opts: {
     )
 
     try {
-      const samplingResult = await opts.samplingFn({
+      const samplingResult = await opts.translateFn({
         systemPrompt,
         userMessage,
         maxTokens: computeMaxTokens(1),
-        preferences: resolveSamplingPreferences(config.projectConfig),
       })
       samplingModel = samplingResult.model
       const parsed = extractJsonFromResponse(samplingResult.text)

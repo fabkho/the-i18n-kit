@@ -43,12 +43,9 @@ const projectConfigSchema = z.object({
   locales: z.array(z.string()).optional(),
   reportOutput: z.union([z.literal(true), nonEmptyString]).optional(),
   localeFileFormat: z.enum(['json', 'php-array']).optional(),
-  samplingPreferences: z.object({
-    hints: z.array(z.string()).optional(),
-    costPriority: z.number().optional(),
-    speedPriority: z.number().optional(),
-    intelligencePriority: z.number().optional(),
-  }).optional(),
+  // Deprecated with the removal of MCP sampling: accepted so existing config
+  // files keep validating (the schema is strict), warned about, and ignored.
+  samplingPreferences: z.unknown().optional(),
 }).strict()
 
 // ─── Config file discovery ──────────────────────────────────────
@@ -122,5 +119,14 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
 
   log.debug(`Project config loaded successfully from ${configPath}`)
 
-  return result.data as ProjectConfig
+  const data = result.data as ProjectConfig & { samplingPreferences?: unknown }
+  if ('samplingPreferences' in data) {
+    log.warn(
+      `${CONFIG_FILENAME}: "samplingPreferences" is deprecated and ignored — `
+      + 'MCP sampling was removed. Configure a provider (e.g. I18N_PROVIDER/I18N_MODEL) instead.',
+    )
+    delete data.samplingPreferences
+  }
+
+  return data
 }
