@@ -27,33 +27,78 @@ import {
   listNamespaces,
   findLocaleImpl,
   toErrorMessage,
+  createTranslateFn,
 } from 'the-i18n-cli'
 
-import type { TranslateFn, ProgressFn, ProjectConfig } from 'the-i18n-cli'
+import type { TranslateFn, ProgressFn, ProjectConfig, LlmProvider } from 'the-i18n-cli'
 
 const DEFAULT_PROJECT_DIR = process.env.I18N_PROJECT_DIR ?? process.cwd()
 
-// ─── Shared helpers ───────────────────────────────────────────────
+// ─── Translation backend (resolved once at startup) ───────────────
 
-// TranslateFn implemented via the deprecated MCP sampling request.
-// Removed entirely by the provider-mode work (#208).
-function createMcpTranslateFn(server: McpServer, samplingSupported: boolean): TranslateFn | undefined {
-  if (!samplingSupported) return undefined
-  return async (opts) => {
-    const SAMPLING_TIMEOUT_MS = 120_000
-    const result = await server.server.createMessage({
-      messages: [{ role: 'user', content: { type: 'text', text: opts.userMessage } }],
-      systemPrompt: opts.systemPrompt,
-      maxTokens: opts.maxTokens,
-      temperature: 0,
-      includeContext: 'none',
-    }, { timeout: SAMPLING_TIMEOUT_MS })
-    return {
-      text: result.content.type === 'text' ? result.content.text : '',
-      model: result.model,
-    }
+const PROVIDER_KEY_ENVS: Record<LlmProvider, string> = {
+  openai: 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  google: 'GEMINI_API_KEY',
+}
+
+interface TranslationBackend {
+  mode: 'provider' | 'agent'
+  provider?: LlmProvider
+  model?: string
+  translateFn?: TranslateFn
+}
+
+function isKnownProvider(value: string): value is LlmProvider {
+  return value in PROVIDER_KEY_ENVS
+}
+
+/**
+ * Resolve the translation backend from environment configuration.
+ *
+ * Fully configured (`I18N_PROVIDER`, `I18N_MODEL`, and the provider's API key
+ * env) → provider mode: translate tools call the LLM provider directly.
+ * Nothing configured → agent mode: translate tools return fallback contexts
+ * for the host agent to translate inline and persist via write_translations.
+ * Partial configuration → a startup warning on stderr plus agent mode, so a
+ * misconfigured server never surprises callers per-request.
+ */
+async function resolveTranslationBackend(): Promise<TranslationBackend> {
+  const provider = process.env.I18N_PROVIDER
+  const model = process.env.I18N_MODEL
+
+  if (!provider && !model) return { mode: 'agent' }
+
+  const warn = (message: string) => process.stderr.write(`[the-i18n-mcp] ${message}\n`)
+
+  if (!provider) {
+    warn('Partial provider config: I18N_MODEL is set but I18N_PROVIDER is missing. Running in agent mode.')
+    return { mode: 'agent' }
+  }
+  if (!isKnownProvider(provider)) {
+    warn(`Partial provider config: I18N_PROVIDER="${provider}" is not one of openai | anthropic | google. Running in agent mode.`)
+    return { mode: 'agent' }
+  }
+  if (!model) {
+    warn(`Partial provider config: I18N_PROVIDER=${provider} is set but I18N_MODEL is missing. Running in agent mode.`)
+    return { mode: 'agent' }
+  }
+  const keyEnv = PROVIDER_KEY_ENVS[provider]
+  if (!process.env[keyEnv]) {
+    warn(`Partial provider config: I18N_PROVIDER=${provider} is set but ${keyEnv} is missing. Running in agent mode.`)
+    return { mode: 'agent' }
+  }
+
+  try {
+    const translateFn = await createTranslateFn({ provider, model })
+    return { mode: 'provider', provider, model, translateFn }
+  } catch (error) {
+    warn(`Provider setup failed: ${toErrorMessage(error)}. Running in agent mode.`)
+    return { mode: 'agent' }
   }
 }
+
+// ─── Shared helpers ───────────────────────────────────────────────
 
 function buildProjectConfigSection(pc: ProjectConfig | undefined): string {
   if (!pc) return ''
@@ -117,10 +162,26 @@ function jsonContent(data: unknown) {
   }
 }
 
+export interface CreateServerOptions {
+  /**
+   * Test-only seam: inject a TranslateFn directly, bypassing environment
+   * resolution. Production callers must leave this unset and configure the
+   * backend via I18N_PROVIDER / I18N_MODEL / the provider's API key env.
+   */
+  translateFn?: TranslateFn
+}
+
 /**
  * Create and configure the MCP server with all tools.
+ *
+ * The translation backend is resolved once here, at startup — see
+ * resolveTranslationBackend for the environment contract.
  */
-export function createServer(): McpServer {
+export async function createServer(options: CreateServerOptions = {}): Promise<McpServer> {
+  const backend: TranslationBackend = options.translateFn
+    ? { mode: 'provider', translateFn: options.translateFn }
+    : await resolveTranslationBackend()
+
   const server = new McpServer({
     name: 'the-i18n-mcp',
     version,
@@ -135,8 +196,9 @@ export function createServer(): McpServer {
       description:
         'Discover the complete i18n setup. Returns project config (locales, default locale, layers, '
         + 'fallback chain, glossary, translation style) plus per-layer directory listings with file '
-        + 'counts and top-level key namespaces. Call this first to understand the project before '
-        + 'reading or writing translations.',
+        + 'counts and top-level key namespaces, and the active translation mode ("provider" when the '
+        + 'server has an env-configured LLM provider, "agent" otherwise). Call this first to '
+        + 'understand the project before reading or writing translations.',
       inputSchema: {
         projectDir: z
           .string()
@@ -153,6 +215,11 @@ export function createServer(): McpServer {
         return jsonContent({
           ...config,
           layers: dirs,
+          // Active translation mode — lets operators verify env configuration
+          // without triggering a translation. Never includes the API key.
+          translationMode: backend.mode,
+          ...(backend.provider ? { translationProvider: backend.provider } : {}),
+          ...(backend.model ? { translationModel: backend.model } : {}),
         })
       } catch (error) {
         return toolErrorResponse('discovering i18n setup', error)
@@ -447,7 +514,7 @@ export function createServer(): McpServer {
     {
       title: 'Translate Missing',
       description:
-        'Find keys missing in target locales and translate them. Uses the host LLM via MCP sampling if available, otherwise returns context for the agent to translate inline. Uses project config (glossary, translation prompt, locale notes, examples) if available. Translates all locales concurrently by default — pass all targetLocales at once.',
+        'Find keys missing in target locales and translate them. Two modes: in provider mode (server env-configured with I18N_PROVIDER, I18N_MODEL, and an API key) the server calls the LLM provider directly and writes the results; in agent mode (no provider configured) it returns per-locale fallbackContexts — translate those inline and persist via write_translations. Check the discover output for the active mode. Uses project config (glossary, translation prompt, locale notes, examples) if available. Translates all locales concurrently by default — pass all targetLocales at once.',
       annotations: {
         title: 'Translate Missing Translations',
         readOnlyHint: false,
@@ -471,7 +538,7 @@ export function createServer(): McpServer {
         batchSize: z
           .number()
           .optional()
-          .describe('Max keys per LLM sampling request. Default: 50. Lower values reduce per-batch risk but increase round trips.'),
+          .describe('Max keys per provider request (provider mode only). Default: 50. Lower values reduce per-batch risk but increase round trips.'),
         dryRun: z
           .boolean()
           .optional()
@@ -488,10 +555,6 @@ export function createServer(): McpServer {
     },
     async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, compact, projectDir }, extra) => {
       try {
-        // Check sampling support from MCP client capabilities
-        const clientCapabilities = server.server.getClientCapabilities()
-        const samplingSupported = !!clientCapabilities?.sampling
-
         // Build progressFn from MCP progress notifications.
         // progressTotal is set by the onProgressTotal callback below, which runs
         // during the pre-scan phase of translateMissing — before any progress
@@ -514,9 +577,6 @@ export function createServer(): McpServer {
           })
         }
 
-        // Build translateFn from MCP server sampling
-        const translateFn = createMcpTranslateFn(server, samplingSupported)
-
         const result = await translateMissing({
           layer,
           referenceLocale,
@@ -526,7 +586,7 @@ export function createServer(): McpServer {
           dryRun,
           compact,
           projectDir,
-          translateFn,
+          translateFn: backend.translateFn,
           progressFn,
           onProgressTotal: (total) => { progressTotal = total },
         })
@@ -534,8 +594,9 @@ export function createServer(): McpServer {
         // MCP-owned guidance for agent mode
         if (result.fallbackContexts && result.summary) {
           (result.summary as Record<string, unknown>).message
-            = 'No translation backend available. Use the fallbackContexts to translate inline, '
-            + 'then call write_translations (mode: "upsert") to write the results.'
+            = 'Agent mode — no provider configured on the server. Use the fallbackContexts to translate '
+            + 'inline, then call write_translations (mode: "upsert") to write the results. To enable '
+            + 'provider mode, set I18N_PROVIDER, I18N_MODEL, and the provider API key env on the server process.'
         }
 
         return jsonContent(result)
@@ -552,7 +613,7 @@ export function createServer(): McpServer {
     {
       title: 'Translate Key',
       description:
-        'Add/update one source translation key and translate it into target locales. Unlike translate_missing, this can overwrite existing stale target translations.',
+        'Add/update one source translation key and translate it into target locales. Unlike translate_missing, this can overwrite existing stale target translations. Same two modes as translate_missing: provider mode (server env-configured) translates directly; agent mode returns a fallbackContext — translate it inline and persist via write_translations.',
       annotations: {
         title: 'Translate Single Key',
         readOnlyHint: false,
@@ -582,7 +643,7 @@ export function createServer(): McpServer {
         dryRun: z
           .boolean()
           .optional()
-          .describe('When true, previews source/target locales without writing files or calling sampling.'),
+          .describe('When true, previews source/target locales without writing files or calling the translation backend.'),
         includePreview: z
           .boolean()
           .optional()
@@ -595,10 +656,6 @@ export function createServer(): McpServer {
     },
     async ({ layer, key, sourceLocale, sourceValue, targetLocales, overwrite, dryRun, includePreview, projectDir }) => {
       try {
-        const clientCapabilities = server.server.getClientCapabilities()
-        const samplingSupported = !!clientCapabilities?.sampling
-        const translateFn = createMcpTranslateFn(server, samplingSupported)
-
         const result = await translateKey({
           layer,
           key,
@@ -609,13 +666,14 @@ export function createServer(): McpServer {
           dryRun,
           includePreview,
           projectDir,
-          translateFn,
+          translateFn: backend.translateFn,
         })
 
         // MCP-owned guidance for agent mode
         if (result.fallbackContext) {
-          result.message = 'No translation backend available. Use the fallbackContext to translate inline, '
-            + 'then call write_translations (mode: "upsert") to write the results.'
+          result.message = 'Agent mode — no provider configured on the server. Use the fallbackContext to '
+            + 'translate inline, then call write_translations (mode: "upsert") to write the results. To enable '
+            + 'provider mode, set I18N_PROVIDER, I18N_MODEL, and the provider API key env on the server process.'
         }
 
         return jsonContent(result)
@@ -856,7 +914,9 @@ Follow these steps:
    - Follow the glossary and style examples if provided above.
    - Preserve all {placeholders} and @:linked.references.
 4. If you only provided translations for some locales, call \`translate_missing\` to fill in the rest.
-   - Pass \`keys\` explicitly (the exact dot-path keys you just added) to skip the missing-key scan and go straight to sampling.
+   - Pass \`keys\` explicitly (the exact dot-path keys you just added) to skip the missing-key scan.
+   - In provider mode (server env-configured with a provider), it translates and writes directly.
+   - In agent mode, it returns fallbackContexts — translate them inline, then persist via \`write_translations\`.
 5. Summarize what was added.`
 
       return {
@@ -904,8 +964,9 @@ Follow these steps:
    - **Nuxt**: Add the locale entry to \`i18n.locales\` in \`nuxt.config.ts\` (code, language, file).
    - **Laravel**: Add the locale code to the \`available_locales\` array in \`config/app.php\`.
 2. Call \`scaffold_locale\` with the new locale code to create empty locale files in all layers.
-3. Call \`translate_missing\` for each layer to auto-translate all keys from the default locale. Concurrency is handled internally — each layer call is independent and can run in parallel.
-   - If auto-translation is unavailable, use \`get_translations\` to read the default locale, translate the keys yourself, then call \`write_translations\` with mode: 'update'.
+3. Call \`translate_missing\` for each layer to translate all keys from the default locale. Concurrency is handled internally — each layer call is independent and can run in parallel.
+   - In provider mode (server env-configured with a provider), it translates and writes directly.
+   - In agent mode, it returns fallbackContexts — translate them inline, then call \`write_translations\` with mode: 'update'.
 4. Call \`get_missing_translations\` to verify the new locale has zero missing keys in every layer.
 5. Report a summary: locale code added, files created, keys translated per layer.`
 

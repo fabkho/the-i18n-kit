@@ -4,7 +4,7 @@ import { toErrorMessage } from 'the-i18n-cli'
 import { createServer } from './server.js'
 
 try {
-  const server = createServer()
+  const server = await createServer()
   const transport = new StdioServerTransport()
   await server.connect(transport)
 } catch (error) {
