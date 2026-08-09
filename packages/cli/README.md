@@ -42,7 +42,7 @@ the-i18n-cli remove-orphans                  # Find orphan keys (dry-run by defa
 | `search` | Search keys and values |
 | `remove` | Remove keys from all locale files in a layer |
 | `rename` | Rename/move a key across all locale files |
-| `translate` | Find missing translations and translate them via LLM (see Translation Modes) |
+| `translate` | Find missing translations and translate them via LLM (see Translation Modes). Also available as `translate-missing`, matching the MCP tool name |
 | `translate-key` | Translate one source key into target locales; can overwrite stale values |
 | `remove-orphans` | Find and remove keys not referenced in source code (dry-run by default) |
 | `scaffold` | Create empty locale files for new languages |
