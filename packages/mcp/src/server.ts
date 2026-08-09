@@ -135,8 +135,8 @@ export function createServer(): McpServer {
       description:
         'Discover the complete i18n setup. Returns project config (locales, default locale, layers, '
         + 'fallback chain, glossary, translation style) plus per-layer directory listings with file '
-        + 'counts and top-level key namespaces. Call this first — it warms the config cache that all '
-        + 'other tools depend on.',
+        + 'counts and top-level key namespaces. Call this first to understand the project before '
+        + 'reading or writing translations.',
       inputSchema: {
         projectDir: z
           .string()
@@ -747,11 +747,14 @@ export function createServer(): McpServer {
 
   // ─── Resources ────────────────────────────────────────────────
 
+  // Resources resolve their own config (cached after first detection) — no
+  // prior discover call required. Cross-call ordering dependencies are
+  // incompatible with the stateless request/response model of MCP 2026-07-28.
   server.registerResource(
     'locale-file',
     new ResourceTemplate('i18n:///{layer}/{locale}', {
       list: async () => {
-        const config = getCachedConfig()
+        const config = getCachedConfig() ?? await detectI18nConfig(DEFAULT_PROJECT_DIR).catch(() => null)
         if (!config) {
           return { resources: [] }
         }
@@ -782,10 +785,7 @@ export function createServer(): McpServer {
       mimeType: 'application/json',
     },
     async (uri, { layer, locale }) => {
-      const config = getCachedConfig()
-      if (!config) {
-        throw new Error('No i18n config detected yet. Call discover first.')
-      }
+      const config = getCachedConfig() ?? await detectI18nConfig(DEFAULT_PROJECT_DIR)
       const localeDef = findLocaleImpl(config, locale as string)
       if (!localeDef) {
         throw new Error(`Locale not found: ${locale}`)

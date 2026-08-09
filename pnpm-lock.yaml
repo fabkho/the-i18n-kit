@@ -37,7 +37,7 @@ importers:
         version: 0.30.1
       '@google/genai':
         specifier: ^2.0.0
-        version: 2.8.0(@modelcontextprotocol/sdk@1.27.1(zod@4.3.6))
+        version: 2.8.0(@modelcontextprotocol/sdk@1.30.0(zod@4.3.6))
       citty:
         specifier: ^0.2.2
         version: 0.2.2
@@ -79,8 +79,8 @@ importers:
   packages/mcp:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: ^1.23.0
-        version: 1.27.1(zod@4.3.6)
+        specifier: ^1.30.0
+        version: 1.30.0(zod@4.3.6)
       the-i18n-cli:
         specifier: workspace:*
         version: link:../cli
@@ -892,8 +892,8 @@ packages:
     peerDependencies:
       rollup: ^1.20.0 || ^2.0.0 || ^3.0.0 || ^4.0.0
 
-  '@modelcontextprotocol/sdk@1.27.1':
-    resolution: {integrity: sha512-sr6GbP+4edBwFndLbM60gf07z0FQ79gaExpnsjMGePXqFcSSb7t6iscpjk9DhFhwd+mTEQrzNafGP8/iGGFYaA==}
+  '@modelcontextprotocol/sdk@1.30.0':
+    resolution: {integrity: sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==}
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
@@ -5721,14 +5721,14 @@ snapshots:
   '@fallow-cli/win32-x64-msvc@2.93.0':
     optional: true
 
-  '@google/genai@2.8.0(@modelcontextprotocol/sdk@1.27.1(zod@4.3.6))':
+  '@google/genai@2.8.0(@modelcontextprotocol/sdk@1.30.0(zod@4.3.6))':
     dependencies:
       google-auth-library: 10.7.0
       p-retry: 4.6.2
       protobufjs: 7.6.4
       ws: 8.19.0
     optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.27.1(zod@4.3.6)
+      '@modelcontextprotocol/sdk': 1.30.0(zod@4.3.6)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -5892,7 +5892,7 @@ snapshots:
       json5: 2.2.3
       rollup: 4.59.0
 
-  '@modelcontextprotocol/sdk@1.27.1(zod@4.3.6)':
+  '@modelcontextprotocol/sdk@1.30.0(zod@4.3.6)':
     dependencies:
       '@hono/node-server': 1.19.11(hono@4.12.8)
       ajv: 8.18.0
