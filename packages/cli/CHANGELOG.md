@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-3.0.0...the-i18n-cli-3.1.0) (2026-08-09)
+
+
+### Features
+
+* **cli:** per-variant placeholder and plural-count validation ([#223](https://github.com/fabkho/the-i18n-kit/issues/223)) ([bf0b7e0](https://github.com/fabkho/the-i18n-kit/commit/bf0b7e0a36d0884455151c963256282cf8d07eca))
+
 ## [3.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-2.0.0...the-i18n-cli-3.0.0) (2026-08-09)
 
 
