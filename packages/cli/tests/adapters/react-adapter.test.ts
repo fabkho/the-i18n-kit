@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { ReactAdapter } from '../../src/adapters/react/index'
 import { registerAdapter, resetRegistry, detectFramework } from '../../src/adapters/registry'
 import { NuxtAdapter } from '../../src/adapters/nuxt/index'
 import { VueAdapter } from '../../src/adapters/vue/index'
+import { readLocaleData, mutateLocaleData } from '../../src/io/locale-data'
+import { clearFileCache } from '../../src/io/json-reader'
 
 function createReactProject(root: string, opts: {
   type?: 'next' | 'react'
@@ -235,6 +237,76 @@ describe('ReactAdapter.resolve', () => {
     const config = await adapter.resolve(tempDir)
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
+  })
+
+  it('sets file on flat-layout locales so entries can be resolved', async () => {
+    writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+      dependencies: { react: '^18.0.0', 'react-dom': '^18.0.0', 'react-i18next': '^14.0.0' },
+    }))
+    const localeDir = join(tempDir, 'locales')
+    mkdirSync(localeDir, { recursive: true })
+    writeFileSync(join(localeDir, 'en.json'), JSON.stringify({ hello: 'world' }))
+    writeFileSync(join(localeDir, 'de.json'), JSON.stringify({ hello: 'welt' }))
+
+    const adapter = new ReactAdapter()
+    const config = await adapter.resolve(tempDir)
+
+    expect(config.locales.map(l => l.file)).toEqual(['de.json', 'en.json'])
+  })
+
+  it('does not set file for namespaced layouts', async () => {
+    createReactProject(tempDir)
+
+    const adapter = new ReactAdapter()
+    const config = await adapter.resolve(tempDir)
+
+    expect(config.locales.every(l => l.file === undefined)).toBe(true)
+  })
+})
+
+describe('ReactAdapter flat JSON layout end-to-end', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = join(tmpdir(), `react-flat-e2e-test-${Date.now()}`)
+    mkdirSync(tempDir, { recursive: true })
+    clearFileCache()
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('reads and writes flat JSON locales through the io layer', async () => {
+    writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+      dependencies: { react: '^18.0.0', 'react-dom': '^18.0.0', 'react-i18next': '^14.0.0' },
+    }))
+    const localeDir = join(tempDir, 'locales')
+    mkdirSync(localeDir, { recursive: true })
+    writeFileSync(join(localeDir, 'en.json'), '{\n  "zebra": "Zebra",\n  "apple": "Apple"\n}\n')
+    writeFileSync(join(localeDir, 'de.json'), '{\n  "zebra": "Zebra",\n  "apple": "Apfel"\n}\n')
+
+    const adapter = new ReactAdapter()
+    const config = await adapter.resolve(tempDir)
+    const en = config.locales.find(l => l.code === 'en')!
+
+    // Reads must surface the file contents, not silently return {}
+    const data = await readLocaleData(config, 'root', en)
+    expect(data).toEqual({ zebra: 'Zebra', apple: 'Apple' })
+
+    // Writes must land on disk, preserving indentation and key order
+    const written = await mutateLocaleData(config, 'root', en, (d) => {
+      ;(d as Record<string, unknown>).mango = 'Mango'
+    })
+    expect(written.has(join(localeDir, 'en.json'))).toBe(true)
+
+    const content = readFileSync(join(localeDir, 'en.json'), 'utf-8')
+    expect(content).not.toContain('\t')
+    expect(Object.keys(JSON.parse(content))).toEqual(['zebra', 'apple', 'mango'])
+
+    clearFileCache()
+    const after = await readLocaleData(config, 'root', en)
+    expect(after.mango).toBe('Mango')
   })
 })
 

@@ -161,6 +161,59 @@ return [
   })
 })
 
+describe('PHP string escaping round-trips', () => {
+  it('escapes $ in double-quoted output so literal dollars survive read-back', async () => {
+    const filePath = join(tempDir, 'vars.php')
+    const data = {
+      greeting: 'Hello $name',
+      braces: 'Balance: {$x} left',
+      literal: 'Line one\\nLine two',
+    }
+    await writePhpLocaleFile(filePath, data) // default: double quotes
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content).toContain('Hello \\$name')
+    expect(content).toContain('{\\$x}')
+
+    clearPhpFileCache()
+    const readBack = await readPhpLocaleFile(filePath)
+    expect(readBack).toEqual(data)
+  })
+
+  it('round-trips $ values with single-quote style (no interpolation, no escape needed)', async () => {
+    const filePath = join(tempDir, 'vars-single.php')
+    const data = { greeting: 'Hello $name', braces: '{$x}' }
+    await writePhpLocaleFile(filePath, data, { quoteStyle: 'single' })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content).toContain("'Hello $name'")
+
+    clearPhpFileCache()
+    const readBack = await readPhpLocaleFile(filePath)
+    expect(readBack).toEqual(data)
+  })
+
+  it('round-trips double quotes and backslashes in double-quoted output', async () => {
+    const filePath = join(tempDir, 'quotes.php')
+    const data = { quoted: 'He said "hi"', path: 'C:\\temp' }
+    await writePhpLocaleFile(filePath, data)
+
+    clearPhpFileCache()
+    const readBack = await readPhpLocaleFile(filePath)
+    expect(readBack).toEqual(data)
+  })
+
+  it('escapes $ in keys as well as values', async () => {
+    const filePath = join(tempDir, 'dollar-key.php')
+    const data = { '$special': 'value' }
+    await writePhpLocaleFile(filePath, data)
+
+    clearPhpFileCache()
+    const readBack = await readPhpLocaleFile(filePath)
+    expect(readBack).toEqual(data)
+  })
+})
+
 describe('detectPhpStyle', () => {
   it('detects single-quote style', () => {
     const content = `<?php\n\nreturn [\n    'key' => 'value',\n];\n`
@@ -217,5 +270,23 @@ describe('mutatePhpLocaleFile', () => {
     const content = await readFile(filePath, 'utf-8')
     expect(content).toContain("'added' => 'new value'")
     expect(content).toContain("'existing' => 'value'")
+  })
+
+  it('preserves existing key order, indentation and quote style; inserts new keys sorted', async () => {
+    const filePath = join(tempDir, 'order.php')
+    await writeFile(filePath, `<?php\n\nreturn [\n\t'zebra' => 'z',\n\t'apple' => 'a',\n\t'mango' => 'm',\n];\n`)
+
+    await mutatePhpLocaleFile(filePath, (data) => {
+      data.banana = 'b'
+    })
+
+    const content = await readFile(filePath, 'utf-8')
+    // Tab indentation and single quotes preserved
+    expect(content).toContain("\t'zebra' => 'z',")
+    expect(content).not.toContain('"zebra"')
+    // Existing order preserved, new key inserted after the last sibling that sorts before it
+    const order = ['zebra', 'apple', 'banana', 'mango'].map(k => content.indexOf(`'${k}'`))
+    expect(order.every(i => i >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
   })
 })

@@ -6,6 +6,7 @@ import {
   hasNestedKey,
   getLeafKeys,
   sortKeysDeep,
+  orderKeysPreserving,
   renameNestedKey,
 } from '../../src/io/key-operations.js'
 
@@ -175,5 +176,71 @@ describe('renameNestedKey', () => {
     const obj: Record<string, unknown> = { a: { b: { c: 1, d: 2 } } }
     expect(renameNestedKey(obj, 'a.b', 'x.y')).toBe(true)
     expect(obj).toEqual({ x: { y: { c: 1, d: 2 } } })
+  })
+})
+
+describe('orderKeysPreserving', () => {
+  it('keeps existing keys in reference order without re-sorting', () => {
+    const reference = { zebra: 1, apple: 2, mango: 3 }
+    const data = { apple: 2, mango: 3, zebra: 1 }
+    expect(Object.keys(orderKeysPreserving(data, reference))).toEqual(['zebra', 'apple', 'mango'])
+  })
+
+  it('inserts new keys in sorted position among existing siblings', () => {
+    const reference = { apple: 1, mango: 2, zebra: 3 }
+    const data = { apple: 1, mango: 2, zebra: 3, banana: 4, aardvark: 5 }
+    expect(Object.keys(orderKeysPreserving(data, reference)))
+      .toEqual(['aardvark', 'apple', 'banana', 'mango', 'zebra'])
+  })
+
+  it('inserts a new key after the last existing sibling that sorts before it (unsorted reference)', () => {
+    const reference = { zebra: 1, apple: 2, mango: 3 }
+    const data = { zebra: 1, apple: 2, mango: 3, banana: 4 }
+    expect(Object.keys(orderKeysPreserving(data, reference)))
+      .toEqual(['zebra', 'apple', 'banana', 'mango'])
+  })
+
+  it('drops keys removed from data', () => {
+    const reference = { a: 1, b: 2, c: 3 }
+    const data = { a: 1, c: 3 }
+    expect(Object.keys(orderKeysPreserving(data, reference))).toEqual(['a', 'c'])
+  })
+
+  it('recurses into nested objects', () => {
+    const reference = { outer: { zebra: 1, apple: 2 } }
+    const data = { outer: { apple: 2, zebra: 1, banana: 3 } }
+    const result = orderKeysPreserving(data, reference)
+    expect(Object.keys(result.outer as Record<string, unknown>))
+      .toEqual(['zebra', 'apple', 'banana'])
+  })
+
+  it('sorts everything when no reference is given (new file)', () => {
+    const data = { z: { b: 1, a: 2 }, a: 3 }
+    const result = orderKeysPreserving(data)
+    expect(Object.keys(result)).toEqual(['a', 'z'])
+    expect(Object.keys(result.z as Record<string, unknown>)).toEqual(['a', 'b'])
+  })
+
+  it('sorts nested objects whose reference value was not an object', () => {
+    const reference = { key: 'string value' }
+    const data = { key: { b: 1, a: 2 } }
+    const result = orderKeysPreserving(data, reference)
+    expect(Object.keys(result.key as Record<string, unknown>)).toEqual(['a', 'b'])
+  })
+
+  it('leaves arrays untouched but orders object elements inside them', () => {
+    const reference = { list: [{ z: 1, a: 2 }, 'x'] }
+    const data = { list: [{ a: 2, z: 1, m: 3 }, 'x', 'y'] }
+    const result = orderKeysPreserving(data, reference)
+    const list = result.list as unknown[]
+    expect(Object.keys(list[0] as Record<string, unknown>)).toEqual(['z', 'a', 'm'])
+    expect(list[1]).toBe('x')
+    expect(list[2]).toBe('y')
+  })
+
+  it('does not mutate the input', () => {
+    const data = { b: 1, a: 2 }
+    orderKeysPreserving(data, { a: 2 })
+    expect(Object.keys(data)).toEqual(['b', 'a'])
   })
 })
