@@ -226,7 +226,7 @@
 
       No orphan keys found in layer \`${I18N_LAYER}\`. All translation keys are referenced in source code."
       else
-        ORPHAN_LIST=$(jq -r '[.orphanKeys | to_entries[] | .value[] | "- \`\(.)\`"] | join("\n")' .i18n-reports/orphans.json)
+        ORPHAN_LIST=$(jq -r '[.orphanKeys | to_entries[] | .value[] | "- `\(.)`"] | join("\n")' .i18n-reports/orphans.json)
         COMMENT="## i18n Cleanup ⚠️
 
       **${ORPHAN_COUNT} orphan key(s) found** in layer \`${I18N_LAYER}\` — keys in locale files with no source code references.
