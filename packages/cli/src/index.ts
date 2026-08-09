@@ -29,7 +29,7 @@ export {
 export * from './core/types.js'
 
 // Config
-export { detectI18nConfig, getCachedConfig } from './config/detector.js'
+export { detectI18nConfig, getCachedConfig, clearConfigCache } from './config/detector.js'
 export type { I18nConfig, LocaleDefinition, LocaleDir, ProjectConfig } from './config/types.js'
 
 // IO

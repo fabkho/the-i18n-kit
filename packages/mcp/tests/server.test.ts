@@ -4,7 +4,7 @@ import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { createServer } from '../src/server.js'
+import { clearConfigCache } from 'the-i18n-cli'
 
 /**
  * Transport-level tests: a linked client/server pair over the SDK's in-memory
@@ -37,6 +37,10 @@ beforeAll(async () => {
   }))
   await writeFile(join(localesDir, 'en.json'), '{}\n')
 
+  // The server captures its default project dir from the environment at
+  // module load — set it before importing so resources can self-resolve.
+  process.env.I18N_PROJECT_DIR = projectDir
+  const { createServer } = await import('../src/server.js')
   const server = createServer()
   client = new Client({ name: 'test-client', version: '0.0.0' })
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -71,6 +75,13 @@ describe('the-i18n-mcp server over in-memory transport', () => {
       'translate_missing',
       'write_translations',
     ])
+  })
+
+  it('reads a locale resource with a cold cache — no prior discover call', async () => {
+    clearConfigCache()
+    const result = await client.readResource({ uri: 'i18n:///root/de' })
+    const content = result.contents[0] as { text: string }
+    expect(JSON.parse(content.text)).toMatchObject({ greeting: 'Hallo {name}' })
   })
 
   it('discover returns the project configuration', async () => {
