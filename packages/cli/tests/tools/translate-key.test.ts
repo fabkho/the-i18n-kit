@@ -95,8 +95,78 @@ describe('placeholder validation', () => {
         key: 'bookingCreator.options.removeSubResource',
         missing: ['{subResource}'],
         extra: ['{resource}'],
+        kind: 'placeholder',
       },
     ])
+  })
+
+  it('rejects a plural variant that drops a placeholder even when another variant keeps it', () => {
+    const result = validatePlaceholders(
+      'requests.count',
+      '{count} Anfrage | {count} Anfragen',
+      [
+        // whole-value sets match ({count} present) — but the singular dropped it
+        { locale: 'ga', value: 'Iarratas amháin | {count} iarratais' },
+        { locale: 'fr', value: '{count} demande | {count} demandes' },
+      ],
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toEqual([
+      {
+        locale: 'ga',
+        key: 'requests.count',
+        missing: ['{count}'],
+        extra: [],
+        kind: 'placeholder',
+      },
+    ])
+  })
+
+  it('rejects a translation with a different plural variant count', () => {
+    const result = validatePlaceholders(
+      'requests.count',
+      '{count} Anfrage | {count} Anfragen',
+      [{ locale: 'sk', value: '{count} žiadosť | {count} žiadosti | {count} žiadostí' }],
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.errors).toEqual([
+      {
+        locale: 'sk',
+        key: 'requests.count',
+        missing: [],
+        extra: [],
+        kind: 'plural-count',
+        sourceVariants: 2,
+        targetVariants: 3,
+      },
+    ])
+  })
+
+  it('does not treat a bare pipe without surrounding spaces as a plural separator', () => {
+    const result = validatePlaceholders(
+      'shortcuts.save',
+      'Drücke {key} für A|B-Modus',
+      [{ locale: 'en', value: 'Press {key} for A|B mode' }],
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.errors).toEqual([])
+  })
+
+  it('never applies plural splitting for the php-array format', () => {
+    // PHP has no pipe plural convention — a differing variant count must not
+    // trigger a plural-count error; only the whole-value set counts.
+    const result = validatePlaceholders(
+      'requests.count',
+      ':count Anfrage | :count Anfragen',
+      [{ locale: 'en', value: ':count request' }],
+      'php-array',
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.errors).toEqual([])
   })
 })
 

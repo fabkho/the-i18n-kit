@@ -35,6 +35,12 @@ export interface PlaceholderValidationIssue {
   key: string
   missing: string[]
   extra: string[]
+  /** What failed: placeholder set mismatch (default) or vue-i18n plural
+   *  variant-count mismatch. Optional for backwards compatibility. */
+  kind?: 'placeholder' | 'plural-count'
+  /** Present for kind 'plural-count': variant counts of source and target. */
+  sourceVariants?: number
+  targetVariants?: number
 }
 
 export interface PlaceholderValidationResult {
@@ -214,6 +220,7 @@ export type TranslateFailReason =
   | 'provider-error'
   | 'omitted-by-model'
   | 'placeholder-mismatch'
+  | 'plural-mismatch'
   | 'write-error'
 
 /** Why a key or locale was intentionally not attempted. */

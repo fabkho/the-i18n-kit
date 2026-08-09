@@ -268,7 +268,9 @@ export async function applyTranslations(
 
   const placeholderValidation = mergePlaceholderValidation(placeholderValidations)
   if (placeholderValidation && !placeholderValidation.ok) {
-    warnings.push(...placeholderValidation.errors.map(error => `${error.key} (${error.locale}): placeholder mismatch; missing: ${error.missing.join(', ') || '-'}; extra: ${error.extra.join(', ') || '-'}`))
+    warnings.push(...placeholderValidation.errors.map(error => error.kind === 'plural-count'
+      ? `${error.key} (${error.locale}): plural variant count mismatch; expected ${error.sourceVariants}, got ${error.targetVariants}`
+      : `${error.key} (${error.locale}): placeholder mismatch; missing: ${error.missing.join(', ') || '-'}; extra: ${error.extra.join(', ') || '-'}`))
   }
 
   const result: MutationResult = {
@@ -310,6 +312,29 @@ export function extractPlaceholders(value: string, format?: LocaleFileFormat): s
   return [...placeholders].sort()
 }
 
+/** vue-i18n plural variant separator: space-pipe-space. A bare `|` inside a
+ *  word (e.g. "A|B") is NOT a plural separator. */
+const PLURAL_SEPARATOR = ' | '
+
+/** Split a vue-i18n message into plural variants. Only meaningful for the
+ *  json/vue format — PHP-style messages have no pipe plurals. */
+function splitPluralVariants(value: string): string[] {
+  return value.split(PLURAL_SEPARATOR)
+}
+
+function diffPlaceholders(
+  sourcePlaceholders: string[],
+  targetValue: string,
+  format?: LocaleFileFormat,
+): { missing: string[], extra: string[] } {
+  const sourceSet = new Set(sourcePlaceholders)
+  const targetSet = new Set(extractPlaceholders(targetValue, format))
+  return {
+    missing: sourcePlaceholders.filter(placeholder => !targetSet.has(placeholder)),
+    extra: [...targetSet].filter(placeholder => !sourceSet.has(placeholder)).sort(),
+  }
+}
+
 export function validatePlaceholders(
   key: string,
   sourceValue: string,
@@ -317,15 +342,47 @@ export function validatePlaceholders(
   format?: LocaleFileFormat,
 ): PlaceholderValidationResult {
   const sourcePlaceholders = extractPlaceholders(sourceValue, format)
-  const sourceSet = new Set(sourcePlaceholders)
   const errors: PlaceholderValidationResult['errors'] = []
 
+  // Per-variant validation only applies to vue-i18n pipe plurals (json/vue
+  // format). PHP arrays have no pipe plural convention.
+  const sourceVariants = format === 'php-array' ? [sourceValue] : splitPluralVariants(sourceValue)
+  const isPlural = sourceVariants.length > 1
+
   for (const { locale, value } of values) {
-    const targetSet = new Set(extractPlaceholders(value, format))
-    const missing = sourcePlaceholders.filter(placeholder => !targetSet.has(placeholder))
-    const extra = [...targetSet].filter(placeholder => !sourceSet.has(placeholder)).sort()
-    if (missing.length || extra.length) {
-      errors.push({ locale, key, missing, extra })
+    if (isPlural) {
+      const targetVariants = splitPluralVariants(value)
+      if (targetVariants.length !== sourceVariants.length) {
+        errors.push({
+          locale,
+          key,
+          missing: [],
+          extra: [],
+          kind: 'plural-count',
+          sourceVariants: sourceVariants.length,
+          targetVariants: targetVariants.length,
+        })
+        continue
+      }
+      // Each variant's placeholder set must match its source counterpart —
+      // a whole-value set comparison lets a variant drop {count} while
+      // another keeps it.
+      const missing = new Set<string>()
+      const extra = new Set<string>()
+      for (const [index, sourceVariant] of sourceVariants.entries()) {
+        const variantPlaceholders = extractPlaceholders(sourceVariant, format)
+        const diff = diffPlaceholders(variantPlaceholders, targetVariants[index], format)
+        for (const placeholder of diff.missing) missing.add(placeholder)
+        for (const placeholder of diff.extra) extra.add(placeholder)
+      }
+      if (missing.size || extra.size) {
+        errors.push({ locale, key, missing: [...missing].sort(), extra: [...extra].sort(), kind: 'placeholder' })
+      }
+    } else {
+      const { missing, extra } = diffPlaceholders(sourcePlaceholders, value, format)
+      if (missing.length || extra.length) {
+        errors.push({ locale, key, missing, extra, kind: 'placeholder' })
+      }
     }
   }
 
@@ -334,6 +391,11 @@ export function validatePlaceholders(
     placeholders: sourcePlaceholders,
     errors,
   }
+}
+
+/** Map a validation issue to the translate fail reason it represents. */
+function failReasonForIssue(issue: PlaceholderValidationResult['errors'][number]): 'placeholder-mismatch' | 'plural-mismatch' {
+  return issue.kind === 'plural-count' ? 'plural-mismatch' : 'placeholder-mismatch'
 }
 
 function mergePlaceholderValidation(
@@ -1468,13 +1530,18 @@ export async function translateMissing(opts: {
       }))
 
       if (placeholderValidation && !placeholderValidation.ok) {
-        const invalidKeys = new Set(placeholderValidation.errors.map(error => error.key))
-        for (const key of invalidKeys) {
+        const reasonByKey = new Map<string, TranslateFailReason>()
+        for (const error of placeholderValidation.errors) {
+          if (!reasonByKey.has(error.key)) {
+            reasonByKey.set(error.key, failReasonForIssue(error))
+          }
+        }
+        for (const [key, reason] of reasonByKey) {
           delete allTranslations[key]
-          failed.push({ key, reason: 'placeholder-mismatch' })
+          failed.push({ key, reason })
         }
         for (const key of [...translated]) {
-          if (invalidKeys.has(key)) translated.splice(translated.indexOf(key), 1)
+          if (reasonByKey.has(key)) translated.splice(translated.indexOf(key), 1)
         }
       }
 
@@ -1757,7 +1824,7 @@ export async function translateKey(opts: {
     const validation = validatePlaceholders(opts.key, sourceValue, [{ locale: locale.code, value: targetValue }], config.localeFileFormat)
     placeholderValidations.push(validation)
     if (!validation.ok) {
-      failed.push({ locale: locale.code, reason: 'placeholder-mismatch' })
+      failed.push({ locale: locale.code, reason: failReasonForIssue(validation.errors[0]) })
       continue
     }
 
