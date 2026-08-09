@@ -95,6 +95,57 @@ describe('placeholder validation', () => {
   })
 })
 
+describe('translate_missing compact mode', () => {
+  it('keeps fallback contexts, message, reasons, and locale metadata in compact output', async () => {
+    const result = await translateMissing({
+      projectDir: appAdminDir,
+      layer: 'root',
+      referenceLocale: 'de-DE',
+      targetLocales: ['es-ES'],
+      keys: ['admin.users.list'],
+      compact: true,
+      // no samplingFn — the no-backend fallback path
+    })
+
+    // fallback contexts survive compaction, with the write-back guidance
+    expect(result.fallbackContexts).toHaveProperty('es')
+    expect(result.summary.message).toContain('write_translations')
+    expect(result.summary.samplingSupported).toBe(false)
+
+    // locale metadata as full triples
+    expect(result.summary.referenceLocale).toMatchObject({ code: 'de', language: 'de-DE', file: 'de-DE.json' })
+    expect(result.summary.targetLocales).toEqual([
+      expect.objectContaining({ code: 'es', language: 'es-ES', file: 'es-ES.json' }),
+    ])
+
+    // per-locale counts carry the reason
+    expect(result.summary.byLocale).toEqual([
+      expect.objectContaining({ locale: 'es', reason: 'sampling-unavailable' }),
+    ])
+
+    // compact drops only per-key detail
+    expect(result.results).toBeUndefined()
+  })
+
+  it('omits fallback contexts from compact output when nothing is missing', async () => {
+    const result = await translateMissing({
+      projectDir: appAdminDir,
+      layer: 'root',
+      referenceLocale: 'de-DE',
+      targetLocales: ['es-ES'],
+      keys: ['admin.dashboard.title'],
+      compact: true,
+    })
+
+    expect(result.fallbackContexts).toBeUndefined()
+    expect(result.summary.message).toBeUndefined()
+    expect(result.summary.totalTranslated).toBe(0)
+    expect(result.summary.byLocale).toEqual([
+      expect.objectContaining({ locale: 'es', reason: 'no-missing-keys' }),
+    ])
+  })
+})
+
 describe('translate_missing metadata', () => {
   it('returns locale metadata and per-locale reason', async () => {
     const result = await translateMissing({
