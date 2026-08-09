@@ -27,11 +27,6 @@
         "count": 1
       }
     },
-    "packages/cli/src/commands/_shared.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
     "packages/cli/src/commands/translate-key.ts": {
       "crap_moderate": {
         "count": 1
@@ -50,24 +45,57 @@
         "count": 1
       }
     },
-    "packages/cli/src/core/operations.ts": {
+    "packages/cli/src/core/ops-orphans.ts": {
       "complexity_critical": {
-        "count": 5
-      },
-      "complexity_high": {
-        "count": 8
+        "count": 1
       },
       "complexity_moderate": {
-        "count": 3
+        "count": 1
       },
       "crap_critical": {
-        "count": 4
-      },
-      "crap_high": {
         "count": 1
       },
       "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/core/ops-read.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_high": {
+        "count": 4
+      },
+      "complexity_moderate": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/core/ops-translate.ts": {
+      "complexity_critical": {
         "count": 2
+      },
+      "complexity_high": {
+        "count": 3
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/cli/src/core/ops-write.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "complexity_high": {
+        "count": 1
+      },
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
       }
     },
     "packages/cli/src/io/locale-data.ts": {
@@ -97,9 +125,13 @@
   },
   "runtime_coverage_findings": [],
   "target_keys": [
-    "packages/cli/src/core/operations.ts:complexity",
     "packages/cli/src/adapters/nuxt/index.ts:complexity",
+    "packages/cli/src/core/ops-orphans.ts:complexity",
+    "packages/cli/src/core/shared.ts:high impact",
     "packages/cli/src/io/locale-data.ts:complexity",
-    "packages/cli/src/scanner/code-scanner.ts:complexity"
+    "packages/cli/src/core/ops-translate.ts:complexity",
+    "packages/cli/src/scanner/code-scanner.ts:complexity",
+    "packages/cli/src/core/ops-write.ts:complexity",
+    "packages/cli/src/core/ops-read.ts:complexity"
   ]
 }
