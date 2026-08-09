@@ -1,6 +1,6 @@
 import { FileIOError } from '../utils/errors'
 import { toErrorMessage } from '../utils/errors'
-import { sortKeysDeep } from './key-operations'
+import { sortKeysDeep, orderKeysPreserving } from './key-operations'
 import { clearFileCacheEntry, readLocaleFileWithMeta } from './json-reader'
 import { atomicWrite } from './atomic-write'
 
@@ -63,11 +63,26 @@ export async function writeReportFile(
   }
 }
 
+/**
+ * Read, mutate, and write back a single JSON locale file while preserving its
+ * existing formatting:
+ *
+ * - Indentation and trailing newline are detected from the file on disk
+ *   (readLocaleFileWithMeta bypasses the mtime read cache by design — it needs
+ *   the raw content; the subsequent write clears the cache entry, so cached
+ *   readers stay consistent).
+ * - Existing keys keep their on-disk order; keys added by the mutation are
+ *   inserted in sorted position among their siblings.
+ */
 export async function mutateLocaleFile(
   filePath: string,
   mutate: (data: Record<string, unknown>) => void,
 ): Promise<void> {
   const { data, indent, trailingNewline } = await readLocaleFileWithMeta(filePath)
+  // Snapshot the on-disk key order before the mutation runs so existing keys
+  // keep their positions even if the mutation rebuilds objects.
+  const reference = structuredClone(data)
   mutate(data)
-  await writeLocaleFile(filePath, data, { indent, trailingNewline })
+  const ordered = orderKeysPreserving(data, reference)
+  await writeLocaleFile(filePath, ordered, { indent, trailingNewline, sortKeys: false })
 }

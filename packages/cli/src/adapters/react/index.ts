@@ -237,17 +237,22 @@ async function discoverLocales(localeDir: string): Promise<LocaleDefinition[]> {
     if (isLocaleSubdir(fullPath)) localeCodes.add(entry)
   }
 
-  if (localeCodes.size === 0) {
-    // Flat JSON layout: locales/en.json
-    for (const entry of entries) {
-      if (entry.endsWith('.json')) {
-        localeCodes.add(entry.replace(/\.json$/, ''))
-      }
-    }
+  if (localeCodes.size > 0) {
+    return [...localeCodes].sort().map(code => ({
+      code,
+      language: code,
+    }))
   }
 
-  return [...localeCodes].sort().map(code => ({
-    code,
-    language: code,
-  }))
+  // Flat JSON layout: locales/en.json — `file` is required here, otherwise
+  // resolveLocaleEntries cannot resolve flat entries and every read/write
+  // becomes a silent no-op (#194).
+  return entries
+    .filter(entry => entry.endsWith('.json'))
+    .sort()
+    .map(file => ({
+      code: file.replace(/\.json$/, ''),
+      language: file.replace(/\.json$/, ''),
+      file,
+    }))
 }

@@ -134,6 +134,44 @@ describe('mutateLocaleFile', () => {
     expect(content).not.toContain('\t')
   })
 
+  it('preserves existing key order and inserts new keys in sorted position', async () => {
+    const filePath = join(tempDir, 'test.json')
+    await writeFile(filePath, '{\n  "zebra": "z",\n  "apple": "a",\n  "mango": "m"\n}\n')
+
+    await mutateLocaleFile(filePath, (data) => {
+      data.banana = 'b'
+    })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(Object.keys(JSON.parse(content))).toEqual(['zebra', 'apple', 'banana', 'mango'])
+    expect(content).toContain('  "zebra"')
+    expect(content).not.toContain('\t')
+  })
+
+  it('does not re-sort existing nested keys', async () => {
+    const filePath = join(tempDir, 'test.json')
+    await writeFile(filePath, '{\n  "outer": {\n    "zebra": "z",\n    "apple": "a"\n  }\n}\n')
+
+    await mutateLocaleFile(filePath, (data) => {
+      ;((data.outer as Record<string, unknown>)).banana = 'b'
+    })
+
+    const parsed = JSON.parse(await readFile(filePath, 'utf-8'))
+    expect(Object.keys(parsed.outer)).toEqual(['zebra', 'apple', 'banana'])
+  })
+
+  it('preserves absence of trailing newline', async () => {
+    const filePath = join(tempDir, 'test.json')
+    await writeFile(filePath, '{\n  "a": 1\n}')
+
+    await mutateLocaleFile(filePath, (data) => {
+      data.b = 2
+    })
+
+    const content = await readFile(filePath, 'utf-8')
+    expect(content.endsWith('\n')).toBe(false)
+  })
+
   it('works with nested mutation via setNestedValue', async () => {
     const filePath = join(tempDir, 'test.json')
     await writeFile(filePath, '{\n\t"common": {\n\t\t"actions": {\n\t\t\t"save": "Save"\n\t\t}\n\t}\n}\n')
