@@ -1557,12 +1557,18 @@ export async function translateMissing(opts: {
   // detail, never the fallback contexts, reasons, or locale metadata that
   // change what the caller does next.
   if (opts.compact) {
-    const byLocale = Object.entries(results).map(([code, r]) => ({
-      locale: code,
-      translated: r.translated.length,
-      failed: r.failed.length,
-      ...(r.reason ? { reason: r.reason } : {}),
-    }))
+    const byLocale = Object.entries(results).map(([code, r]) => {
+      // Reduce per-key arrays to counts; drop per-key placeholder detail;
+      // keep every other per-locale field (samplingUsed, reason, batches,
+      // model, writeError, …).
+      const { translated, failed, placeholderValidation: _placeholderValidation, ...rest } = r
+      return {
+        locale: code,
+        translated: translated.length,
+        failed: failed.length,
+        ...rest,
+      }
+    })
     return {
       summary: { ...summary, byLocale },
       ...(hasFallbackContexts ? { fallbackContexts } : {}),

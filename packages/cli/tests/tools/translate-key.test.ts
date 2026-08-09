@@ -118,13 +118,33 @@ describe('translate_missing compact mode', () => {
       expect.objectContaining({ code: 'es', language: 'es-ES', file: 'es-ES.json' }),
     ])
 
-    // per-locale counts carry the reason
+    // per-locale entries keep all non-key metadata
     expect(result.summary.byLocale).toEqual([
-      expect.objectContaining({ locale: 'es', reason: 'sampling-unavailable' }),
+      expect.objectContaining({ locale: 'es', reason: 'sampling-unavailable', samplingUsed: false }),
     ])
+    expect(result.summary.layer).toBe('root')
+    expect(result.summary.dryRun).toBe(false)
 
     // compact drops only per-key detail
     expect(result.results).toBeUndefined()
+  })
+
+  it('reports dryRun in compact output', async () => {
+    const result = await translateMissing({
+      projectDir: appAdminDir,
+      layer: 'root',
+      referenceLocale: 'de-DE',
+      targetLocales: ['es-ES'],
+      keys: ['admin.users.list'],
+      compact: true,
+      dryRun: true,
+    })
+
+    expect(result.summary.dryRun).toBe(true)
+    expect(result.summary.byLocale).toEqual([
+      expect.objectContaining({ locale: 'es', translated: 1, reason: 'dry-run' }),
+    ])
+    expect(result.fallbackContexts).toBeUndefined()
   })
 
   it('omits fallback contexts from compact output when nothing is missing', async () => {
