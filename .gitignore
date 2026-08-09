@@ -24,3 +24,6 @@ PLAN.md
 AGENT_HANDOFF.md
 *-plan.md
 reddit-post-*.md
+
+# Claude Code agent worktrees and local state
+.claude/

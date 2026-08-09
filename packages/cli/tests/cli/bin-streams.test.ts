@@ -38,6 +38,15 @@ describe('bin stream routing', () => {
     expect(stdout).toContain('USAGE')
   })
 
+  it('translate-missing is an alias of translate', async () => {
+    const { stdout, code } = await runBin(['translate-missing', '--help'])
+    expect(code).toBe(0)
+    expect(stdout).toContain('translate-missing')
+    // same command definition: identical args surface
+    expect(stdout).toContain('--provider')
+    expect(stdout).toContain('--batchSize')
+  })
+
   it('--version prints the version on stdout', async () => {
     const { stdout, code } = await runBin(['--version'])
     expect(code).toBe(0)
