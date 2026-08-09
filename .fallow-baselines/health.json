@@ -32,6 +32,11 @@
         "count": 1
       }
     },
+    "packages/cli/src/commands/translate-key.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "packages/cli/src/commands/translate.ts": {
       "crap_high": {
         "count": 1
@@ -57,6 +62,9 @@
       },
       "crap_critical": {
         "count": 4
+      },
+      "crap_high": {
+        "count": 1
       },
       "crap_moderate": {
         "count": 2

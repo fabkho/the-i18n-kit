@@ -2,16 +2,16 @@
   "clone_groups": [
     "packages/cli/src/adapters/react/index.ts:45-60|packages/cli/src/adapters/vue/index.ts:48-63",
     "packages/cli/src/adapters/react/index.ts:76-111|packages/cli/src/adapters/vue/index.ts:80-112",
-    "packages/cli/src/core/operations.ts:236-245|packages/cli/src/core/operations.ts:249-258",
-    "packages/cli/src/core/operations.ts:661-676|packages/cli/src/core/operations.ts:708-729",
-    "packages/cli/src/core/operations.ts:1285-1291|packages/cli/src/core/operations.ts:807-814",
-    "packages/cli/src/core/operations.ts:815-834|packages/cli/src/core/operations.ts:913-935",
-    "packages/cli/src/core/operations.ts:1302-1311|packages/cli/src/core/operations.ts:816-828",
-    "packages/cli/src/core/operations.ts:1027-1036|packages/cli/src/core/operations.ts:942-951",
-    "packages/cli/src/core/operations.ts:1096-1106|packages/cli/src/core/operations.ts:1176-1186",
-    "packages/cli/src/core/operations.ts:1833-1846|packages/cli/src/core/operations.ts:2021-2028",
-    "packages/cli/src/core/operations.ts:1856-1869|packages/cli/src/core/operations.ts:2046-2058",
-    "packages/cli/src/core/operations.ts:2202-2208|packages/cli/src/core/operations.ts:2209-2215",
+    "packages/cli/src/core/operations.ts:240-249|packages/cli/src/core/operations.ts:253-262",
+    "packages/cli/src/core/operations.ts:665-680|packages/cli/src/core/operations.ts:712-733",
+    "packages/cli/src/core/operations.ts:1289-1295|packages/cli/src/core/operations.ts:811-818",
+    "packages/cli/src/core/operations.ts:819-838|packages/cli/src/core/operations.ts:917-939",
+    "packages/cli/src/core/operations.ts:1306-1315|packages/cli/src/core/operations.ts:820-832",
+    "packages/cli/src/core/operations.ts:1031-1040|packages/cli/src/core/operations.ts:946-955",
+    "packages/cli/src/core/operations.ts:1100-1110|packages/cli/src/core/operations.ts:1180-1190",
+    "packages/cli/src/core/operations.ts:1858-1871|packages/cli/src/core/operations.ts:2046-2053",
+    "packages/cli/src/core/operations.ts:1881-1894|packages/cli/src/core/operations.ts:2071-2083",
+    "packages/cli/src/core/operations.ts:2227-2233|packages/cli/src/core/operations.ts:2234-2240",
     "packages/cli/src/io/key-operations.ts:23-29|packages/cli/src/io/key-operations.ts:42-49",
     "packages/cli/src/io/locale-data.ts:229-243|packages/cli/src/io/locale-data.ts:252-266",
     "packages/cli/tests/adapters/generic-adapter.test.ts:52-65|packages/cli/tests/adapters/laravel-adapter.test.ts:53-66|packages/cli/tests/adapters/react-adapter.test.ts:51-64|packages/cli/tests/adapters/vue-adapter.test.ts:48-61",
@@ -73,7 +73,7 @@
     "packages/cli/tests/tools/remove-and-rename.test.ts:151-158|packages/cli/tests/tools/remove-and-rename.test.ts:74-81",
     "packages/cli/tests/tools/remove-and-rename.test.ts:126-131|packages/cli/tests/tools/remove-and-rename.test.ts:244-249",
     "packages/cli/tests/tools/remove-and-rename.test.ts:147-157|packages/cli/tests/tools/remove-and-rename.test.ts:175-186",
-    "packages/cli/tests/tools/translate-key.test.ts:113-122|packages/cli/tests/tools/translate-key.test.ts:178-184",
-    "packages/cli/tests/tools/translate-seam.test.ts:31-36|packages/mcp/tests/server.test.ts:27-32"
+    "packages/cli/tests/tools/translate-key.test.ts:117-126|packages/cli/tests/tools/translate-key.test.ts:183-189",
+    "packages/cli/tests/tools/translate-seam.test.ts:31-36|packages/mcp/tests/server.test.ts:26-31"
   ]
 }

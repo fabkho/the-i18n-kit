@@ -78,11 +78,13 @@ describe('translateMissing through the translate seam', () => {
 
     expect(result.summary.totalTranslated).toBe(8) // 4 keys × en + fr
     expect(result.summary.totalFailed).toBe(0)
+    expect(result.summary.mode).toBe('provider')
     expect(result.results.en).toMatchObject({
-      samplingUsed: true,
-      reason: 'translated-with-sampling',
+      mode: 'provider',
+      missing: 4,
       model: 'fake-model',
       failed: [],
+      skipped: [],
     })
     expect(result.results.en.translated).toHaveLength(4)
 
@@ -116,7 +118,7 @@ describe('translateMissing through the translate seam', () => {
         k === 'greeting' ? 'Hello {nom}' : `[t] ${v}`),
     })
 
-    expect(result.results.en.failed).toEqual(['greeting'])
+    expect(result.results.en.failed).toEqual([{ key: 'greeting', reason: 'placeholder-mismatch' }])
     expect(result.results.en.translated).toHaveLength(3)
     expect(result.results.en.placeholderValidation?.ok).toBe(false)
 
@@ -171,10 +173,9 @@ describe('translateMissing through the translate seam', () => {
     expect(await readLocale('en')).toEqual({})
   })
 
-  it('pins current accounting for keys omitted by the backend', async () => {
-    // The backend drops one key from its response. Today the omitted key is
-    // neither translated nor failed — #207 will move it to failed with
-    // reason 'omitted-by-model'. This test pins the current behavior.
+  it('accounts for keys omitted by the backend as failed', async () => {
+    // The backend drops one key from its response — it must land in failed
+    // with an explicit reason so totals always reconcile.
     const result = await translateMissing({
       projectDir,
       layer: 'root',
@@ -190,7 +191,8 @@ describe('translateMissing through the translate seam', () => {
     })
 
     expect(result.results.en.translated).toHaveLength(3)
-    expect(result.results.en.failed).toEqual([])
+    expect(result.results.en.failed).toEqual([{ key: 'greeting', reason: 'omitted-by-model' }])
+    expect(result.results.en.missing).toBe(4) // translated + failed reconcile
     expect((await readLocale('en')).greeting).toBeUndefined()
   })
 
@@ -217,11 +219,16 @@ describe('translateMissing through the translate seam', () => {
       // no translateFn
     })
 
-    expect(result.summary.samplingSupported).toBe(false)
+    expect(result.summary.mode).toBe('agent')
+    expect(result.summary.totalSkipped).toBe(4)
     expect(result.fallbackContexts?.en).toMatchObject({
       keysToTranslate: expect.objectContaining({ greeting: 'Hallo {name}' }),
     })
-    expect(result.results.en.reason).toBe('sampling-unavailable')
+    expect(result.results.en.mode).toBe('agent')
+    expect(result.results.en.skipped).toEqual(
+      expect.arrayContaining([{ key: 'greeting', reason: 'no-provider' }]),
+    )
+    expect(result.results.en.failed).toEqual([])
     expect(await readLocale('en')).toEqual({})
   })
 })

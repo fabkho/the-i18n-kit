@@ -116,8 +116,9 @@
       mkdir -p .i18n-reports
       the-i18n-cli translate $args | tee .i18n-reports/translate-output.json
 
-      # Tolerant parse: older CLI versions (< 1.5.4) mixed logs into stdout
-      TRANSLATED=$(jq -r '.summary.totalTranslated // 0' .i18n-reports/translate-output.json 2>/dev/null || echo "?")
+      # Tolerant parse: older CLI versions (< 1.5.4) mixed logs into stdout.
+      # Dry runs report their counts as totalWouldTranslate.
+      TRANSLATED=$(jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)' .i18n-reports/translate-output.json 2>/dev/null || echo "?")
       FAILED=$(jq -r '.summary.totalFailed // 0' .i18n-reports/translate-output.json 2>/dev/null || echo "?")
       echo "Translated: $TRANSLATED, failed: $FAILED"
       if [ "$FAILED" != "?" ] && [ "$FAILED" -gt 0 ] && [ "$TRANSLATED" = "0" ]; then

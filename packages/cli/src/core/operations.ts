@@ -34,6 +34,10 @@ import type {
   SearchMatch,
   TranslateFn,
   ProgressFn,
+  TranslateMode,
+  TranslateFailReason,
+  TranslateSkipReason,
+  TranslateKeyLocaleIssue,
   TranslateMissingLocaleResult,
   AddTranslationsResult,
   WriteTranslationsResult,
@@ -285,7 +289,7 @@ export async function applyTranslations(
   return result
 }
 
-// ─── Sampling prompt helpers ────────────────────────────────────
+// ─── Translation prompt helpers ─────────────────────────────────
 
 export function extractPlaceholders(value: string, format?: LocaleFileFormat): string[] {
   const placeholders = new Set<string>()
@@ -1308,7 +1312,7 @@ export async function translateMissing(opts: {
       })
     : config.locales.filter(l => l.code !== refLocale.code)
 
-  const samplingSupported = !!opts.translateFn
+  const mode: TranslateMode = isDryRun ? 'dry-run' : opts.translateFn ? 'provider' : 'agent'
   const reportProgress = opts.progressFn ?? (async () => {})
 
   /** Check whether a key is missing in a given locale data object */
@@ -1335,9 +1339,9 @@ export async function translateMissing(opts: {
       } catch {}
       preScanCounts.push(countMissingKeys(scanData))
     }
-    // In dry-run or no-sampling mode, only 2 steps per locale (start + complete),
-    // no batch steps. Full batching only when sampling is available and not dry-run.
-    const willBatch = !isDryRun && samplingSupported
+    // In dry-run or agent mode, only 2 steps per locale (start + complete),
+    // no batch steps. Full batching only in provider mode.
+    const willBatch = mode === 'provider'
     const total = willBatch
       ? computeProgressTotal(preScanCounts, maxBatch)
       : preScanCounts.filter(c => c > 0).length * 2
@@ -1369,7 +1373,7 @@ export async function translateMissing(opts: {
     }
 
     if (missingKeys.length === 0) {
-      return { result: { translated: [], failed: [], samplingUsed: false, reason: 'no-missing-keys' } }
+      return { result: { mode, missing: 0, translated: [], failed: [], skipped: [] } }
     }
 
     await reportProgress(`Starting ${target.code}: ${missingKeys.length} missing keys`)
@@ -1382,19 +1386,20 @@ export async function translateMissing(opts: {
         keysAndValues[key] = value
       }
     }
+    const missing = Object.keys(keysAndValues).length
 
     if (isDryRun) {
       await reportProgress(`Complete ${target.code} (dry run)`)
-      return { result: { translated: Object.keys(keysAndValues), failed: [], samplingUsed: samplingSupported, reason: 'dry-run' } }
+      return { result: { mode: 'dry-run', missing, translated: [], wouldTranslate: Object.keys(keysAndValues), failed: [], skipped: [] } }
     }
 
-    if (samplingSupported && opts.translateFn) {
+    if (opts.translateFn) {
       const translated: string[] = []
-      const failed: string[] = []
+      const failed: Array<{ key: string, reason: TranslateFailReason }> = []
       const keyEntries = Object.entries(keysAndValues)
       const allTranslations: Record<string, string> = {}
       const totalBatches = Math.ceil(keyEntries.length / maxBatch)
-      let samplingModel: string | undefined
+      let model: string | undefined
 
       for (let i = 0; i < keyEntries.length; i += maxBatch) {
         const batchNum = Math.floor(i / maxBatch) + 1
@@ -1415,16 +1420,16 @@ export async function translateMissing(opts: {
             await new Promise(r => setTimeout(r, delayMs))
           }
           try {
-            const samplingResult = await opts.translateFn({
+            const response = await opts.translateFn({
               systemPrompt,
               userMessage,
               maxTokens: computeMaxTokens(Object.keys(batch).length),
             })
 
-            samplingModel = samplingResult.model
-            log.info(`Sampling model: ${samplingResult.model}`)
+            model = response.model
+            log.info(`Translation model: ${response.model}`)
 
-            const parsed = extractJsonFromResponse(samplingResult.text)
+            const parsed = extractJsonFromResponse(response.text)
             const batchKeys = new Set(Object.keys(batch))
             batchTranslations = {} as Record<string, string>
             for (const [key, value] of Object.entries(parsed)) {
@@ -1436,24 +1441,23 @@ export async function translateMissing(opts: {
           } catch (_error) {
             const errMsg = _error instanceof Error ? _error.message : String(_error)
             if (attempt === 0) {
-              log.warn(`Sampling failed for batch ${batchNum} in ${target.code}: ${errMsg}. Retrying (attempt 2)`)
+              log.warn(`Translate request failed for batch ${batchNum} in ${target.code}: ${errMsg}. Retrying (attempt 2)`)
             } else {
-              log.warn(`Sampling retry failed for batch ${batchNum} in ${target.code}: ${errMsg}`)
+              log.warn(`Translate retry failed for batch ${batchNum} in ${target.code}: ${errMsg}`)
             }
           }
         }
 
-        const validTranslations = batchTranslations !== null
-          ? Object.entries(batchTranslations).filter(([, v]) => typeof v === 'string')
-          : []
-
-        if (validTranslations.length > 0) {
-          for (const [key, value] of validTranslations) {
+        // Account for every batch key: translated, omitted by the model,
+        // or lost to a failed batch — totals must always reconcile.
+        for (const key of Object.keys(batch)) {
+          const value = batchTranslations?.[key]
+          if (typeof value === 'string') {
             allTranslations[key] = value
             translated.push(key)
+          } else {
+            failed.push({ key, reason: batchTranslations === null ? 'provider-error' : 'omitted-by-model' })
           }
-        } else {
-          failed.push(...Object.keys(batch))
         }
 
         await reportProgress(`${target.code}: batch ${batchNum}/${totalBatches}`)
@@ -1467,7 +1471,7 @@ export async function translateMissing(opts: {
         const invalidKeys = new Set(placeholderValidation.errors.map(error => error.key))
         for (const key of invalidKeys) {
           delete allTranslations[key]
-          if (!failed.includes(key)) failed.push(key)
+          failed.push({ key, reason: 'placeholder-mismatch' })
         }
         for (const key of [...translated]) {
           if (invalidKeys.has(key)) translated.splice(translated.indexOf(key), 1)
@@ -1483,14 +1487,19 @@ export async function translateMissing(opts: {
           })
         } catch (error) {
           log.warn(`Failed to write translations for ${target.code}: ${toErrorMessage(error)}`)
-          return { result: { translated: [], failed: [...Object.keys(keysAndValues)], samplingUsed: true, reason: 'translated-with-sampling', batches: totalBatches, model: samplingModel, writeError: toErrorMessage(error) } }
+          // Only the keys that were about to be written failed on write;
+          // earlier failures keep their own reasons.
+          for (const key of translated) {
+            failed.push({ key, reason: 'write-error' })
+          }
+          return { result: { mode: 'provider', missing, translated: [], failed, skipped: [], batches: totalBatches, model, writeError: toErrorMessage(error) } }
         }
       }
 
       await reportProgress(`Complete ${target.code}`)
-      return { result: { translated, failed, samplingUsed: true, reason: 'translated-with-sampling', batches: totalBatches, model: samplingModel, ...(placeholderValidation ? { placeholderValidation } : {}) } }
+      return { result: { mode: 'provider', missing, translated, failed, skipped: [], batches: totalBatches, model, ...(placeholderValidation ? { placeholderValidation } : {}) } }
     } else {
-      // Fallback: return context for agent to translate inline
+      // Agent mode: return context for the host agent to translate inline
       const fallbackContext = buildFallbackContext(
         config.projectConfig,
         refLocale!.language || refLocale!.code,
@@ -1498,7 +1507,16 @@ export async function translateMissing(opts: {
         keysAndValues,
       )
       await reportProgress(`Complete ${target.code}`)
-      return { result: { translated: [], failed: Object.keys(keysAndValues), samplingUsed: false, reason: 'sampling-unavailable' }, fallbackContext }
+      return {
+        result: {
+          mode: 'agent',
+          missing,
+          translated: [],
+          failed: [],
+          skipped: Object.keys(keysAndValues).map(key => ({ key, reason: 'no-provider' as const })),
+        },
+        fallbackContext,
+      }
     }
   }
 
@@ -1517,11 +1535,15 @@ export async function translateMissing(opts: {
 
   const totalTranslated = Object.values(results).reduce((sum, r) => sum + r.translated.length, 0)
   const totalFailed = Object.values(results).reduce((sum, r) => sum + r.failed.length, 0)
+  const totalSkipped = Object.values(results).reduce((sum, r) => sum + r.skipped.length, 0)
+  const totalWouldTranslate = Object.values(results).reduce((sum, r) => sum + (r.wouldTranslate?.length ?? 0), 0)
 
   const summary: Record<string, unknown> = {
-    samplingSupported,
+    mode,
     totalTranslated,
     totalFailed,
+    totalSkipped,
+    ...(isDryRun ? { totalWouldTranslate } : {}),
     layer,
     referenceLocale: localeRefInfo(refLocale),
     targetLocales: targets.map(localeRefInfo),
@@ -1529,9 +1551,6 @@ export async function translateMissing(opts: {
   }
 
   const hasFallbackContexts = Object.keys(fallbackContexts).length > 0
-  if (hasFallbackContexts) {
-    summary.message = 'Sampling not supported by this host. Use the fallbackContexts to translate inline, then call write_translations (mode: "upsert") to write the results.'
-  }
 
   // Compact is a projection of the full result: it may only drop per-key
   // detail, never the fallback contexts, reasons, or locale metadata that
@@ -1539,13 +1558,15 @@ export async function translateMissing(opts: {
   if (opts.compact) {
     const byLocale = Object.entries(results).map(([code, r]) => {
       // Reduce per-key arrays to counts; drop per-key placeholder detail;
-      // keep every other per-locale field (samplingUsed, reason, batches,
-      // model, writeError, …).
-      const { translated, failed, placeholderValidation: _placeholderValidation, ...rest } = r
+      // keep every other per-locale field (mode, missing, batches, model,
+      // writeError, …).
+      const { translated, failed, skipped, wouldTranslate, placeholderValidation: _placeholderValidation, ...rest } = r
       return {
         locale: code,
         translated: translated.length,
         failed: failed.length,
+        skipped: skipped.length,
+        ...(wouldTranslate ? { wouldTranslate: wouldTranslate.length } : {}),
         ...rest,
       }
     })
@@ -1618,22 +1639,22 @@ export async function translateKey(opts: {
   }
 
   const existingTargets: Array<{ locale: LocaleDefinition, existingValue: unknown }> = []
-  const failed: Array<string | { locale: string, error: string }> = []
+  const failed: TranslateKeyLocaleIssue[] = []
   for (const locale of targetLocales) {
     try {
       const data = await readLocaleData(config, opts.layer, locale)
       existingTargets.push({ locale, existingValue: getNestedValue(data, opts.key) })
     } catch (error) {
-      failed.push({ locale: locale.code, error: toErrorMessage(error) })
+      failed.push({ locale: locale.code, reason: 'read-error', detail: toErrorMessage(error) })
     }
   }
 
   const targetsToTranslate = existingTargets.filter(({ existingValue }) => {
     return overwrite || existingValue === undefined || existingValue === '' || existingValue === null
   })
-  const skipped = existingTargets
+  const skipped: Array<{ locale: string, reason: TranslateSkipReason }> = existingTargets
     .filter(({ existingValue }) => !overwrite && existingValue !== undefined && existingValue !== '' && existingValue !== null)
-    .map(({ locale }) => locale.code)
+    .map(({ locale }) => ({ locale: locale.code, reason: 'already-translated' as const }))
 
   const basePlaceholderValidation = validatePlaceholders(opts.key, sourceValue, [{ locale: sourceLocale.code, value: sourceValue }], config.localeFileFormat)
 
@@ -1642,13 +1663,13 @@ export async function translateKey(opts: {
       key: opts.key,
       sourceLocale: localeRefInfo(sourceLocale),
       updatedSource,
-      translated: targetsToTranslate.map(({ locale }) => locale.code),
+      mode: 'dry-run',
+      translated: [],
+      wouldTranslate: targetsToTranslate.map(({ locale }) => locale.code),
       skipped,
       failed,
       filesWritten: 0,
       dryRun: true,
-      samplingUsed: !!opts.translateFn,
-      reason: 'dry-run',
       placeholderValidation: basePlaceholderValidation,
       ...(opts.includePreview ? { preview } : {}),
     }
@@ -1659,29 +1680,32 @@ export async function translateKey(opts: {
       key: opts.key,
       sourceLocale: localeRefInfo(sourceLocale),
       updatedSource,
+      mode: opts.translateFn ? 'provider' : 'agent',
       translated: [],
       skipped,
       failed,
       filesWritten,
       dryRun: false,
-      samplingUsed: false,
       placeholderValidation: basePlaceholderValidation,
       ...(opts.includePreview ? { preview } : {}),
     }
   }
 
   if (!opts.translateFn) {
+    // Agent mode: nothing was attempted — targets are skipped, not failed.
     return {
       key: opts.key,
       sourceLocale: localeRefInfo(sourceLocale),
       updatedSource,
+      mode: 'agent',
       translated: [],
-      skipped,
-      failed: [...failed, ...targetsToTranslate.map(({ locale }) => locale.code)],
+      skipped: [
+        ...skipped,
+        ...targetsToTranslate.map(({ locale }) => ({ locale: locale.code, reason: 'no-provider' as const })),
+      ],
+      failed,
       filesWritten,
       dryRun: false,
-      samplingUsed: false,
-      reason: 'sampling-unavailable',
       placeholderValidation: basePlaceholderValidation,
       fallbackContext: buildFallbackContext(
         config.projectConfig,
@@ -1695,10 +1719,11 @@ export async function translateKey(opts: {
 
   const translated: string[] = []
   const placeholderValidations: PlaceholderValidationResult[] = [basePlaceholderValidation]
-  let samplingModel: string | undefined
+  let model: string | undefined
 
   for (const { locale } of targetsToTranslate) {
     let targetValue: string | undefined
+    let requestFailed = false
     const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, locale.language || locale.code, config.localeFileFormat)
     const userMessage = buildTranslationUserMessage(
       sourceLocale.language || sourceLocale.code,
@@ -1708,30 +1733,31 @@ export async function translateKey(opts: {
     )
 
     try {
-      const samplingResult = await opts.translateFn({
+      const response = await opts.translateFn({
         systemPrompt,
         userMessage,
         maxTokens: computeMaxTokens(1),
       })
-      samplingModel = samplingResult.model
-      const parsed = extractJsonFromResponse(samplingResult.text)
+      model = response.model
+      const parsed = extractJsonFromResponse(response.text)
       const parsedValue = parsed[opts.key]
       if (typeof parsedValue === 'string') {
         targetValue = parsedValue
       }
     } catch (error) {
-      log.warn(`Sampling failed for ${locale.code}: ${toErrorMessage(error)}`)
+      requestFailed = true
+      log.warn(`Translate request failed for ${locale.code}: ${toErrorMessage(error)}`)
     }
 
     if (!targetValue) {
-      failed.push(locale.code)
+      failed.push({ locale: locale.code, reason: requestFailed ? 'provider-error' : 'omitted-by-model' })
       continue
     }
 
     const validation = validatePlaceholders(opts.key, sourceValue, [{ locale: locale.code, value: targetValue }], config.localeFileFormat)
     placeholderValidations.push(validation)
     if (!validation.ok) {
-      failed.push(locale.code)
+      failed.push({ locale: locale.code, reason: 'placeholder-mismatch' })
       continue
     }
 
@@ -1743,7 +1769,7 @@ export async function translateKey(opts: {
       filesWritten += written.size
       translated.push(locale.code)
     } catch (error) {
-      failed.push({ locale: locale.code, error: toErrorMessage(error) })
+      failed.push({ locale: locale.code, reason: 'write-error', detail: toErrorMessage(error) })
     }
   }
 
@@ -1751,14 +1777,13 @@ export async function translateKey(opts: {
     key: opts.key,
     sourceLocale: localeRefInfo(sourceLocale),
     updatedSource,
+    mode: 'provider',
     translated,
     skipped,
     failed,
     filesWritten,
     dryRun: false,
-    samplingUsed: true,
-    reason: 'translated-with-sampling',
-    model: samplingModel,
+    model,
     placeholderValidation: mergePlaceholderValidation(placeholderValidations) ?? basePlaceholderValidation,
     ...(opts.includePreview ? { preview } : {}),
   }

@@ -531,6 +531,13 @@ export function createServer(): McpServer {
           onProgressTotal: (total) => { progressTotal = total },
         })
 
+        // MCP-owned guidance for agent mode
+        if (result.fallbackContexts && result.summary) {
+          (result.summary as Record<string, unknown>).message
+            = 'No translation backend available. Use the fallbackContexts to translate inline, '
+            + 'then call write_translations (mode: "upsert") to write the results.'
+        }
+
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('translating missing keys', error)
@@ -604,6 +611,12 @@ export function createServer(): McpServer {
           projectDir,
           translateFn,
         })
+
+        // MCP-owned guidance for agent mode
+        if (result.fallbackContext) {
+          result.message = 'No translation backend available. Use the fallbackContext to translate inline, '
+            + 'then call write_translations (mode: "upsert") to write the results.'
+        }
 
         return jsonContent(result)
       } catch (error) {

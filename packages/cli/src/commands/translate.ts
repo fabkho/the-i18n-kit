@@ -13,7 +13,7 @@ export default createCommand({
     targets: { type: 'string', description: 'Comma-separated target locales (default: all except ref)' },
     keys: { type: 'string', description: 'Comma-separated keys to translate (default: all missing)' },
     batchSize: { type: 'string', description: 'Batch size (default: 50)' },
-    provider: { type: 'string' as const, description: 'LLM provider: "openai", "anthropic", or "google". Without this, only returns fallback contexts.', valueHint: 'openai|anthropic|google' },
+    provider: { type: 'string' as const, description: 'LLM provider: "openai", "anthropic", or "google". Required for automatic translation.', valueHint: 'openai|anthropic|google' },
     model: { type: 'string' as const, description: 'Model name (required when --provider is set)' },
     apiKey: { type: 'string' as const, description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env).' },
     dryRun: { type: 'boolean', description: 'Preview what would be translated', default: false },
@@ -40,7 +40,7 @@ export default createCommand({
       })
     }
 
-    return translateMissing({
+    const result = await translateMissing({
       layer: args.layer,
       referenceLocale: args.ref,
       targetLocales: splitList(args.targets),
@@ -50,5 +50,14 @@ export default createCommand({
       projectDir: args.projectDir,
       translateFn,
     })
+
+    // CLI-owned guidance: agent mode here just means no provider was given
+    const summary = result.summary as Record<string, unknown> | undefined
+    if (summary?.mode === 'agent') {
+      summary.message = 'No provider configured — nothing was translated. Pass --provider and --model '
+        + '(API key via --apiKey or the OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env vars) '
+        + 'to translate automatically.'
+    }
+    return result
   },
 })
