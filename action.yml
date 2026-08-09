@@ -145,7 +145,8 @@ runs:
         output=$(the-i18n-cli translate "${args[@]}")
         echo "$output"
 
-        count=$(echo "$output" | jq -r '.summary.totalTranslated // 0')
+        # Dry runs report their counts as totalWouldTranslate
+        count=$(echo "$output" | jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)')
         failed=$(echo "$output" | jq -r '.summary.totalFailed // 0')
         echo "translated_count=$count" >> "$GITHUB_OUTPUT"
         echo "failed_count=$failed" >> "$GITHUB_OUTPUT"
