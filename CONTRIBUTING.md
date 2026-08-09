@@ -12,7 +12,7 @@ The monorepo uses pnpm workspaces with two packages:
 | Package | Description |
 |---------|-------------|
 | `packages/cli` (`the-i18n-cli`) | CLI tool for i18n management — JSON/PHP locale files, code scanning, LLM translation, config detection |
-| `packages/mcp` (`the-i18n-mcp`) | MCP server wrapping the CLI as 12 tools for AI agents |
+| `packages/mcp` (`the-i18n-mcp`) | MCP server wrapping the CLI as 13 tools for AI agents |
 
 ## Development
 
@@ -36,7 +36,7 @@ pnpm --filter the-i18n-cli test    # run CLI tests only
 
 ```
 adapters/     # Framework detection (Nuxt, Laravel, Vue, React, Generic)
-commands/     # 14 CLI subcommands, one file each — use createCommand() factory from _shared.ts
+commands/     # CLI subcommands, one file each — use createCommand() factory from _shared.ts
 config/       # Project config loading, Nuxt app discovery, locale override
 core/         # operations.ts — all i18n operations as pure async functions. types.ts — result shapes.
 io/           # Locale file reading/writing (JSON + PHP), atomicWrite, readCache, key-operations
@@ -49,7 +49,7 @@ utils/        # errors.ts (custom error classes + toErrorMessage), logger.ts (co
 ### MCP (`packages/mcp/src/`)
 
 ```
-server.ts     # MCP server with 12 tool registrations, zod input schemas, createMcpSamplingFn factory
+server.ts     # MCP server with 13 tool registrations, zod input schemas, translation backend resolution (provider vs agent mode)
 index.ts      # Entry point — creates server + stdio transport
 ```
 
@@ -57,7 +57,7 @@ index.ts      # Entry point — creates server + stdio transport
 
 1. CLI commands call operations in `core/operations.ts`
 2. Operations detect config via adapters → load project config → read/write locale files via `io/`
-3. MCP server registers tools that call the same operations, with MCP-specific sampling/progress integration
+3. MCP server registers tools that call the same operations, with MCP-specific progress notification integration
 
 ## Testing
 
