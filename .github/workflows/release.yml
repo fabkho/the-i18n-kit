@@ -5,13 +5,6 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      force_publish:
-        description: 'Force publish any package whose package.json version is ahead of npm'
-        required: false
-        default: 'true'
-        type: choice
-        options: ['true', 'false']
 
 permissions:
   contents: write
