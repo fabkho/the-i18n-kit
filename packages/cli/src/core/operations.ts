@@ -66,3 +66,11 @@ export {
   scanCodeUsage,
   removeOrphanKeys,
 } from './ops-orphans.js'
+
+export { findDuplicateKeys } from './ops-duplicates.js'
+
+export type {
+  DuplicateKeyCollision,
+  FindDuplicateKeysResult,
+  FindDuplicateKeysSummary,
+} from './ops-duplicates.js'

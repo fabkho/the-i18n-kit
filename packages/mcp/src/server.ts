@@ -23,6 +23,7 @@ import {
   translateKey,
   findOrphanKeys,
   removeOrphanKeys,
+  findDuplicateKeys,
   scaffoldLocaleFiles,
   listNamespaces,
   findLocaleImpl,
@@ -728,6 +729,43 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('finding orphan keys', error)
+      }
+    },
+  )
+
+  // ─── Tool: find_duplicate_keys ────────────────────────────────
+
+  server.registerTool(
+    'find_duplicate_keys',
+    {
+      title: 'Find Duplicate Translation Keys Across Layers',
+      description:
+        'Find translation keys defined in BOTH a shared layer and an app layer that consumes it '
+        + '(e.g. the same key in a monorepo root layer and in app-shop). At runtime the app layer\'s '
+        + 'value shadows the shared one — collisions with divergent values are the dangerous case, '
+        + 'because the shared value silently never shows. Compares one reference locale and reports '
+        + 'each collision with both values and a divergent flag. Fix by deleting one side, never by moving.',
+      inputSchema: {
+        locale: z
+          .string()
+          .optional()
+          .describe('Locale code to compare values in (e.g., "de", "en-US"). Defaults to the project default locale.'),
+        projectDir: z
+          .string()
+          .optional()
+          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+        outputFile: z
+          .string()
+          .optional()
+          .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/duplicate-keys.json"'),
+      },
+    },
+    async ({ locale, projectDir, outputFile }) => {
+      try {
+        const result = await findDuplicateKeys({ locale, projectDir, outputFile })
+        return jsonContent(result)
+      } catch (error) {
+        return toolErrorResponse('finding duplicate keys', error)
       }
     },
   )
