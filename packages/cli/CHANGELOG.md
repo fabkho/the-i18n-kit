@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.7...the-i18n-cli-2.0.0) (2026-08-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** programmatic API renames — createSamplingFn is now createTranslateFn; translate operations take translateFn instead of samplingFn; Sampling* types are Translate* types. CLI commands and MCP tool surfaces are unaffected.
+
+### Features
+
+* **mcp:** align with MCP 2026-07-28 direction — SDK 1.30, stateless resources ([#217](https://github.com/fabkho/the-i18n-kit/issues/217)) ([fcfa34c](https://github.com/fabkho/the-i18n-kit/commit/fcfa34c8040f16093df9fab501139513bfd67def))
+
+
+### Code Refactoring
+
+* **cli:** rename translate seam SamplingFn → TranslateFn, drop model preferences ([#216](https://github.com/fabkho/the-i18n-kit/issues/216)) ([3355298](https://github.com/fabkho/the-i18n-kit/commit/3355298da6065192e7bcb68ef96ec9a648e41c74))
+
 ## [1.5.7](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.6...the-i18n-cli-1.5.7) (2026-08-09)
 
 
