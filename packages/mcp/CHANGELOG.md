@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-6.0.0...the-i18n-mcp-6.1.0) (2026-08-09)
+
+
+### Features
+
+* **cli:** protectedLocales — human-maintained locales excluded from auto-translation ([#226](https://github.com/fabkho/the-i18n-kit/issues/226)) ([8a9152e](https://github.com/fabkho/the-i18n-kit/commit/8a9152e8b71c911eaae842c563e2672126fa7e47)), closes [#211](https://github.com/fabkho/the-i18n-kit/issues/211)
+
 ## [6.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-5.0.0...the-i18n-mcp-6.0.0) (2026-08-09)
 
 
