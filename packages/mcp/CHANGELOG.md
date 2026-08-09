@@ -1,5 +1,16 @@
 # Changelog
 
+## [6.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-5.0.0...the-i18n-mcp-6.0.0) (2026-08-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** MCP sampling support is removed. Hosts that offered sampling no longer get translation through it — configure provider mode via I18N_PROVIDER, I18N_MODEL, and the provider API key env on the server process, or use agent mode (fallbackContexts + write_translations).
+
+### Features
+
+* **mcp:** env-configured provider mode, MCP sampling removed ([#222](https://github.com/fabkho/the-i18n-kit/issues/222)) ([9bb74d2](https://github.com/fabkho/the-i18n-kit/commit/9bb74d2b3202e90a76b8c6ad4bd83a16a11cfbf2))
+
 ## [5.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-4.0.0...the-i18n-mcp-5.0.0) (2026-08-09)
 
 

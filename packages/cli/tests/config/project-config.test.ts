@@ -311,6 +311,43 @@ describe('loadProjectConfig', () => {
     }
   })
 
+  it('accepts protectedLocales as an array of locale refs', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({
+        protectedLocales: ['en-US', 'en-GB', 'de-DE-formal.json'],
+      }), 'utf-8')
+      const config = await loadProjectConfig(tmpDir)
+      expect(config).not.toBeNull()
+      expect(config!.protectedLocales).toEqual(['en-US', 'en-GB', 'de-DE-formal.json'])
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
+  it('throws when protectedLocales is not an array', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({ protectedLocales: 'en-US' }), 'utf-8')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/protectedLocales/)
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
+  it('throws when protectedLocales contains empty or whitespace-only entries', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({ protectedLocales: ['en-US', '  '] }), 'utf-8')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/protectedLocales/)
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
   it('throws when reportOutput is whitespace-only', async () => {
     await mkdir(tmpDir, { recursive: true })
     const configPath = resolve(tmpDir, '.i18n-mcp.json')

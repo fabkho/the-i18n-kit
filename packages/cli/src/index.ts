@@ -23,6 +23,7 @@ export {
   scaffoldLocaleFiles,
   listNamespaces,
   findLocaleImpl,
+  resolveProtectedLocales,
 } from './core/operations.js'
 
 // Core types

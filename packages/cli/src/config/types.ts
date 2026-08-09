@@ -73,6 +73,14 @@ export interface ProjectConfig {
   defaultLocale?: string
   /** Explicit list of locale codes. If set, overrides framework auto-detection (all adapters). Auto-discovered when absent. */
   locales?: string[]
+  /**
+   * Human-maintained locales excluded from automatic translation.
+   * Entries may be any locale ref (code, language tag, or file name);
+   * entries that do not match a known locale are ignored with a warning.
+   * Explicitly naming a protected locale in targetLocales overrides the
+   * protection (with a warning).
+   */
+  protectedLocales?: string[]
   /** Override the auto-detected locale file format. E.g., "json" or "php-array". Useful when both formats exist or auto-detection picks wrong. */
   localeFileFormat?: LocaleFileFormat
 }
