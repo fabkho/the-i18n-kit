@@ -18,7 +18,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 let projectDir: string
 let client: Client
 
-async function makeProject(): Promise<string> {
+async function makeProject(extraConfig: Record<string, unknown> = {}): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'i18n-mcp-test-'))
   const localesDir = join(dir, 'i18n', 'locales')
   await mkdir(localesDir, { recursive: true })
@@ -26,6 +26,7 @@ async function makeProject(): Promise<string> {
     localeDirs: [{ path: 'i18n/locales', layer: 'root' }],
     defaultLocale: 'de',
     locales: ['de', 'en'],
+    ...extraConfig,
   }))
   await writeFile(join(localesDir, 'de.json'), JSON.stringify({
     greeting: 'Hallo {name}',
@@ -135,6 +136,22 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.translationMode).toBe('agent')
     expect(json?.translationProvider).toBeUndefined()
     expect(json?.translationModel).toBeUndefined()
+    expect(json?.protectedLocales).toEqual([])
+  })
+
+  it('discover surfaces protectedLocales resolved to canonical codes', async () => {
+    // Refs may use any accepted form (here a file name and an unknown entry);
+    // discover resolves them to canonical codes and drops unknown entries.
+    const dir = await makeProject({ protectedLocales: ['en.json', 'xx-nope'] })
+    try {
+      const { json } = await callTool('discover', { projectDir: dir })
+
+      expect(json?.protectedLocales).toEqual(['en'])
+      // The raw config refs remain visible under projectConfig.
+      expect(json?.projectConfig?.protectedLocales).toEqual(['en.json', 'xx-nope'])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   it('translate_missing without a translation backend returns fallback contexts', async () => {

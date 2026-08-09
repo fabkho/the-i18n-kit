@@ -169,6 +169,127 @@ export function findLocaleImpl(config: I18nConfig, localeRef: string) {
   )
 }
 
+/**
+ * Resolve the config's `protectedLocales` entries (any locale ref: code,
+ * language tag, or file name) against the known locales. Entries that do not
+ * match a known locale are ignored with a warning. Returns the resolved
+ * definitions, deduplicated by canonical code.
+ */
+export function resolveProtectedLocales(config: I18nConfig): LocaleDefinition[] {
+  const refs = config.projectConfig?.protectedLocales ?? []
+  const resolved = new Map<string, LocaleDefinition>()
+  for (const ref of refs) {
+    const locale = findLocaleImpl(config, ref)
+    if (!locale) {
+      log.warn(
+        `protectedLocales entry "${ref}" does not match any known locale — ignoring. `
+        + `Available: ${config.locales.map(l => l.code).join(', ')}`,
+      )
+      continue
+    }
+    if (!resolved.has(locale.code)) {
+      resolved.set(locale.code, locale)
+    }
+  }
+  return [...resolved.values()]
+}
+
+function warnProtectedOverride(code: string): void {
+  log.warn(`Locale "${code}" is protected (protectedLocales) — translating anyway because it was explicitly requested via targetLocales.`)
+}
+
+/**
+ * Resolve translate_missing target locales. Protected locales are excluded
+ * from the DEFAULT target set (returned separately so the caller can report
+ * them as skipped); naming one explicitly in targetLocales overrides the
+ * protection with a warning.
+ */
+function resolveTranslateTargets(
+  config: I18nConfig,
+  refLocale: LocaleDefinition,
+  requested: string[] | undefined,
+): { targets: LocaleDefinition[], protectedDefaults: LocaleDefinition[] } {
+  const protectedCodes = new Set(resolveProtectedLocales(config).map(l => l.code))
+  if (requested) {
+    const targets = requested.map((code) => {
+      const loc = findLocaleImpl(config, code)
+      if (!loc) {
+        throw new ToolError(`Target locale not found: "${code}". Available: ${config.locales.map(l => l.code).join(', ')}. Pass valid locale codes in targetLocales.`, 'LOCALE_NOT_FOUND')
+      }
+      if (protectedCodes.has(loc.code)) {
+        warnProtectedOverride(loc.code)
+      }
+      return loc
+    })
+    return { targets, protectedDefaults: [] }
+  }
+  const defaults = config.locales.filter(l => l.code !== refLocale.code)
+  return {
+    targets: defaults.filter(l => !protectedCodes.has(l.code)),
+    protectedDefaults: defaults.filter(l => protectedCodes.has(l.code)),
+  }
+}
+
+/**
+ * Build result entries for protected locales withheld from the default
+ * target set of translate_missing — callers see what was NOT translated
+ * and the totals stay meaningful.
+ */
+async function collectProtectedLocaleResults(
+  config: I18nConfig,
+  layer: string,
+  mode: TranslateMode,
+  protectedDefaults: LocaleDefinition[],
+  missingKeysIn: (data: Record<string, unknown>) => string[],
+): Promise<Record<string, TranslateMissingLocaleResult>> {
+  const results: Record<string, TranslateMissingLocaleResult> = {}
+  for (const locale of protectedDefaults) {
+    let data: Record<string, unknown> = {}
+    try {
+      data = await readLocaleData(config, layer, locale)
+    } catch {}
+    const missingKeys = missingKeysIn(data)
+    if (missingKeys.length === 0) continue
+    results[locale.code] = {
+      mode,
+      missing: missingKeys.length,
+      translated: [],
+      failed: [],
+      skipped: missingKeys.map(key => ({ key, reason: 'protected-locale' as const })),
+    }
+  }
+  return results
+}
+
+/**
+ * Build the translate_key target list (deduplicated, source locale removed).
+ * Protected locales are excluded from the default 'all' target set and
+ * returned as skipped entries; naming one explicitly overrides the
+ * protection with a warning.
+ */
+function partitionTranslateKeyTargets(
+  config: I18nConfig,
+  resolved: LocaleDefinition[],
+  sourceCode: string,
+  usesDefaultTargets: boolean,
+): { targetLocales: LocaleDefinition[], protectedSkipped: Array<{ locale: string, reason: TranslateSkipReason }> } {
+  const protectedCodes = new Set(resolveProtectedLocales(config).map(l => l.code))
+  const byCode = new Map<string, LocaleDefinition>()
+  const protectedSkipped: Array<{ locale: string, reason: TranslateSkipReason }> = []
+  for (const locale of resolved) {
+    if (locale.code === sourceCode || byCode.has(locale.code)) continue
+    if (protectedCodes.has(locale.code)) {
+      if (usesDefaultTargets) {
+        protectedSkipped.push({ locale: locale.code, reason: 'protected-locale' })
+        continue
+      }
+      warnProtectedOverride(locale.code)
+    }
+    byCode.set(locale.code, locale)
+  }
+  return { targetLocales: [...byCode.values()], protectedSkipped }
+}
+
 export function findLocaleOrThrow(config: I18nConfig, localeRef: string): LocaleDefinition {
   const locale = findLocaleImpl(config, localeRef)
   if (!locale) {
@@ -1364,15 +1485,7 @@ export async function translateMissing(opts: {
   })
 
   const resolvedTargetLocales = opts.targetLocales ?? opts.locales
-  const targets = resolvedTargetLocales
-    ? resolvedTargetLocales.map((code) => {
-        const loc = findLocaleImpl(config, code)
-        if (!loc) {
-          throw new ToolError(`Target locale not found: "${code}". Available: ${config.locales.map(l => l.code).join(', ')}. Pass valid locale codes in targetLocales.`, 'LOCALE_NOT_FOUND')
-        }
-        return loc
-      })
-    : config.locales.filter(l => l.code !== refLocale.code)
+  const { targets, protectedDefaults } = resolveTranslateTargets(config, refLocale, resolvedTargetLocales)
 
   const mode: TranslateMode = isDryRun ? 'dry-run' : opts.translateFn ? 'provider' : 'agent'
   const reportProgress = opts.progressFn ?? (async () => {})
@@ -1383,12 +1496,12 @@ export async function translateMissing(opts: {
     return v === undefined || v === '' || v === null
   }
 
-  /** Count missing keys for a target locale's data */
-  function countMissingKeys(data: Record<string, unknown>): number {
+  /** The keys missing in a target locale's data (scoped to opts.keys when given). */
+  function missingKeysIn(data: Record<string, unknown>): string[] {
     const isMissing = (k: string) => isKeyMissingIn(data, k)
     return opts.keys
-      ? opts.keys.filter(k => isMissing(k) && allRefKeys.includes(k)).length
-      : allRefKeys.filter(k => isMissing(k)).length
+      ? opts.keys.filter(k => isMissing(k) && allRefKeys.includes(k))
+      : allRefKeys.filter(k => isMissing(k))
   }
 
   // Pre-scan: count missing keys per target to compute progressTotal
@@ -1399,7 +1512,7 @@ export async function translateMissing(opts: {
       try {
         scanData = await readLocaleData(config, layer, target)
       } catch {}
-      preScanCounts.push(countMissingKeys(scanData))
+      preScanCounts.push(missingKeysIn(scanData).length)
     }
     // In dry-run or agent mode, only 2 steps per locale (start + complete),
     // no batch steps. Full batching only in provider mode.
@@ -1427,12 +1540,7 @@ export async function translateMissing(opts: {
     target: LocaleDefinition,
     targetData: Record<string, unknown>,
   ): Promise<{ result: TranslateMissingLocaleResult, fallbackContext?: Record<string, unknown> }> {
-    let missingKeys: string[]
-    if (opts.keys) {
-      missingKeys = opts.keys.filter(k => isKeyMissingIn(targetData, k) && allRefKeys.includes(k))
-    } else {
-      missingKeys = allRefKeys.filter(k => isKeyMissingIn(targetData, k))
-    }
+    const missingKeys = missingKeysIn(targetData)
 
     if (missingKeys.length === 0) {
       return { result: { mode, missing: 0, translated: [], failed: [], skipped: [] } }
@@ -1600,6 +1708,8 @@ export async function translateMissing(opts: {
     }
   }
 
+  Object.assign(results, await collectProtectedLocaleResults(config, layer, mode, protectedDefaults, missingKeysIn))
+
   const totalTranslated = Object.values(results).reduce((sum, r) => sum + r.translated.length, 0)
   const totalFailed = Object.values(results).reduce((sum, r) => sum + r.failed.length, 0)
   const totalSkipped = Object.values(results).reduce((sum, r) => sum + r.skipped.length, 0)
@@ -1671,16 +1781,13 @@ export async function translateKey(opts: {
   const isDryRun = opts.dryRun ?? false
   const overwrite = opts.overwrite ?? true
   const sourceLocale = findLocaleOrThrow(config, opts.sourceLocale)
-  const targetLocalesByCode = new Map<string, LocaleDefinition>()
+  const usesDefaultTargets = opts.targetLocales === undefined || opts.targetLocales === 'all'
   const resolvedTargetLocales = opts.targetLocales === undefined || opts.targetLocales === 'all'
     ? config.locales
     : opts.targetLocales.map(localeRef => findLocaleOrThrow(config, localeRef))
-  for (const locale of resolvedTargetLocales) {
-    if (locale.code !== sourceLocale.code && !targetLocalesByCode.has(locale.code)) {
-      targetLocalesByCode.set(locale.code, locale)
-    }
-  }
-  const targetLocales = [...targetLocalesByCode.values()]
+  const { targetLocales, protectedSkipped } = partitionTranslateKeyTargets(
+    config, resolvedTargetLocales, sourceLocale.code, usesDefaultTargets,
+  )
 
   const sourceData = await readLocaleData(config, opts.layer, sourceLocale)
   const existingSourceValue = getNestedValue(sourceData, opts.key)
@@ -1719,9 +1826,12 @@ export async function translateKey(opts: {
   const targetsToTranslate = existingTargets.filter(({ existingValue }) => {
     return overwrite || existingValue === undefined || existingValue === '' || existingValue === null
   })
-  const skipped: Array<{ locale: string, reason: TranslateSkipReason }> = existingTargets
-    .filter(({ existingValue }) => !overwrite && existingValue !== undefined && existingValue !== '' && existingValue !== null)
-    .map(({ locale }) => ({ locale: locale.code, reason: 'already-translated' as const }))
+  const skipped: Array<{ locale: string, reason: TranslateSkipReason }> = [
+    ...protectedSkipped,
+    ...existingTargets
+      .filter(({ existingValue }) => !overwrite && existingValue !== undefined && existingValue !== '' && existingValue !== null)
+      .map(({ locale }) => ({ locale: locale.code, reason: 'already-translated' as const })),
+  ]
 
   const basePlaceholderValidation = validatePlaceholders(opts.key, sourceValue, [{ locale: sourceLocale.code, value: sourceValue }], config.localeFileFormat)
 

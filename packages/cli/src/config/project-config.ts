@@ -41,6 +41,7 @@ const projectConfigSchema = z.object({
   localeDirs: z.array(localeDirEntrySchema).optional(),
   defaultLocale: z.string().optional(),
   locales: z.array(z.string()).optional(),
+  protectedLocales: z.array(nonEmptyString).optional(),
   reportOutput: z.union([z.literal(true), nonEmptyString]).optional(),
   localeFileFormat: z.enum(['json', 'php-array']).optional(),
   // Deprecated with the removal of MCP sampling: accepted so existing config

@@ -26,6 +26,7 @@ import {
   scaffoldLocaleFiles,
   listNamespaces,
   findLocaleImpl,
+  resolveProtectedLocales,
   toErrorMessage,
   createTranslateFn,
 } from 'the-i18n-cli'
@@ -214,6 +215,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         const dirs = await listLocaleDirs(projectDir)
         return jsonContent({
           ...config,
+          // Resolved canonical codes of human-maintained locales that the
+          // translate tools exclude from default targets (raw refs live in
+          // projectConfig.protectedLocales).
+          protectedLocales: resolveProtectedLocales(config).map(l => l.code),
           layers: dirs,
           // Active translation mode — lets operators verify env configuration
           // without triggering a translation. Never includes the API key.
