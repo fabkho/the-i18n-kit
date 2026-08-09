@@ -77,7 +77,7 @@ Translate results account for every key:
 
 - `translated` — keys written
 - `wouldTranslate` — `--dryRun` only: keys that would be translated
-- `failed` — with a reason: `provider-error`, `omitted-by-model`, `placeholder-mismatch`, `plural-mismatch`, `write-error`
+- `failed` — with a reason: `provider-error`, `omitted-by-model`, `truncated`, `placeholder-mismatch`, `plural-mismatch`, `write-error`
 - `skipped` — with a reason: `no-provider`, `already-translated`, `protected-locale`
 - Invariant: `missing = translated + wouldTranslate + failed + skipped`
 

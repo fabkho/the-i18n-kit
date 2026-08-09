@@ -130,11 +130,13 @@ Translate results account for every key:
 
 - `translated` — keys written
 - `wouldTranslate` — dry runs only: keys that would be translated
-- `failed` — with a reason: `provider-error`, `omitted-by-model`, `placeholder-mismatch`, `plural-mismatch`, `write-error`
+- `failed` — with a reason: `provider-error`, `omitted-by-model`, `truncated`, `placeholder-mismatch`, `plural-mismatch`, `write-error`
 - `skipped` — with a reason: `no-provider`, `already-translated`, `protected-locale`
 - Invariant: `missing = translated + wouldTranslate + failed + skipped`
 
-Translations are validated before writing: placeholder parity is checked **per vue-i18n plural variant** (`{placeholders}`, `@:linked.refs`; `:params` for PHP), and the number of pipe-separated plural variants must match the source. Values that fail validation are rejected into `failed` instead of written. The CI templates below fail the job when a run translates nothing and has failures.
+Translations are validated before writing: placeholder parity is checked **per vue-i18n plural variant** (`{placeholders}`, `@:linked.refs`; `:params` for PHP), and the number of pipe-separated plural variants must match the source. Values that fail validation are rejected into `failed` instead of written.
+
+Provider failures are classified: authentication errors (401/403) abort the whole run immediately with a single clear error instead of failing key by key, rate limits are retried with backoff, and responses cut off at the token limit are detected via the provider's finish reason and reported as `truncated` (reduce `batchSize`). The CLI exits non-zero when a run translates nothing and has failures, so CI can gate without parsing JSON.
 
 ### Protected locales
 
