@@ -75,17 +75,6 @@ export interface ProjectConfig {
   locales?: string[]
   /** Override the auto-detected locale file format. E.g., "json" or "php-array". Useful when both formats exist or auto-detection picks wrong. */
   localeFileFormat?: LocaleFileFormat
-  /** Model preferences for `translate_missing` sampling requests. Overrides the built-in defaults (fast/cheap model bias). */
-  samplingPreferences?: {
-    /** Ordered model name hints (substring match). First match wins. E.g., ["flash", "haiku"] */
-    hints?: string[]
-    /** 0 = don't care, 1 = most important factor */
-    costPriority?: number
-    /** 0 = don't care, 1 = most important factor */
-    speedPriority?: number
-    /** 0 = don't care, 1 = most important factor */
-    intelligencePriority?: number
-  }
 }
 
 /**

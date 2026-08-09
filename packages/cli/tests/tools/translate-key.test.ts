@@ -104,7 +104,7 @@ describe('translate_missing compact mode', () => {
       targetLocales: ['es-ES'],
       keys: ['admin.users.list'],
       compact: true,
-      // no samplingFn — the no-backend fallback path
+      // no translateFn — the no-backend fallback path
     })
 
     // fallback contexts survive compaction, with the write-back guidance

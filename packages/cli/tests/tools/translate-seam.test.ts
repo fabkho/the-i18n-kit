@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { join } from 'node:path'
 import { mkdtemp, rm, mkdir, writeFile, readFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import type { SamplingFn } from '../../src/core/types.js'
+import type { TranslateFn } from '../../src/core/types.js'
 import { translateMissing } from '../../src/core/operations.js'
 import { clearConfigCache } from '../../src/config/detector.js'
 
@@ -55,7 +55,7 @@ function parseBatch(userMessage: string): Record<string, string> {
 }
 
 /** A well-behaved fake backend: translates every requested key. */
-function fakeTranslator(transform: (key: string, value: string) => string, wrap?: (json: string) => string): SamplingFn {
+function fakeTranslator(transform: (key: string, value: string) => string, wrap?: (json: string) => string): TranslateFn {
   return async ({ userMessage }) => {
     const batch = parseBatch(userMessage)
     const out = Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, transform(k, v)]))
@@ -73,7 +73,7 @@ describe('translateMissing through the translate seam', () => {
     const result = await translateMissing({
       projectDir,
       layer: 'root',
-      samplingFn: fakeTranslator((_k, v) => `[t] ${v}`),
+      translateFn: fakeTranslator((_k, v) => `[t] ${v}`),
     })
 
     expect(result.summary.totalTranslated).toBe(8) // 4 keys × en + fr
@@ -100,7 +100,7 @@ describe('translateMissing through the translate seam', () => {
       projectDir,
       layer: 'root',
       targetLocales: ['en'],
-      samplingFn: fakeTranslator((_k, v) => `[t] ${v}`, json => '```json\n' + json + '\n```'),
+      translateFn: fakeTranslator((_k, v) => `[t] ${v}`, json => '```json\n' + json + '\n```'),
     })
 
     expect(result.results.en.translated).toHaveLength(4)
@@ -112,7 +112,7 @@ describe('translateMissing through the translate seam', () => {
       projectDir,
       layer: 'root',
       targetLocales: ['en'],
-      samplingFn: fakeTranslator((k, v) =>
+      translateFn: fakeTranslator((k, v) =>
         k === 'greeting' ? 'Hello {nom}' : `[t] ${v}`),
     })
 
@@ -127,7 +127,7 @@ describe('translateMissing through the translate seam', () => {
 
   it('splits keys into batches of batchSize', async () => {
     let calls = 0
-    const counting: SamplingFn = async (req) => {
+    const counting: TranslateFn = async (req) => {
       calls++
       const batch = parseBatch(req.userMessage)
       expect(Object.keys(batch).length).toBeLessThanOrEqual(2)
@@ -143,7 +143,7 @@ describe('translateMissing through the translate seam', () => {
       layer: 'root',
       targetLocales: ['en'],
       batchSize: 2,
-      samplingFn: counting,
+      translateFn: counting,
     })
 
     expect(calls).toBe(2) // 4 keys / batchSize 2
@@ -158,7 +158,7 @@ describe('translateMissing through the translate seam', () => {
       projectDir,
       layer: 'root',
       targetLocales: ['en'],
-      samplingFn: async () => {
+      translateFn: async () => {
         calls++
         return { text: 'sorry, no JSON here', model: 'fake-model' }
       },
@@ -179,7 +179,7 @@ describe('translateMissing through the translate seam', () => {
       projectDir,
       layer: 'root',
       targetLocales: ['en'],
-      samplingFn: async ({ userMessage }) => {
+      translateFn: async ({ userMessage }) => {
         const batch = parseBatch(userMessage)
         delete batch.greeting
         return {
@@ -201,7 +201,7 @@ describe('translateMissing through the translate seam', () => {
       projectDir,
       layer: 'root',
       targetLocales: ['en'],
-      samplingFn: fakeTranslator((_k, v) => `[t] ${v}`),
+      translateFn: fakeTranslator((_k, v) => `[t] ${v}`),
     })
 
     expect(result.results.en.writeError).toBeDefined()
@@ -214,7 +214,7 @@ describe('translateMissing through the translate seam', () => {
       projectDir,
       layer: 'root',
       targetLocales: ['en'],
-      // no samplingFn
+      // no translateFn
     })
 
     expect(result.summary.samplingSupported).toBe(false)

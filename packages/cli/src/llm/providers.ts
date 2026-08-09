@@ -1,4 +1,4 @@
-import type { SamplingFn, SamplingRequest, SamplingResponse } from '../core/types.js'
+import type { TranslateFn, TranslateRequest, TranslateResponse } from '../core/types.js'
 
 export type LlmProvider = 'openai' | 'anthropic' | 'google'
 
@@ -29,7 +29,7 @@ function resolveApiKey(provider: LlmProvider, configKey?: string): string {
   return key
 }
 
-async function createOpenAiSamplingFn(config: LlmProviderConfig): Promise<SamplingFn> {
+async function createOpenAiTranslateFn(config: LlmProviderConfig): Promise<TranslateFn> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
   let OpenAI: any
   try {
@@ -43,7 +43,7 @@ async function createOpenAiSamplingFn(config: LlmProviderConfig): Promise<Sampli
   const apiKey = resolveApiKey('openai', config.apiKey)
   const client = new OpenAI({ apiKey, baseURL: config.baseUrl })
 
-  return async (opts: SamplingRequest): Promise<SamplingResponse> => {
+  return async (opts: TranslateRequest): Promise<TranslateResponse> => {
     const response = await client.chat.completions.create({
       model: config.model,
       messages: [
@@ -60,7 +60,7 @@ async function createOpenAiSamplingFn(config: LlmProviderConfig): Promise<Sampli
   }
 }
 
-async function createGoogleSamplingFn(config: LlmProviderConfig): Promise<SamplingFn> {
+async function createGoogleTranslateFn(config: LlmProviderConfig): Promise<TranslateFn> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
   let GoogleGenAI: any
   try {
@@ -74,7 +74,7 @@ async function createGoogleSamplingFn(config: LlmProviderConfig): Promise<Sampli
   const apiKey = resolveApiKey('google', config.apiKey)
   const client = new GoogleGenAI({ apiKey })
 
-  return async (opts: SamplingRequest): Promise<SamplingResponse> => {
+  return async (opts: TranslateRequest): Promise<TranslateResponse> => {
     const response = await client.models.generateContent({
       model: config.model,
       contents: opts.userMessage,
@@ -91,7 +91,7 @@ async function createGoogleSamplingFn(config: LlmProviderConfig): Promise<Sampli
   }
 }
 
-async function createAnthropicSamplingFn(config: LlmProviderConfig): Promise<SamplingFn> {
+async function createAnthropicTranslateFn(config: LlmProviderConfig): Promise<TranslateFn> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
   let Anthropic: any
   try {
@@ -105,7 +105,7 @@ async function createAnthropicSamplingFn(config: LlmProviderConfig): Promise<Sam
   const apiKey = resolveApiKey('anthropic', config.apiKey)
   const client = new Anthropic({ apiKey, baseURL: config.baseUrl })
 
-  return async (opts: SamplingRequest): Promise<SamplingResponse> => {
+  return async (opts: TranslateRequest): Promise<TranslateResponse> => {
     const response = await client.messages.create({
       model: config.model,
       system: opts.systemPrompt,
@@ -122,17 +122,17 @@ async function createAnthropicSamplingFn(config: LlmProviderConfig): Promise<Sam
 }
 
 /**
- * Create a SamplingFn from an LLM provider config.
+ * Create a TranslateFn from an LLM provider config.
  * Throws if the provider SDK is not installed or API key is missing.
  */
-export async function createSamplingFn(config: LlmProviderConfig): Promise<SamplingFn> {
+export async function createTranslateFn(config: LlmProviderConfig): Promise<TranslateFn> {
   switch (config.provider) {
     case 'openai':
-      return createOpenAiSamplingFn(config)
+      return createOpenAiTranslateFn(config)
     case 'anthropic':
-      return createAnthropicSamplingFn(config)
+      return createAnthropicTranslateFn(config)
     case 'google':
-      return createGoogleSamplingFn(config)
+      return createGoogleTranslateFn(config)
     default: {
       const _exhaustive: never = config.provider
       throw new Error(`Unknown provider: ${_exhaustive}`)

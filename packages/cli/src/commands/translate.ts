@@ -1,6 +1,6 @@
 import { createCommand, splitList } from './_shared.js'
-import { createSamplingFn } from '../llm/providers.js'
-import type { SamplingFn } from '../core/types.js'
+import { createTranslateFn } from '../llm/providers.js'
+import type { TranslateFn } from '../core/types.js'
 import type { LlmProvider } from '../llm/providers.js'
 import { translateMissing } from '../core/operations.js'
 
@@ -28,12 +28,12 @@ export default createCommand({
       batchSize = num
     }
 
-    let samplingFn: SamplingFn | undefined
+    let translateFn: TranslateFn | undefined
     if (args.provider) {
       if (!args.model) {
         throw new Error('--model is required when --provider is set')
       }
-      samplingFn = await createSamplingFn({
+      translateFn = await createTranslateFn({
         provider: args.provider as LlmProvider,
         model: args.model,
         apiKey: args.apiKey,
@@ -48,7 +48,7 @@ export default createCommand({
       batchSize,
       dryRun: args.dryRun,
       projectDir: args.projectDir,
-      samplingFn,
+      translateFn,
     })
   },
 })

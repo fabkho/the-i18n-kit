@@ -1,9 +1,9 @@
 {
-  "unused_files": [
-    "playground/nuxt/i18n/i18n.config.ts"
-  ],
+  "unused_files": [],
   "unused_exports": [
     "packages/cli/src/adapters/registry.ts:getRegisteredAdapters",
+    "packages/cli/src/commands/_shared.ts:sharedArgs",
+    "packages/cli/src/commands/_shared.ts:outputResult",
     "packages/cli/src/core/operations.ts:resolveReportFilePath",
     "packages/cli/src/core/operations.ts:resolveOrphanIgnorePatterns",
     "packages/cli/src/core/operations.ts:findLayerOrThrow",
@@ -17,8 +17,7 @@
   "unused_types": [],
   "private_type_leaks": [],
   "unused_dependencies": [
-    "packages/cli/package.json:dependency-graph",
-    "packages/cli/package.json:zod"
+    "packages/cli/package.json:dependency-graph"
   ],
   "unused_dev_dependencies": [],
   "circular_dependencies": [],
