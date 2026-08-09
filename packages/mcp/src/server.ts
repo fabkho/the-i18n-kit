@@ -694,7 +694,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
       description:
         'Find translation keys that exist in locale JSON files but are not referenced in any Vue/TS source code. '
         + 'Scans a specific layer or all layers. Reports keys that can potentially be removed. '
-        + 'Also detects dynamic key patterns and uncertain matches.',
+        + 'Also detects dynamic key patterns and uncertain matches. '
+        + 'Scope-aware: each layer is checked only against code of the apps that consume it (summary.scanScope shows each layer\'s effective scope); '
+        + 'keys referenced only from non-consuming apps are reported separately as misplacedUsages, not orphans.',
       inputSchema: {
         layer: z
           .string()
@@ -707,7 +709,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         scanDirs: z
           .array(z.string())
           .optional()
-          .describe('Absolute paths to directories to scan for source code usage. Defaults to all layer root directories. Example: ["/home/user/my-app/apps/admin"].'),
+          .describe('Absolute paths to directories to scan for source code usage. Overrides scope-aware scanning: all layers are checked globally against these dirs. Example: ["/home/user/my-app/apps/admin"].'),
         excludeDirs: z
           .array(z.string())
           .optional()
@@ -739,7 +741,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     {
       title: 'Remove Orphan Keys',
       description:
-        'Find orphan keys (not referenced in source code) and remove them from all locale files. Always does a dry run first.',
+        'Find orphan keys (not referenced in source code) and remove them from all locale files. Always does a dry run first. '
+        + 'Scope-aware like find_orphan_keys: each layer is checked against its consuming apps (summary.scanScope), and keys referenced only from '
+        + 'non-consuming apps are reported as misplacedUsages and never removed.',
       inputSchema: {
         layer: z
           .string()
@@ -752,7 +756,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         scanDirs: z
           .array(z.string())
           .optional()
-          .describe('Absolute paths to directories to scan for source code usage. Defaults to all layer root directories. Example: ["/home/user/my-app/apps/admin"].'),
+          .describe('Absolute paths to directories to scan for source code usage. Overrides scope-aware scanning: all layers are checked globally against these dirs. Example: ["/home/user/my-app/apps/admin"].'),
         excludeDirs: z
           .array(z.string())
           .optional()
