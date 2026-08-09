@@ -26,6 +26,7 @@ import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from '../sca
 import { getPatternSet } from '../scanner/patterns.js'
 import { log } from '../utils/logger.js'
 import { ToolError, toErrorMessage } from '../utils/errors.js'
+import { TranslateProviderError } from '../llm/providers.js'
 import { scaffoldLocale } from '../tools/scaffold-locale.js'
 
 import type {
@@ -1467,6 +1468,7 @@ export async function translateMissing(opts: {
         const batchNum = Math.floor(i / maxBatch) + 1
         const batch = Object.fromEntries(keyEntries.slice(i, i + maxBatch))
         let batchTranslations: Record<string, string> | null = null
+        let batchTruncated = false
 
         const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, target.language || target.code, config.localeFileFormat)
         const userMessage = buildTranslationUserMessage(
@@ -1491,6 +1493,17 @@ export async function translateMissing(opts: {
             model = response.model
             log.info(`Translation model: ${response.model}`)
 
+            if (response.truncated) {
+              // The batch response was cut off at the token limit — retrying
+              // with the same budget would truncate again, so fail fast.
+              batchTruncated = true
+              log.warn(`Translate response truncated for batch ${batchNum} in ${target.code}: provider hit the token limit. Reduce batchSize.`)
+              break
+            }
+            if (response.text.trim() === '') {
+              throw new TranslateProviderError('Provider returned an empty response', 'provider')
+            }
+
             const parsed = extractJsonFromResponse(response.text)
             const batchKeys = new Set(Object.keys(batch))
             batchTranslations = {} as Record<string, string>
@@ -1501,6 +1514,14 @@ export async function translateMissing(opts: {
             }
             break
           } catch (_error) {
+            if (_error instanceof TranslateProviderError && _error.kind === 'auth') {
+              // Auth failures affect every request — abort the whole run
+              // instead of failing key by key through retries.
+              throw new ToolError(
+                `Provider authentication failed: ${_error.message}. Verify your API key (config apiKey or the provider's environment variable).`,
+                'PROVIDER_AUTH_ERROR',
+              )
+            }
             const errMsg = _error instanceof Error ? _error.message : String(_error)
             if (attempt === 0) {
               log.warn(`Translate request failed for batch ${batchNum} in ${target.code}: ${errMsg}. Retrying (attempt 2)`)
@@ -1518,7 +1539,12 @@ export async function translateMissing(opts: {
             allTranslations[key] = value
             translated.push(key)
           } else {
-            failed.push({ key, reason: batchTranslations === null ? 'provider-error' : 'omitted-by-model' })
+            failed.push({
+              key,
+              reason: batchTruncated
+                ? 'truncated'
+                : batchTranslations === null ? 'provider-error' : 'omitted-by-model',
+            })
           }
         }
 
@@ -1791,6 +1817,7 @@ export async function translateKey(opts: {
   for (const { locale } of targetsToTranslate) {
     let targetValue: string | undefined
     let requestFailed = false
+    let responseTruncated = false
     const systemPrompt = buildTranslationSystemPrompt(config.projectConfig, locale.language || locale.code, config.localeFileFormat)
     const userMessage = buildTranslationUserMessage(
       sourceLocale.language || sourceLocale.code,
@@ -1806,18 +1833,35 @@ export async function translateKey(opts: {
         maxTokens: computeMaxTokens(1),
       })
       model = response.model
-      const parsed = extractJsonFromResponse(response.text)
-      const parsedValue = parsed[opts.key]
-      if (typeof parsedValue === 'string') {
-        targetValue = parsedValue
+      if (response.truncated) {
+        responseTruncated = true
+        log.warn(`Translate response truncated for ${locale.code}: provider hit the token limit.`)
+      } else if (response.text.trim() === '') {
+        throw new TranslateProviderError('Provider returned an empty response', 'provider')
+      } else {
+        const parsed = extractJsonFromResponse(response.text)
+        const parsedValue = parsed[opts.key]
+        if (typeof parsedValue === 'string') {
+          targetValue = parsedValue
+        }
       }
     } catch (error) {
+      if (error instanceof TranslateProviderError && error.kind === 'auth') {
+        // Auth failures affect every request — abort the whole run.
+        throw new ToolError(
+          `Provider authentication failed: ${error.message}. Verify your API key (config apiKey or the provider's environment variable).`,
+          'PROVIDER_AUTH_ERROR',
+        )
+      }
       requestFailed = true
       log.warn(`Translate request failed for ${locale.code}: ${toErrorMessage(error)}`)
     }
 
     if (!targetValue) {
-      failed.push({ locale: locale.code, reason: requestFailed ? 'provider-error' : 'omitted-by-model' })
+      failed.push({
+        locale: locale.code,
+        reason: responseTruncated ? 'truncated' : requestFailed ? 'provider-error' : 'omitted-by-model',
+      })
       continue
     }
 

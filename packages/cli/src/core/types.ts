@@ -222,6 +222,7 @@ export type TranslateFailReason =
   | 'placeholder-mismatch'
   | 'plural-mismatch'
   | 'write-error'
+  | 'truncated'
 
 /** Why a key or locale was intentionally not attempted. */
 export type TranslateSkipReason = 'no-provider' | 'already-translated'
@@ -403,6 +404,9 @@ export interface TranslateRequest {
 export interface TranslateResponse {
   text: string
   model: string
+  /** True when the provider stopped early (finish/stop reason = token limit).
+   *  The response text is incomplete and must not be parsed as a full batch. */
+  truncated?: boolean
 }
 
 export type TranslateFn = (opts: TranslateRequest) => Promise<TranslateResponse>
