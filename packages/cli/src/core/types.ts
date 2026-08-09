@@ -224,7 +224,7 @@ export type TranslateFailReason =
   | 'write-error'
 
 /** Why a key or locale was intentionally not attempted. */
-export type TranslateSkipReason = 'no-provider' | 'already-translated'
+export type TranslateSkipReason = 'no-provider' | 'already-translated' | 'protected-locale'
 
 export interface TranslateMissingLocaleResult {
   mode: TranslateMode

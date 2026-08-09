@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { mkdtemp, rm, mkdir, writeFile, readFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type { TranslateFn } from '../../src/core/types.js'
-import { translateMissing } from '../../src/core/operations.js'
+import { translateMissing, translateKey } from '../../src/core/operations.js'
 import { clearConfigCache } from '../../src/config/detector.js'
 
 /**
@@ -277,6 +277,108 @@ describe('translateMissing through the translate seam', () => {
 
       expect(result.results.en.failed).toEqual([])
       expect((await readLocale('en')).mode).toBe('Press {key} for A|B mode')
+    })
+  })
+
+  describe('protectedLocales', () => {
+    async function writeConfig(protectedLocales: string[]): Promise<void> {
+      await writeFile(join(projectDir, '.i18n-mcp.json'), JSON.stringify({
+        localeDirs: [{ path: 'i18n/locales', layer: 'root' }],
+        defaultLocale: 'de',
+        locales: ['de', 'en', 'fr'],
+        protectedLocales,
+      }, null, 2))
+      clearConfigCache()
+    }
+
+    /** Run translateMissing with default targets and a well-behaved backend. */
+    async function runDefaultTranslate() {
+      return translateMissing({
+        projectDir,
+        layer: 'root',
+        translateFn: fakeTranslator((_k, v) => `[t] ${v}`),
+      })
+    }
+
+    it('excludes protected locales from default targets and reports their missing keys as skipped', async () => {
+      await writeConfig(['fr'])
+
+      const result = await runDefaultTranslate()
+
+      // Only en was translated — fr was withheld but is still reported.
+      expect(result.summary.totalTranslated).toBe(4)
+      expect(result.summary.totalSkipped).toBe(4)
+      expect(result.summary.targetLocales).toEqual([expect.objectContaining({ code: 'en' })])
+      expect(result.results.fr).toMatchObject({
+        mode: 'provider',
+        missing: 4,
+        translated: [],
+        failed: [],
+      })
+      expect(result.results.fr.skipped).toHaveLength(4)
+      expect(result.results.fr.skipped).toEqual(
+        expect.arrayContaining([{ key: 'greeting', reason: 'protected-locale' }]),
+      )
+
+      // The protected locale's file is untouched; the other target was written.
+      expect(await readLocale('fr')).toEqual({})
+      expect((await readLocale('en')).greeting).toBe('[t] Hallo {name}')
+    })
+
+    it('translates a protected locale when it is explicitly named in targetLocales', async () => {
+      await writeConfig(['fr'])
+
+      const result = await translateMissing({
+        projectDir,
+        layer: 'root',
+        targetLocales: ['fr'],
+        translateFn: fakeTranslator((_k, v) => `[t] ${v}`),
+      })
+
+      expect(result.results.fr.translated).toHaveLength(4)
+      expect(result.results.fr.skipped).toEqual([])
+      expect((await readLocale('fr')).greeting).toBe('[t] Hallo {name}')
+    })
+
+    it('ignores protectedLocales entries that do not match a known locale', async () => {
+      await writeConfig(['xx-nope', 'fr'])
+
+      const result = await runDefaultTranslate()
+
+      // The unknown entry changes nothing; the valid one still protects fr.
+      expect(result.summary.totalTranslated).toBe(4)
+      expect(result.results.en.translated).toHaveLength(4)
+      expect(result.results.fr.skipped).toHaveLength(4)
+      expect(await readLocale('fr')).toEqual({})
+    })
+
+    it('translateKey skips protected locales in the default target set and overrides on explicit request', async () => {
+      await writeConfig(['fr'])
+
+      const defaultRun = await translateKey({
+        projectDir,
+        layer: 'root',
+        key: 'greeting',
+        sourceLocale: 'de',
+        translateFn: fakeTranslator((_k, v) => `[t] ${v}`),
+      })
+
+      expect(defaultRun.translated).toEqual(['en'])
+      expect(defaultRun.skipped).toEqual([{ locale: 'fr', reason: 'protected-locale' }])
+      expect(await readLocale('fr')).toEqual({})
+
+      const explicitRun = await translateKey({
+        projectDir,
+        layer: 'root',
+        key: 'greeting',
+        sourceLocale: 'de',
+        targetLocales: ['fr'],
+        translateFn: fakeTranslator((_k, v) => `[t] ${v}`),
+      })
+
+      expect(explicitRun.translated).toEqual(['fr'])
+      expect(explicitRun.skipped).toEqual([])
+      expect((await readLocale('fr')).greeting).toBe('[t] Hallo {name}')
     })
   })
 
