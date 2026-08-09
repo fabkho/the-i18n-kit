@@ -30,9 +30,11 @@ describe('translate_key', () => {
     })
 
     expect(result.dryRun).toBe(true)
+    expect(result.mode).toBe('dry-run')
     expect(result.sourceLocale).toMatchObject({ code: 'en', language: 'en-US', file: 'en-US.json' })
     expect(result.updatedSource).toBe(true)
-    expect(result.translated).toEqual(expect.arrayContaining(['de', 'fr', 'es']))
+    expect(result.translated).toEqual([])
+    expect(result.wouldTranslate).toEqual(expect.arrayContaining(['de', 'fr', 'es']))
     expect(result.placeholderValidation).toEqual({
       ok: true,
       placeholders: ['{count}'],
@@ -52,7 +54,7 @@ describe('translate_key', () => {
       dryRun: true,
     })
 
-    expect(result.translated).toEqual(['de', 'fr'])
+    expect(result.wouldTranslate).toEqual(['de', 'fr'])
   })
 
   it('skips existing targets when overwrite is false', async () => {
@@ -66,8 +68,11 @@ describe('translate_key', () => {
       dryRun: true,
     })
 
-    expect(result.translated).toEqual([])
-    expect(result.skipped).toEqual(['de', 'fr'])
+    expect(result.wouldTranslate).toEqual([])
+    expect(result.skipped).toEqual([
+      { locale: 'de', reason: 'already-translated' },
+      { locale: 'fr', reason: 'already-translated' },
+    ])
   })
 })
 
@@ -107,10 +112,9 @@ describe('translate_missing compact mode', () => {
       // no translateFn — the no-backend fallback path
     })
 
-    // fallback contexts survive compaction, with the write-back guidance
+    // fallback contexts survive compaction (guidance messages are surface-owned)
     expect(result.fallbackContexts).toHaveProperty('es')
-    expect(result.summary.message).toContain('write_translations')
-    expect(result.summary.samplingSupported).toBe(false)
+    expect(result.summary.mode).toBe('agent')
 
     // locale metadata as full triples
     expect(result.summary.referenceLocale).toMatchObject({ code: 'de', language: 'de-DE', file: 'de-DE.json' })
@@ -118,9 +122,9 @@ describe('translate_missing compact mode', () => {
       expect.objectContaining({ code: 'es', language: 'es-ES', file: 'es-ES.json' }),
     ])
 
-    // per-locale entries keep all non-key metadata
+    // per-locale entries keep all non-key metadata; per-key arrays become counts
     expect(result.summary.byLocale).toEqual([
-      expect.objectContaining({ locale: 'es', reason: 'sampling-unavailable', samplingUsed: false }),
+      expect.objectContaining({ locale: 'es', mode: 'agent', missing: 1, skipped: 1, translated: 0, failed: 0 }),
     ])
     expect(result.summary.layer).toBe('root')
     expect(result.summary.dryRun).toBe(false)
@@ -141,8 +145,9 @@ describe('translate_missing compact mode', () => {
     })
 
     expect(result.summary.dryRun).toBe(true)
+    expect(result.summary.totalWouldTranslate).toBe(1)
     expect(result.summary.byLocale).toEqual([
-      expect.objectContaining({ locale: 'es', translated: 1, reason: 'dry-run' }),
+      expect.objectContaining({ locale: 'es', wouldTranslate: 1, translated: 0, mode: 'dry-run' }),
     ])
     expect(result.fallbackContexts).toBeUndefined()
   })
@@ -161,7 +166,7 @@ describe('translate_missing compact mode', () => {
     expect(result.summary.message).toBeUndefined()
     expect(result.summary.totalTranslated).toBe(0)
     expect(result.summary.byLocale).toEqual([
-      expect.objectContaining({ locale: 'es', reason: 'no-missing-keys' }),
+      expect.objectContaining({ locale: 'es', missing: 0, translated: 0, failed: 0, skipped: 0 }),
     ])
   })
 })
@@ -182,10 +187,11 @@ describe('translate_missing metadata', () => {
       expect.objectContaining({ code: 'es', language: 'es-ES', file: 'es-ES.json' }),
     ])
     expect(result.results.es).toMatchObject({
-      translated: ['admin.users.list'],
+      wouldTranslate: ['admin.users.list'],
+      translated: [],
       failed: [],
-      samplingUsed: false,
-      reason: 'dry-run',
+      mode: 'dry-run',
+      missing: 1,
     })
   })
 })

@@ -9,8 +9,7 @@ import { clearConfigCache } from 'the-i18n-cli'
 /**
  * Transport-level tests: a linked client/server pair over the SDK's in-memory
  * transport, against a real temp project resolved by the CLI's generic
- * adapter. The client declares no sampling capability — the same situation as
- * Claude Code and most MCP hosts.
+ * adapter. The client provides no translation backend — the agent-mode default.
  */
 
 let projectDir: string
@@ -97,10 +96,11 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     ])
   })
 
-  it('translate_missing without sampling capability returns fallback contexts', async () => {
+  it('translate_missing without a translation backend returns fallback contexts', async () => {
     const { json } = await callTool('translate_missing', { layer: 'root', projectDir })
 
-    expect(json?.summary.samplingSupported).toBe(false)
+    expect(json?.summary.mode).toBe('agent')
+    expect(json?.summary.totalSkipped).toBe(2)
     expect(json?.summary.message).toContain('write_translations')
     expect(json?.fallbackContexts?.en?.keysToTranslate).toMatchObject({
       'greeting': 'Hallo {name}',
@@ -114,7 +114,7 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.fallbackContexts?.en).toBeDefined()
     expect(json?.summary.message).toContain('write_translations')
     expect(json?.summary.byLocale).toEqual([
-      expect.objectContaining({ locale: 'en', reason: 'sampling-unavailable' }),
+      expect.objectContaining({ locale: 'en', mode: 'agent', missing: 2, skipped: 2 }),
     ])
     expect(json?.results).toBeUndefined()
   })

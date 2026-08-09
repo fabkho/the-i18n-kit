@@ -206,11 +206,29 @@ export interface RenameTranslationKeyResult {
 
 // ─── translate_missing ───────────────────────────────────────────
 
+/** How a translate run was (or would be) executed. */
+export type TranslateMode = 'provider' | 'agent' | 'dry-run'
+
+/** Why a key could not be translated. */
+export type TranslateFailReason =
+  | 'provider-error'
+  | 'omitted-by-model'
+  | 'placeholder-mismatch'
+  | 'write-error'
+
+/** Why a key or locale was intentionally not attempted. */
+export type TranslateSkipReason = 'no-provider' | 'already-translated'
+
 export interface TranslateMissingLocaleResult {
+  mode: TranslateMode
+  /** Number of missing keys found for this locale. Always equals
+   *  translated + wouldTranslate + failed + skipped. */
+  missing: number
   translated: string[]
-  failed: string[]
-  samplingUsed: boolean
-  reason?: 'no-missing-keys' | 'dry-run' | 'translated-with-sampling' | 'sampling-unavailable'
+  /** Dry-run only: keys that would be translated. */
+  wouldTranslate?: string[]
+  failed: Array<{ key: string, reason: TranslateFailReason }>
+  skipped: Array<{ key: string, reason: TranslateSkipReason }>
   batches?: number
   model?: string
   writeError?: string
@@ -221,39 +239,46 @@ export interface TranslateMissingResult {
   results: Record<string, TranslateMissingLocaleResult>
   fallbackContexts?: Record<string, Record<string, unknown>>
   summary: {
-    samplingSupported: boolean
+    mode: TranslateMode
     totalTranslated: number
     totalFailed: number
+    totalSkipped: number
+    totalWouldTranslate?: number
     layer: string
     referenceLocale: string | LocaleRefInfo
     targetLocales: Array<string | LocaleRefInfo>
     dryRun: boolean
+    /** Surface-owned guidance (set by the CLI command or MCP tool, not the core). */
     message?: string
   }
 }
 
 // ─── translate_key ───────────────────────────────────────────────
 
-export interface TranslateKeyFailure {
+export interface TranslateKeyLocaleIssue {
   locale: string
-  error: string
+  reason: TranslateFailReason | 'read-error'
+  detail?: string
 }
 
 export interface TranslateKeyResult {
   key: string
   sourceLocale: LocaleRefInfo
   updatedSource: boolean
+  mode: TranslateMode
   translated: string[]
-  skipped: string[]
-  failed: Array<string | TranslateKeyFailure>
+  /** Dry-run only: locales that would be translated. */
+  wouldTranslate?: string[]
+  skipped: Array<{ locale: string, reason: TranslateSkipReason }>
+  failed: TranslateKeyLocaleIssue[]
   filesWritten: number
   dryRun: boolean
-  samplingUsed: boolean
-  reason?: 'dry-run' | 'translated-with-sampling' | 'sampling-unavailable'
   model?: string
   placeholderValidation: PlaceholderValidationResult
   preview?: Record<string, string>
   fallbackContext?: Record<string, unknown>
+  /** Surface-owned guidance (set by the CLI command or MCP tool, not the core). */
+  message?: string
 }
 
 // ─── find_orphan_keys ────────────────────────────────────────────
