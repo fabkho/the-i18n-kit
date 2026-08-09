@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.5](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.4...the-i18n-cli-1.5.5) (2026-08-09)
+
+
+### Bug Fixes
+
+* **cli:** guard stdout against third-party logs ([#199](https://github.com/fabkho/the-i18n-kit/issues/199)) ([a874e31](https://github.com/fabkho/the-i18n-kit/commit/a874e310518c18b3b1e88641f5b4a54b6b8da8ea))
+
 ## [1.5.4](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.3...the-i18n-cli-1.5.4) (2026-08-08)
 
 
