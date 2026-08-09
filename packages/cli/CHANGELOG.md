@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.7](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.6...the-i18n-cli-1.5.7) (2026-08-09)
+
+
+### Bug Fixes
+
+* **cli:** compact translate output keeps fallback contexts and locale metadata ([#213](https://github.com/fabkho/the-i18n-kit/issues/213)) ([8fea19c](https://github.com/fabkho/the-i18n-kit/commit/8fea19c209e505b66c7a8d4476155bca73347932))
+
 ## [1.5.6](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.5...the-i18n-cli-1.5.6) (2026-08-09)
 
 
