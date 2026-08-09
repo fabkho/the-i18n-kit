@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.6](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.5...the-i18n-cli-1.5.6) (2026-08-09)
+
+
+### Bug Fixes
+
+* **ci:** cleanup jq backtick escapes + re-land --help stream fix ([#201](https://github.com/fabkho/the-i18n-kit/issues/201)) ([ec98436](https://github.com/fabkho/the-i18n-kit/commit/ec984361dc7ee52c39f0edc28dc30102ac414703))
+
 ## [1.5.5](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-1.5.4...the-i18n-cli-1.5.5) (2026-08-09)
 
 
