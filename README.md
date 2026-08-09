@@ -15,10 +15,9 @@ Managing i18n at scale is tedious:
 - You add a new UI component and need to create the translation key in **every locale file** — manually
 - Over time, removed components leave behind **hundreds of orphan keys** nobody uses
 - You rename a key and have to hunt it down across **30+ JSON files**
-- Your AI agent writes `$t('some.key')` and has no idea where the locale files live or what already exists
-- `translate_missing` returns 50KB of JSON that floods your agent's context window
+- Your AI agent writes `$t('some.key')` and has no idea where the locale files live or what already exists — and reading whole locale files to find out floods its context window with thousands of lines it doesn't need
 
-The-i18n-kit solves all of this.
+The-i18n-kit gives you and your agent purpose-built tools for exactly these operations: targeted reads, compact summaries, and validated writes across all locales at once.
 
 ## How It Works
 
