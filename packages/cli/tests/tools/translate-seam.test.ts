@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os'
 import type { TranslateFn } from '../../src/core/types.js'
 import { translateMissing, translateKey } from '../../src/core/operations.js'
 import { clearConfigCache } from '../../src/config/detector.js'
+import { TranslateProviderError } from '../../src/llm/providers.js'
+import { ToolError } from '../../src/utils/errors.js'
 
 /**
  * Seam tests: drive the real translateMissing pipeline end to end with fake
@@ -277,6 +279,191 @@ describe('translateMissing through the translate seam', () => {
 
       expect(result.results.en.failed).toEqual([])
       expect((await readLocale('en')).mode).toBe('Press {key} for A|B mode')
+    })
+  })
+
+  describe('classified provider failures', () => {
+    it('aborts the whole run on an auth error without retrying', async () => {
+      let calls = 0
+      const error = await translateMissing({
+        projectDir,
+        layer: 'root',
+        targetLocales: ['en'],
+        translateFn: async () => {
+          calls++
+          throw new TranslateProviderError('Incorrect API key provided', 'auth')
+        },
+      }).then(() => null, (e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ToolError)
+      expect((error as ToolError).code).toBe('PROVIDER_AUTH_ERROR')
+      expect((error as ToolError).message).toContain('Incorrect API key provided')
+      expect(calls).toBe(1) // no retry — auth failures are not transient
+      expect(await readLocale('en')).toEqual({})
+    })
+
+    it('propagates the auth abort across concurrent locales without writing files', async () => {
+      const error = await translateMissing({
+        projectDir,
+        layer: 'root', // en + fr run in a Promise.all
+        translateFn: async () => {
+          throw new TranslateProviderError('Incorrect API key provided', 'auth')
+        },
+      }).then(() => null, (e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ToolError)
+      expect((error as ToolError).code).toBe('PROVIDER_AUTH_ERROR')
+      expect(await readLocale('en')).toEqual({})
+      expect(await readLocale('fr')).toEqual({})
+    })
+
+    it('suppresses in-flight sibling writes once the auth abort is observed', async () => {
+      // fr fails auth immediately; en's request is still in flight and
+      // resolves with valid translations afterwards — but the run is doomed,
+      // so en must not write either.
+      const error = await translateMissing({
+        projectDir,
+        layer: 'root', // en + fr run in a Promise.all
+        translateFn: async ({ userMessage }) => {
+          if (userMessage.includes(' to fr')) {
+            throw new TranslateProviderError('Incorrect API key provided', 'auth')
+          }
+          await new Promise(r => setTimeout(r, 150))
+          const batch = parseBatch(userMessage)
+          return {
+            text: JSON.stringify(Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, `[t] ${v}`]))),
+            model: 'fake-model',
+          }
+        },
+      }).then(() => null, (e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ToolError)
+      expect((error as ToolError).code).toBe('PROVIDER_AUTH_ERROR')
+      expect(await readLocale('en')).toEqual({})
+      expect(await readLocale('fr')).toEqual({})
+    })
+
+    it('fails batch keys with reason "truncated" when the response was cut off', async () => {
+      let calls = 0
+      const result = await translateMissing({
+        projectDir,
+        layer: 'root',
+        targetLocales: ['en'],
+        translateFn: async () => {
+          calls++
+          return { text: '{"greeting": "Hel', model: 'fake-model', truncated: true }
+        },
+      })
+
+      expect(calls).toBe(1) // truncation is not retried — same budget truncates again
+      expect(result.results.en.translated).toEqual([])
+      expect(result.results.en.failed).toHaveLength(4)
+      expect(result.results.en.failed).toEqual(
+        expect.arrayContaining([{ key: 'greeting', reason: 'truncated' }]),
+      )
+      expect(result.results.en.failed.every((f: { reason: string }) => f.reason === 'truncated')).toBe(true)
+      expect(await readLocale('en')).toEqual({})
+    })
+
+    // generous timeout: the production retry waits 4s before the second attempt
+    it('retries after a rate-limit error and succeeds', { timeout: 15_000 }, async () => {
+      let calls = 0
+      const good = fakeTranslator((_k, v) => `[t] ${v}`)
+      const result = await translateMissing({
+        projectDir,
+        layer: 'root',
+        targetLocales: ['en'],
+        translateFn: async (req) => {
+          calls++
+          if (calls === 1) throw new TranslateProviderError('Rate limit exceeded', 'rate-limit', 429)
+          return good(req)
+        },
+      })
+
+      expect(calls).toBe(2)
+      expect(result.results.en.translated).toHaveLength(4)
+      expect(result.results.en.failed).toEqual([])
+      expect((await readLocale('en')).greeting).toBe('[t] Hallo {name}')
+    })
+
+    // generous timeout: the production retry waits 4s before the second attempt
+    it('reports an empty response as a provider error, not JSON-parse noise', { timeout: 15_000 }, async () => {
+      let calls = 0
+      const result = await translateMissing({
+        projectDir,
+        layer: 'root',
+        targetLocales: ['en'],
+        translateFn: async () => {
+          calls++
+          return { text: '', model: 'fake-model' }
+        },
+      })
+
+      expect(calls).toBe(2) // empty responses are retried like other provider errors
+      expect(result.results.en.translated).toEqual([])
+      expect(result.results.en.failed).toEqual(
+        expect.arrayContaining([{ key: 'greeting', reason: 'provider-error' }]),
+      )
+      expect(result.results.en.failed).toHaveLength(4)
+      expect(await readLocale('en')).toEqual({})
+    })
+  })
+
+  describe('translateKey classified provider failures', () => {
+    it('aborts on an auth error', async () => {
+      const error = await translateKey({
+        projectDir,
+        layer: 'root',
+        key: 'greeting',
+        sourceLocale: 'de',
+        targetLocales: ['en'],
+        translateFn: async () => {
+          throw new TranslateProviderError('Incorrect API key provided', 'auth')
+        },
+      }).then(() => null, (e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ToolError)
+      expect((error as ToolError).code).toBe('PROVIDER_AUTH_ERROR')
+      expect(await readLocale('en')).toEqual({})
+    })
+
+    it('fails a locale with reason "truncated" when the response was cut off', async () => {
+      const result = await translateKey({
+        projectDir,
+        layer: 'root',
+        key: 'greeting',
+        sourceLocale: 'de',
+        targetLocales: ['en'],
+        translateFn: async () => ({ text: '{"greeting": "Hel', model: 'fake-model', truncated: true }),
+      })
+
+      expect(result.translated).toEqual([])
+      expect(result.failed).toEqual([{ locale: 'en', reason: 'truncated' }])
+      expect(await readLocale('en')).toEqual({})
+    })
+
+    // generous timeout: the retry waits 4s before the second attempt
+    it('retries a rate-limited request once and succeeds', { timeout: 15_000 }, async () => {
+      let calls = 0
+      const result = await translateKey({
+        projectDir,
+        layer: 'root',
+        key: 'greeting',
+        sourceLocale: 'de',
+        targetLocales: ['en'],
+        translateFn: async () => {
+          calls++
+          if (calls === 1) {
+            throw new TranslateProviderError('Rate limit exceeded', 'rate-limit', 429)
+          }
+          return { text: JSON.stringify({ greeting: '[t] Hallo {name}' }), model: 'fake-model' }
+        },
+      })
+
+      expect(calls).toBe(2)
+      expect(result.translated).toEqual(['en'])
+      expect(result.failed).toEqual([])
+      expect((await readLocale('en')).greeting).toBe('[t] Hallo {name}')
     })
   })
 
