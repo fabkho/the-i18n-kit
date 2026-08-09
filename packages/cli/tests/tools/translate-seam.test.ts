@@ -211,6 +211,75 @@ describe('translateMissing through the translate seam', () => {
     expect(result.results.en.failed).toHaveLength(4)
   })
 
+  describe('plural variant validation', () => {
+    beforeEach(async () => {
+      // Replace the source locale with vue-i18n pipe plurals (and one value
+      // with a bare pipe that must NOT be treated as plural).
+      await writeFile(join(localesDir, 'de.json'), JSON.stringify({
+        requests: '{count} Anfrage | {count} Anfragen',
+        mode: 'Drücke {key} für A|B-Modus',
+      }, null, 2))
+    })
+
+    it('rejects a plural dropping a placeholder in one variant as placeholder-mismatch', async () => {
+      const result = await translateMissing({
+        projectDir,
+        layer: 'root',
+        targetLocales: ['en'],
+        translateFn: fakeTranslator((k, v) =>
+          // whole-value {count} set still matches — only the singular drops it
+          k === 'requests' ? 'One request | {count} requests' : `[t] ${v}`),
+      })
+
+      expect(result.results.en.failed).toEqual([{ key: 'requests', reason: 'placeholder-mismatch' }])
+      expect(result.results.en.translated).toEqual(['mode'])
+      expect((await readLocale('en')).requests).toBeUndefined()
+    })
+
+    it('rejects a translation with more variants than the source as plural-mismatch', async () => {
+      const result = await translateMissing({
+        projectDir,
+        layer: 'root',
+        targetLocales: ['en'],
+        translateFn: fakeTranslator((k, v) =>
+          k === 'requests' ? '{count} request | {count} requests | {count} many requests' : `[t] ${v}`),
+      })
+
+      expect(result.results.en.failed).toEqual([{ key: 'requests', reason: 'plural-mismatch' }])
+      expect(result.results.en.placeholderValidation?.errors).toEqual([
+        expect.objectContaining({ key: 'requests', kind: 'plural-count', sourceVariants: 2, targetVariants: 3 }),
+      ])
+      expect((await readLocale('en')).requests).toBeUndefined()
+    })
+
+    it('accepts a valid plural and writes it', async () => {
+      const result = await translateMissing({
+        projectDir,
+        layer: 'root',
+        targetLocales: ['en'],
+        translateFn: fakeTranslator((k, v) =>
+          k === 'requests' ? '{count} request | {count} requests' : `[t] ${v}`),
+      })
+
+      expect(result.results.en.failed).toEqual([])
+      expect(result.results.en.translated).toEqual(expect.arrayContaining(['requests', 'mode']))
+      expect((await readLocale('en')).requests).toBe('{count} request | {count} requests')
+    })
+
+    it('does not treat a bare pipe without surrounding spaces as a plural', async () => {
+      const result = await translateMissing({
+        projectDir,
+        layer: 'root',
+        targetLocales: ['en'],
+        translateFn: fakeTranslator((k, v) =>
+          k === 'mode' ? 'Press {key} for A|B mode' : `[t] ${v}`),
+      })
+
+      expect(result.results.en.failed).toEqual([])
+      expect((await readLocale('en')).mode).toBe('Press {key} for A|B mode')
+    })
+  })
+
   it('returns fallback contexts instead of translating when no backend is provided', async () => {
     const result = await translateMissing({
       projectDir,
