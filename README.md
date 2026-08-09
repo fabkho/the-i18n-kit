@@ -27,23 +27,23 @@ The-i18n-kit auto-detects your project structure (Nuxt, Laravel, or any generic 
 **A CLI** for direct use in the terminal:
 ```bash
 the-i18n-cli missing              # what's not translated yet?
-the-i18n-cli orphans              # what keys are dead code?
-the-i18n-cli rename old.key new.key   # rename across all locales at once
+the-i18n-cli remove-orphans      # what keys are dead code? (dry-run by default)
+the-i18n-cli rename --layer root --oldKey old.key --newKey new.key   # rename across all locales at once
 the-i18n-cli translate-key --layer root --key common.save --sourceLocale en-US --sourceValue "Save"  # update one key and translate targets
-the-i18n-cli cleanup              # remove orphan keys (dry-run by default)
+the-i18n-cli translate --layer root --provider google --model gemini-2.5-flash  # auto-translate all missing keys
 ```
 
 **An MCP server** that plugs into AI coding agents (Cursor, Claude, VS Code, Zed). Your agent can read, write, and maintain translation files as part of its normal workflow — with your glossary, tone notes, and layer rules loaded as context so translations stay consistent.
 
 ```
 Agent adds $t('booking.confirm.title')
-  → calls add_translations (writes exact values the agent provides)
-  → calls translate_missing (fills remaining locales via MCP sampling)
+  → calls write_translations (writes exact values the agent provides)
+  → calls translate_missing (fills remaining locales — see Translation Modes below)
 Done. All 28 locales updated, consistent terminology, no manual work.
 
 Agent changes wording for an existing key
   → calls translate_key with the source locale/value
-  → MCP sampling refreshes target locales, including stale existing values when overwrite=true
+  → target locales are refreshed, including stale existing values when overwrite=true
 ```
 
 ---
@@ -66,11 +66,10 @@ Agent changes wording for an existing key
 ```bash
 npm install -g the-i18n-cli
 
-the-i18n-cli detect                    # verify project is auto-detected
 the-i18n-cli missing                   # find missing translations
-the-i18n-cli orphans                   # find unused translation keys
 the-i18n-cli search --query "save"     # search keys and values
-the-i18n-cli cleanup                   # remove orphan keys (dry-run by default)
+the-i18n-cli remove-orphans            # find unused translation keys (dry-run by default)
+the-i18n-cli translate --layer root --provider openai --model gpt-4o-mini   # auto-translate missing keys
 ```
 
 → [Full CLI documentation](./packages/cli/README.md)
@@ -92,6 +91,62 @@ Add to your MCP host (VS Code, Cursor, Claude Desktop, Zed):
 ```
 
 → [Full MCP documentation](./packages/mcp/README.md)
+
+---
+
+## Translation Modes
+
+The translate operations (`translate` / `translate-key` in the CLI, `translate_missing` / `translate_key` in the MCP server) run in one of two modes. Every result reports which mode ran (`mode: "provider" | "agent" | "dry-run"`).
+
+### Provider mode
+
+The kit calls an LLM provider directly — OpenAI, Anthropic, or Google.
+
+**CLI:** pass `--provider` and `--model`; the API key comes from `--apiKey` or the provider's env var (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`):
+
+```bash
+the-i18n-cli translate --layer root --provider google --model gemini-2.5-flash
+```
+
+**MCP server:** set environment variables on the server process:
+
+| Variable | Value |
+|----------|-------|
+| `I18N_PROVIDER` | `openai`, `anthropic`, or `google` |
+| `I18N_MODEL` | Model name (e.g. `gemini-2.5-flash`) |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | API key matching the provider |
+
+Partial configuration (e.g. provider without model or key) logs a warning to stderr and falls back to agent mode — a misconfigured server never surprises callers per-request.
+
+### Agent mode
+
+The default in MCP hosts — no provider configured. The translate tools return per-locale `fallbackContexts` (source values plus glossary, style, and locale notes); the calling agent translates them inline and persists the results via `write_translations`. In the CLI, agent mode means nothing is translated: keys are reported as `skipped` with reason `no-provider`.
+
+The MCP `discover` tool reports the active mode as `translationMode` (plus `translationProvider` and `translationModel` in provider mode), so you can verify the configuration without triggering a translation.
+
+### Result contract
+
+Translate results account for every key:
+
+- `translated` — keys written
+- `wouldTranslate` — dry runs only: keys that would be translated
+- `failed` — with a reason: `provider-error`, `omitted-by-model`, `placeholder-mismatch`, `plural-mismatch`, `write-error`
+- `skipped` — with a reason: `no-provider`, `already-translated`, `protected-locale`
+- Invariant: `missing = translated + wouldTranslate + failed + skipped`
+
+Translations are validated before writing: placeholder parity is checked **per vue-i18n plural variant** (`{placeholders}`, `@:linked.refs`; `:params` for PHP), and the number of pipe-separated plural variants must match the source. Values that fail validation are rejected into `failed` instead of written. The CI templates below fail the job when a run translates nothing and has failures.
+
+### Protected locales
+
+Human-maintained locales can be excluded from automatic translation via `protectedLocales` in `.i18n-mcp.json`:
+
+```json
+{
+  "protectedLocales": ["en-US", "en-GB", "de-DE-formal"]
+}
+```
+
+Protected locales are excluded from the default target set of both translate operations and reported as `skipped` with reason `protected-locale`. Explicitly naming a protected locale in `targetLocales` overrides the protection with a warning. `discover` lists the resolved protected locales.
 
 ---
 
@@ -127,7 +182,7 @@ jobs:
           layer: common
 ```
 
-Translations are committed and pushed back to the PR branch. A summary comment is posted on the PR.
+The action translates missing keys and **creates a pull request** with the changes (branch `i18n/translate-missing-<timestamp>` by default). The job fails when every key failed to translate.
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
@@ -139,10 +194,17 @@ Translations are committed and pushed back to the PR branch. A summary comment i
 | `source_locale` | — | from `.i18n-mcp.json` | Reference locale |
 | `keys` | — | all missing | Comma-separated keys to translate |
 | `batch_size` | — | `50` | Keys per LLM call |
-| `concurrency` | — | provider default | Parallel LLM calls |
 | `dry_run` | — | `false` | Preview without writing files |
+| `working_directory` | — | `github.workspace` | Project root directory |
+| `create_pr` | — | `true` | Create a PR with the translated files |
+| `pr_branch` | — | `i18n/translate-missing-<timestamp>` | Branch name for the PR |
 | `commit_message` | — | auto-generated | Custom commit message |
-| `peer_deps` | — | — | Space-separated npm packages (e.g. `@google/genai`) |
+| `pr_title` | — | auto-generated | PR title |
+| `github_token` | — | `GITHUB_TOKEN` | Token used to create the PR |
+| `base_branch` | — | triggering branch | Base branch for the PR |
+| `cli_version` | — | `latest` | the-i18n-cli version to install (`skip` to use a preinstalled CLI) |
+
+Outputs: `translated_count`, `failed_count`, `pr_url`.
 
 ### GitLab CI
 
@@ -176,7 +238,9 @@ i18n-cleanup:
         - i18n/locales/*.json
 ```
 
-Translations are pushed to the MR branch. Orphan findings are posted as an MR comment with expandable details. Cleanup artifacts (`.i18n-reports/orphans.json`) are retained for 7 days.
+Translations are pushed to the MR branch. Orphan findings are posted as an MR comment with expandable details (requires `I18N_PUSH_TOKEN`). Artifacts (`.i18n-reports/`) are retained for 7 days. The translate job fails when every key failed to translate.
+
+Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *"Allow Git push requests to the repository"* (job token) or a project access token with `write_repository` + `api` scope in `I18N_PUSH_TOKEN`. MR comments always require `I18N_PUSH_TOKEN`.
 
 **`.i18n-translate` variables:**
 
@@ -190,18 +254,22 @@ Translations are pushed to the MR branch. Orphan findings are posted as an MR co
 | `I18N_SOURCE_LOCALE` | — | from `.i18n-mcp.json` | Reference locale |
 | `I18N_KEYS` | — | all missing | Comma-separated keys |
 | `I18N_BATCH_SIZE` | — | `50` | Keys per LLM call |
-| `I18N_CONCURRENCY` | — | provider default | Parallel LLM calls |
 | `I18N_DRY_RUN` | — | `false` | Preview without writing |
-| `I18N_INSTALL_PEER_DEPS` | — | — | Space-separated npm packages |
+| `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
+| `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
+| `I18N_PUSH_TOKEN` | — | — | Project access token (`write_repository` + `api`) for push + MR comments |
+| `I18N_LOCALE_PATHS` | — | `i18n/locales/` | Space-separated globs for locale directories |
 | `I18N_COMMIT_MESSAGE` | — | auto-generated | Custom commit message |
-| `I18N_MR_COMMENT` | — | `true` | Post summary comment on MR |
+| `I18N_MR_COMMENT` | — | `true` | Post summary comment on MR (requires `I18N_PUSH_TOKEN`) |
 
 **`.i18n-cleanup` variables:**
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `I18N_LAYER` | ✅ | — | Layer name |
-| `I18N_INSTALL_PEER_DEPS` | — | — | Space-separated npm packages |
+| `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
+| `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
+| `I18N_PUSH_TOKEN` | — | — | Project access token (`api` scope) for MR comments |
 
 > **Enterprise setups** (private registries, yarn, custom images): override `before_script` on the extending job. The template's `image`, `before_script`, `tags`, and `cache` are all overridable.
 
@@ -268,11 +336,12 @@ Drop a `.i18n-mcp.json` at your project root to give agents (and the CLI) projec
   "localeNotes": {
     "de": "Informal German (du)",
     "de-formal": "Formal German (Sie)"
-  }
+  },
+  "protectedLocales": ["en-US", "de-DE-formal"]
 }
 ```
 
-This context is automatically loaded by `detect_i18n_config` before any translation work, so agents use the right terminology and tone across all locales.
+This context is automatically loaded on `discover` before any translation work, so agents use the right terminology and tone across all locales.
 
 <details>
 <summary><strong>All config options</strong></summary>
@@ -288,10 +357,13 @@ This context is automatically loaded by `detect_i18n_config` before any translat
 | `examples` | Few-shot translation examples |
 | `orphanScan` | Per-layer ignore patterns for orphan detection |
 | `reportOutput` | `true` or path — write large tool output to disk instead of returning it inline |
-| `samplingPreferences` | Override model preferences for `translate_missing` |
+| `protectedLocales` | Human-maintained locales excluded from automatic translation |
 | `localeDirs` | Locale directories for the generic adapter |
 | `defaultLocale` | Default locale code (required for generic adapter) |
 | `locales` | Explicit list of locale codes |
+| `localeFileFormat` | Override the auto-detected locale file format (`"json"` or `"php-array"`) |
+
+`samplingPreferences` is deprecated and ignored (MCP sampling was removed). It is still accepted so existing config files keep validating — configure a provider instead (see [Translation Modes](#translation-modes)).
 
 </details>
 
@@ -302,14 +374,14 @@ This context is automatically loaded by `detect_i18n_config` before any translat
 When an AI agent builds a feature and adds new translation keys:
 
 1. **Agent adds `$t('some.key')`** to the Vue/Blade component
-2. **Agent calls `detect_i18n_config`** → loads `.i18n-mcp.json` (context, glossary, layerRules) into its session
-3. **Agent calls `add_translations`** — writes exact translations the agent provides. No separate sampling involved.
-4. **Agent calls `translate_missing`** → MCP sampling fills any locales the agent didn't cover via a separate LLM call.
+2. **Agent calls `discover`** → loads project setup and `.i18n-mcp.json` (context, glossary, layerRules) into its session
+3. **Agent calls `write_translations`** — writes exact translations the agent provides. No LLM involved.
+4. **Agent calls `translate_missing`** → fills any locales the agent didn't cover. In provider mode the server translates and writes directly; in agent mode it returns fallback contexts the agent translates inline and persists via `write_translations`.
 5. **When source wording changes**, agent calls `translate_key` to refresh one key across target locales (including existing stale translations when `overwrite=true`).
 
 The `add-feature-translations` MCP prompt codifies this as a reusable workflow. It also checks for duplicate keys via `search_translations` before writing.
 
-> **Exact writes vs translation tools:** `add_translations` and `update_translations` are pure write tools — they take locale-value maps and write them, no LLM involved. `translate_missing` fills only missing target values via sampling. `translate_key` translates one source key into target locales and can overwrite stale existing target values.
+> **Exact writes vs translation tools:** `write_translations` is a pure write tool — it takes locale-value maps and writes them, no LLM involved. `translate_missing` fills only missing target values. `translate_key` translates one source key into target locales and can overwrite stale existing target values.
 
 ---
 
@@ -318,7 +390,7 @@ The `add-feature-translations` MCP prompt codifies this as a reusable workflow. 
 Tools like `find_orphan_keys` and `get_missing_translations` can return large payloads. Pass `--output-file` (CLI) or `outputFile` (MCP) to write the full report to disk and get only a compact summary back:
 
 ```bash
-the-i18n-cli orphans --output-file /tmp/orphans.json
+the-i18n-cli remove-orphans --output-file /tmp/orphans.json
 # → Wrote report to: /tmp/orphans.json
 # → { orphanCount: 1103, filesScanned: 2526, ... }
 ```
