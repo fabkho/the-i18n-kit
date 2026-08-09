@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty'
 import type { CommandDef } from 'citty'
 import { log } from '../utils/logger.js'
+import { writeResult } from '../utils/stdout-guard.js'
 
 /** Factory for commands that call an operation and output its result. */
 export function createCommand(opts: {
@@ -43,11 +44,11 @@ export function outputResult(data: unknown, args: { json?: boolean }): void {
   ) {
     const { reportFile, ...rest } = data as Record<string, unknown>
     log.info(`Wrote report to: ${reportFile}`)
-    process.stdout.write(JSON.stringify(rest, null, 2) + '\n')
+    writeResult(JSON.stringify(rest, null, 2) + '\n')
     return
   }
   // JSON mode emits the full result (including reportFile when present) as pure JSON
-  process.stdout.write(JSON.stringify(data, null, 2) + '\n')
+  writeResult(JSON.stringify(data, null, 2) + '\n')
 }
 
 /** Split a comma-separated string into a trimmed array, or return undefined */
