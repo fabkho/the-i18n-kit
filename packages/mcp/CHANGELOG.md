@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-4.0.0...the-i18n-mcp-5.0.0) (2026-08-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** translate_missing and translate_key result shapes changed as described. All consumers (CLI output, MCP tools) updated.
+
+### Features
+
+* **cli:** honest translate result contract — mode, failed/skipped reasons, wouldTranslate ([#220](https://github.com/fabkho/the-i18n-kit/issues/220)) ([9d393bb](https://github.com/fabkho/the-i18n-kit/commit/9d393bb025ddfbf4481ac6f5df716366dc550a3e))
+
 ## [4.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-3.5.1...the-i18n-mcp-4.0.0) (2026-08-09)
 
 
