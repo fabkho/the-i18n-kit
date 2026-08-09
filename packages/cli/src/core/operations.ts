@@ -1538,42 +1538,47 @@ export async function translateMissing(opts: {
   const totalTranslated = Object.values(results).reduce((sum, r) => sum + r.translated.length, 0)
   const totalFailed = Object.values(results).reduce((sum, r) => sum + r.failed.length, 0)
 
-  const output: Record<string, unknown> = {
-    results,
-    summary: {
-      samplingSupported,
-      totalTranslated,
-      totalFailed,
-      layer,
-      referenceLocale: localeRefInfo(refLocale),
-      targetLocales: targets.map(localeRefInfo),
-      dryRun: isDryRun,
-    },
+  const summary: Record<string, unknown> = {
+    samplingSupported,
+    totalTranslated,
+    totalFailed,
+    layer,
+    referenceLocale: localeRefInfo(refLocale),
+    targetLocales: targets.map(localeRefInfo),
+    dryRun: isDryRun,
   }
 
-  if (Object.keys(fallbackContexts).length > 0) {
-    output.fallbackContexts = fallbackContexts
-    output.summary = {
-      ...(output.summary as Record<string, unknown>),
-      message: 'Sampling not supported by this host. Use the fallbackContexts to translate inline, then call write_translations (mode: "upsert") to write the results.',
-    }
+  const hasFallbackContexts = Object.keys(fallbackContexts).length > 0
+  if (hasFallbackContexts) {
+    summary.message = 'Sampling not supported by this host. Use the fallbackContexts to translate inline, then call write_translations (mode: "upsert") to write the results.'
   }
 
+  // Compact is a projection of the full result: it may only drop per-key
+  // detail, never the fallback contexts, reasons, or locale metadata that
+  // change what the caller does next.
   if (opts.compact) {
-    const byLocale = Object.entries(results).map(([code, r]) => ({
-      locale: code,
-      translated: r.translated.length,
-      failed: r.failed.length,
-    }))
+    const byLocale = Object.entries(results).map(([code, r]) => {
+      // Reduce per-key arrays to counts; drop per-key placeholder detail;
+      // keep every other per-locale field (samplingUsed, reason, batches,
+      // model, writeError, …).
+      const { translated, failed, placeholderValidation: _placeholderValidation, ...rest } = r
+      return {
+        locale: code,
+        translated: translated.length,
+        failed: failed.length,
+        ...rest,
+      }
+    })
     return {
-      summary: {
-        totalTranslated,
-        totalFailed,
-        byLocale,
-      },
+      summary: { ...summary, byLocale },
+      ...(hasFallbackContexts ? { fallbackContexts } : {}),
     }
   }
 
+  const output: Record<string, unknown> = { results, summary }
+  if (hasFallbackContexts) {
+    output.fallbackContexts = fallbackContexts
+  }
   return output
 }
 
