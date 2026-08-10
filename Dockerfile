@@ -6,8 +6,11 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY tsconfig.base.json ./
 COPY packages/cli/package.json packages/cli/tsconfig.json packages/cli/tsdown.config.ts ./packages/cli/
 COPY packages/cli/src/ ./packages/cli/src/
-COPY packages/mcp/package.json packages/mcp/tsconfig.json packages/mcp/tsdown.config.ts ./packages/mcp/
+COPY packages/mcp/package.json packages/mcp/tsconfig.json packages/mcp/tsdown.config.ts packages/mcp/schema.json ./packages/mcp/
 COPY packages/mcp/src/ ./packages/mcp/src/
+# playground/nuxt is a workspace importer in the lockfile; its manifest must
+# exist or --frozen-lockfile rejects the install.
+COPY playground/nuxt/package.json ./playground/nuxt/
 RUN pnpm install --frozen-lockfile
 RUN pnpm build
 RUN pnpm --filter the-i18n-mcp deploy --legacy /app/prod

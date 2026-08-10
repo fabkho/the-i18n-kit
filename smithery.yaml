@@ -1,4 +1,19 @@
 name: the-i18n-mcp
-description: MCP server for i18n translation management — 13 tools for finding missing translations, detecting orphan keys, batch-translating via LLM, and adding languages.
+description: MCP server for i18n translation management — 15 tools for finding missing translations, detecting orphan keys, batch-translating via LLM, and adding languages.
 build:
   dockerfile: Dockerfile
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      projectDir:
+        type: string
+        pattern: "^/"
+        description: Absolute path of the project the server manages (must be mounted into the container).
+  commandFunction: |-
+    (config) => ({
+      command: "node",
+      args: ["dist/index.js"],
+      env: { I18N_PROJECT_DIR: config.projectDir || "/project" }
+    })

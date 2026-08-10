@@ -23,7 +23,19 @@
       "prerelease": false,
       "include-component-in-tag": true,
       "include-v-in-tag": false,
-      "component": "the-i18n-mcp"
+      "component": "the-i18n-mcp",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "../../server.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "../../server.json",
+          "jsonpath": "$.packages[0].version"
+        }
+      ]
     }
   }
 }
