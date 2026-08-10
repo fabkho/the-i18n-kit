@@ -178,7 +178,6 @@ const outputFileInput = (example: string) => z
 
 // SEP-2549 cache hints for the cacheable 2026-07-28 results.
 const STATIC_SURFACE_CACHE: CacheHint = { ttlMs: 3_600_000, cacheScope: 'private' }
-const LOCALE_DATA_CACHE: CacheHint = { ttlMs: 15_000, cacheScope: 'private' }
 
 export interface CreateServerOptions {
   /**
@@ -214,11 +213,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         'tools/list': STATIC_SURFACE_CACHE,
         'prompts/list': STATIC_SURFACE_CACHE,
         'server/discover': STATIC_SURFACE_CACHE,
-        // Locale files change on disk between requests (editors, git, the
-        // write tools themselves) — keep resource reads short-lived.
-        'resources/list': LOCALE_DATA_CACHE,
-        'resources/templates/list': LOCALE_DATA_CACHE,
-        'resources/read': LOCALE_DATA_CACHE,
+        // Resources carry no cache hints: the write tools mutate locale
+        // files and clients have no guaranteed invalidation channel, so any
+        // TTL would let an agent read stale data right after its own write.
       },
     },
   )

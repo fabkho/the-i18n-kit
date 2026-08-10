@@ -435,9 +435,23 @@ describe('dual-era serving through one factory', () => {
     expect(toolList.ttlMs).toBe(3_600_000)
     expect(toolList.cacheScope).toBe('private')
 
+    // Resources deliberately have no configured hint: locale data must never
+    // be cache-stale after a write tool ran. The SDK stamps ttlMs 0
+    // (do-not-cache) on unconfigured cacheable results.
     const resourceRead = await modernClient.readResource({ uri: 'i18n:///root/de' }) as CacheStamped
-    expect(resourceRead.ttlMs).toBe(15_000)
-    expect(resourceRead.cacheScope).toBe('private')
+    expect(resourceRead.ttlMs).toBe(0)
+  })
+
+  it('a resource read directly after a write returns the fresh content', async () => {
+    await callToolOn(modernClient, 'write_translations', {
+      layer: 'root',
+      translations: { 'cache.probe': { de: 'frisch' } },
+      projectDir,
+    })
+
+    const result = await modernClient.readResource({ uri: 'i18n:///root/de' })
+    const content = result.contents[0] as { text: string }
+    expect(JSON.parse(content.text)).toMatchObject({ cache: { probe: 'frisch' } })
   })
 
   it('serves a legacy-only client from the same entry point', async () => {
