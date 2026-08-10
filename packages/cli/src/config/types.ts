@@ -83,6 +83,12 @@ export interface ProjectConfig {
   protectedLocales?: string[]
   /** Override the auto-detected locale file format. E.g., "json" or "php-array". Useful when both formats exist or auto-detection picks wrong. */
   localeFileFormat?: LocaleFileFormat
+  /**
+   * Base URL for the LLM provider, for OpenAI-compatible gateways, local
+   * models and corporate proxies. Overridden by the I18N_BASE_URL env var
+   * and by --baseUrl. Not supported by the "google" provider.
+   */
+  providerBaseUrl?: string
 }
 
 /**

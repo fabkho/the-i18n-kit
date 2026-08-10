@@ -5,12 +5,15 @@ export type LlmProvider = 'openai' | 'anthropic' | 'google'
 // ─── Error classification ───────────────────────────────────────
 
 /** How a provider failure should be handled by the caller. */
-export type TranslateProviderErrorKind = 'auth' | 'rate-limit' | 'provider'
+export type TranslateProviderErrorKind = 'auth' | 'rate-limit' | 'provider' | 'config'
 
 /**
  * A classified provider failure. `auth` errors are not retryable (the caller
  * should abort the run), `rate-limit` errors should be retried with backoff,
  * and `provider` covers everything else (server errors, network, …).
+ * `config` marks an unusable provider setup and is raised while building the
+ * TranslateFn, before any request exists — so it surfaces from the command
+ * and never reaches the retry loop.
  */
 export class TranslateProviderError extends Error {
   public readonly kind: TranslateProviderErrorKind
@@ -59,6 +62,31 @@ export interface LlmProviderConfig {
   apiKey?: string
   /** Base URL override for proxies / compatible APIs */
   baseUrl?: string
+}
+
+/** Environment variable carrying the provider base URL override. */
+export const BASE_URL_ENV = 'I18N_BASE_URL'
+
+/**
+ * Resolve the provider base URL from its three sources, highest precedence
+ * first: an explicit flag, the I18N_BASE_URL env var, then the project
+ * config's `providerBaseUrl`.
+ *
+ * Blank values count as unset. Shells produce them routinely — `--baseUrl
+ * "$UNSET"` or an exported-but-empty variable — and a blank must not shadow a
+ * real endpoint configured further down the chain. A blank in the config file
+ * is a different case: it cannot arise by accident, so the strict schema
+ * rejects it at load time rather than letting it reach this function.
+ */
+export function resolveProviderBaseUrl(sources: {
+  flag?: string
+  env?: string
+  config?: string
+}): string | undefined {
+  for (const value of [sources.flag, sources.env, sources.config]) {
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim()
+  }
+  return undefined
 }
 
 const ENV_KEY_MAP: Record<LlmProvider, string> = {
@@ -198,6 +226,16 @@ async function createAnthropicTranslateFn(config: LlmProviderConfig): Promise<Tr
  * Throws if the provider SDK is not installed or API key is missing.
  */
 export async function createTranslateFn(config: LlmProviderConfig): Promise<TranslateFn> {
+  // @google/genai exposes no endpoint override, so a base URL here would be
+  // silently ignored and translate against the wrong endpoint. Refuse loudly.
+  if (config.provider === 'google' && config.baseUrl) {
+    throw new TranslateProviderError(
+      'Provider "google" does not support a custom base URL. '
+      + `Remove --baseUrl / ${BASE_URL_ENV} / providerBaseUrl, or use an OpenAI-compatible provider.`,
+      'config',
+    )
+  }
+
   switch (config.provider) {
     case 'openai':
       return createOpenAiTranslateFn(config)

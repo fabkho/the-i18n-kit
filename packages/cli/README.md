@@ -72,6 +72,14 @@ the-i18n-cli translate --layer root --provider google --model gemini-2.5-flash
 the-i18n-cli translate --layer root --targets de-DE,fr-FR --batchSize 25 --provider openai --model gpt-4o-mini
 ```
 
+For an OpenAI-compatible gateway, a local model or a proxy, add `--baseUrl` — or set `I18N_BASE_URL`, or `providerBaseUrl` in `.i18n-mcp.json`, in that order of precedence:
+
+```bash
+the-i18n-cli translate --layer root --provider openai --model llama3 --baseUrl http://localhost:11434/v1
+```
+
+`google` has no endpoint override, so a base URL with it is rejected as a configuration error rather than silently ignored.
+
 **Agent mode** — no `--provider` given. Nothing is translated: keys are reported as `skipped` with reason `no-provider`, and the result explains how to enable provider mode. (In the MCP server, agent mode instead returns fallback contexts for the host agent — see [the-i18n-mcp](https://www.npmjs.com/package/the-i18n-mcp).)
 
 ### Result contract

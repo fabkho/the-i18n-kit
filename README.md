@@ -115,8 +115,27 @@ the-i18n-cli translate --layer root --provider google --model gemini-2.5-flash
 | `I18N_PROVIDER` | `openai`, `anthropic`, or `google` |
 | `I18N_MODEL` | Model name (e.g. `gemini-2.5-flash`) |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | API key matching the provider |
+| `I18N_BASE_URL` | Optional provider base URL (see below) |
 
 Partial configuration (e.g. provider without model or key) logs a warning to stderr and falls back to agent mode — a misconfigured server never surprises callers per-request.
+
+### Custom provider endpoints
+
+Point the `openai` or `anthropic` provider at any compatible endpoint — a local model (Ollama, LiteLLM), an OpenAI-compatible gateway (OpenRouter, Azure OpenAI), or a corporate proxy. Three sources, highest precedence first:
+
+```bash
+the-i18n-cli translate --layer root --provider openai --model llama3 --baseUrl http://localhost:11434/v1
+```
+
+| Source | Scope |
+|--------|-------|
+| `--baseUrl` | One invocation |
+| `I18N_BASE_URL` | The environment, including the MCP server process |
+| `providerBaseUrl` in `.i18n-mcp.json` | The whole project, shared through the repo |
+
+A blank `--baseUrl` or `I18N_BASE_URL` counts as unset, so an exported-but-empty variable can't silently disable an endpoint configured further down the chain. A blank `providerBaseUrl` in the config file is rejected at load time instead — unlike a shell variable, it can't get there by accident.
+
+The `google` provider has no endpoint override — passing a base URL with it is rejected as a configuration error rather than ignored.
 
 ### Agent mode
 
@@ -377,6 +396,7 @@ This context is automatically loaded on `discover` before any translation work, 
 | `defaultLocale` | Default locale code (required for generic adapter) |
 | `locales` | Explicit list of locale codes |
 | `localeFileFormat` | Override the auto-detected locale file format (`"json"` or `"php-array"`) |
+| `providerBaseUrl` | Provider base URL for OpenAI-compatible gateways, local models and proxies — see [Custom provider endpoints](#custom-provider-endpoints) |
 
 `samplingPreferences` is deprecated and ignored (MCP sampling was removed). It is still accepted so existing config files keep validating — configure a provider instead (see [Translation Modes](#translation-modes)).
 

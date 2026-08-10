@@ -225,6 +225,35 @@ describe('loadProjectConfig', () => {
     }
   })
 
+  it('accepts providerBaseUrl as a string', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({ providerBaseUrl: 'https://gateway.example/v1' }), 'utf-8')
+      const config = await loadProjectConfig(tmpDir)
+      expect(config!.providerBaseUrl).toBe('https://gateway.example/v1')
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
+  // A blank flag or env var is normalised to "unset" because shells produce
+  // those by accident. A blank in the config file cannot, so it is rejected
+  // here rather than silently ignored — matching every other string field.
+  it('rejects a blank providerBaseUrl instead of treating it as unset', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({ providerBaseUrl: '' }), 'utf-8')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/providerBaseUrl/)
+
+      await writeFile(configPath, JSON.stringify({ providerBaseUrl: '   ' }), 'utf-8')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/providerBaseUrl/)
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
   it('accepts orphanScan without ignorePatterns (optional field)', async () => {
     await mkdir(tmpDir, { recursive: true })
     const configPath = resolve(tmpDir, '.i18n-mcp.json')

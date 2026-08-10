@@ -52,5 +52,6 @@ export { readLocaleData } from './io/locale-data.js'
 export { ToolError, toErrorMessage } from './utils/errors.js'
 
 // LLM providers
-export { createTranslateFn, TranslateProviderError, classifyProviderError } from './llm/providers.js'
+export { createTranslateFn, TranslateProviderError, classifyProviderError, resolveProviderBaseUrl, BASE_URL_ENV } from './llm/providers.js'
+export { loadProjectConfig } from './config/project-config.js'
 export type { LlmProvider, LlmProviderConfig, TranslateProviderErrorKind } from './llm/providers.js'
