@@ -128,7 +128,6 @@ async function runOrphanScan(
   keysByLayer: Map<string, { keys: string[]; localeDir: LocaleDir }>,
   opts: { scanDirs?: string[]; excludeDirs?: string[]; dir: string },
 ): Promise<OrphanScanResult> {
-  warnUnknownOrphanScanLayers(config)
   return findOrphanKeysForConfig({
     keysByLayer,
     // an empty scanDirs array means "not provided" (matches excludeDirs)
@@ -238,6 +237,7 @@ export async function findOrphanKeys(opts: {
   const { layer, locale, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
+  warnUnknownOrphanScanLayers(config)
 
   const { layersToCheck, keysByLayer, totalKeys, localeCode } = await resolveOrphanScanContext(config, {
     layer,
@@ -421,6 +421,7 @@ export async function removeOrphanKeys(opts: {
   const { layer, locale, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
+  warnUnknownOrphanScanLayers(config)
   const isDryRun = opts.dryRun ?? true
 
   const { keysByLayer, totalKeys } = await resolveOrphanScanContext(config, {
