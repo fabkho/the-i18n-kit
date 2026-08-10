@@ -78,6 +78,15 @@ const UNCERTAIN_DYNAMIC_OVERLAP
   = 'matches a dynamic key pattern used in this app — may be a partial extraction of that expression'
 const UNCERTAIN_EXISTENCE_CHECK
   = 'referenced only via existence checks ($te) — likely a deliberately optional key'
+const UNCERTAIN_NAMESPACED_KEY
+  = 'package-namespaced key (namespace::group.key) — vendor language files outside the project cannot be resolved'
+const UNCERTAIN_STRING_KEY
+  = 'string-key (no dot-separated key-path shape) — Laravel/JSON-style translations render these as-is when unresolved'
+
+/** Dot-separated identifier path; anything else is a JSON-style string-key. */
+const KEY_PATH_SHAPE = /^[\w-]+(?:\.[\w-]+)+$/
+/** Laravel package-namespace syntax: accounting::messages.invoice.total */
+const NAMESPACED_KEY = /^[\w-]+::/
 
 /** Existence-check callees probe whether a key is defined; a miss is handled by the caller. */
 function isExistenceCheckCallee(callee: string): boolean {
@@ -220,6 +229,17 @@ function classifyStaticKeys(
     }
     if (keyUsages.every(u => isExistenceCheckCallee(u.callee))) {
       pushUncertain(outcome, ctx, key, keyUsages, UNCERTAIN_EXISTENCE_CHECK)
+      continue
+    }
+    // Two Laravel idioms are never hard findings: namespaced keys resolve in
+    // vendor lang dirs this scan cannot see, and string-keys (JSON-style
+    // full-sentence translations) legitimately render as-is when undefined.
+    if (NAMESPACED_KEY.test(key)) {
+      pushUncertain(outcome, ctx, key, keyUsages, UNCERTAIN_NAMESPACED_KEY)
+      continue
+    }
+    if (!KEY_PATH_SHAPE.test(key)) {
+      pushUncertain(outcome, ctx, key, keyUsages, UNCERTAIN_STRING_KEY)
       continue
     }
     outcome.undefinedKeys.push({

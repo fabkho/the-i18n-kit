@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { extractKeys, scanSourceFiles } from '../../src/scanner/code-scanner.js'
+import { buildDynamicKeyRegexes, extractKeys, findOrphanKeysForConfig, scanSourceFiles } from '../../src/scanner/code-scanner.js'
 import { LARAVEL_PATTERNS, getPatternSet } from '../../src/scanner/patterns.js'
 
 const tmpDir = join(dirname(fileURLToPath(import.meta.url)), '../../.tmp-test/laravel-scanner')
@@ -341,5 +341,79 @@ describe('Laravel scanSourceFiles', () => {
     expect(result.filesScanned).toBe(2)
     expect(result.usages).toHaveLength(2)
     expect(result.uniqueKeys.size).toBe(1)
+  })
+
+  // #262 — keys constructed away from the translation call must still become
+  // bare dynamic candidates, or a remove-orphans run deletes live keys.
+  describe('indirectly-constructed key candidates (#262)', () => {
+    it('collects variable-assigned interpolated strings amid $-heavy PHP code', async () => {
+      // Mimics bookings-api FormatsBookingChanges.php: the interpolated key is
+      // assigned to a variable first; surrounding code is full of $vars and
+      // other double-quoted strings that must not shift quote parity past it.
+      await writeFile(join(tmpDir, 'FormatsBookingChanges.php'), [
+        '<?php',
+        'foreach ($changedAttributes as $key => $value) {',
+        '    $original = isset($originalAttributes[$key]) ? $originalAttributes[$key] : null;',
+        '    $transKey = "api.bookings.attributes.{$key}";',
+        '    $translatedAttribute = Lang::has($transKey) ? Lang::get($transKey) : $key;',
+        '    $list .= "<li>" . $translatedAttribute . "</li>";',
+        '}',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir, undefined, LARAVEL_PATTERNS)
+      expect(result.bareDynamicCandidates.has('`api.bookings.attributes.${_}`')).toBe(true)
+      const regexes = buildDynamicKeyRegexes([...result.bareDynamicCandidates].map(e => ({ expression: e })))
+      expect(regexes.some(re => re.test('api.bookings.attributes.start_date'))).toBe(true)
+    })
+
+    it('collects prefix-shaped string literals passed as plain arguments', async () => {
+      // Mimics bookings-api OrdersExport.php: the prefix is a builder argument,
+      // concatenated inside a helper (__("{$this->translationPrefix}$value")).
+      await writeFile(join(tmpDir, 'OrdersExport.php'), [
+        '<?php',
+        "TranslatedColumn::make('status', __('exports.orders.status'), 'status')",
+        "    ->translationPrefix('api.orders.status.'),",
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir, undefined, LARAVEL_PATTERNS)
+      expect(result.bareDynamicCandidates.has('`api.orders.status.${_}`')).toBe(true)
+    })
+
+    it('does not build candidates from interpolation-only or dotless strings', async () => {
+      await writeFile(join(tmpDir, 'Helper.php'), [
+        '<?php',
+        'return $value ? __("{$this->translationPrefix}$value") : $this->defaultValue;',
+        '$greeting = "hello_$name";',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir, undefined, LARAVEL_PATTERNS)
+      expect(result.bareDynamicCandidates.size).toBe(0)
+    })
+
+    it('ground truth: indirectly-consumed keys are never safe orphans', async () => {
+      await writeFile(join(tmpDir, 'FormatsBookingChanges.php'), [
+        '<?php',
+        '$transKey = "api.bookings.attributes.{$key}";',
+        '$label = Lang::has($transKey) ? Lang::get($transKey) : $key;',
+      ].join('\n'))
+      await writeFile(join(tmpDir, 'InvoiceItemsExport.php'), [
+        '<?php',
+        "TranslatedColumn::make('invoice.status', __('exports.invoices.status'), 'document.status')",
+        "    ->translationPrefix('api.invoices.status.'),",
+      ].join('\n'))
+
+      const result = await findOrphanKeysForConfig({
+        keysByLayer: new Map([['root', {
+          keys: ['api.bookings.attributes.start_date', 'api.invoices.status.paid', 'api.truly.unused'],
+          localeDir: { layer: 'root' },
+        }]]),
+        resolveIgnorePatterns: () => undefined,
+        patterns: LARAVEL_PATTERNS,
+        scanDirs: [tmpDir],
+      })
+
+      expect(result.orphansByLayer.root ?? []).toEqual(['api.truly.unused'])
+      expect(result.dynamicMatchedCount).toBe(2)
+    })
   })
 })
