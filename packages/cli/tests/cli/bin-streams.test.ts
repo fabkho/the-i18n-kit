@@ -64,10 +64,17 @@ describe('bin stream routing', () => {
       await rm(emptyDir, { recursive: true, force: true })
     })
 
-    it('keeps stdout empty when a command fails — diagnostics go to stderr', async () => {
+    // Failures must keep stdout parseable (#266): a JSON consumer piping
+    // stdout into jq must never receive zero bytes.
+    it('emits a structured JSON error on stdout when a command fails — diagnostics go to stderr', async () => {
       const { stdout, stderr, code } = await runBin(['missing', '--layer', 'root'], emptyDir)
       expect(code).toBe(1)
-      expect(stdout).toBe('')
+      expect(JSON.parse(stdout)).toMatchObject({
+        error: {
+          code: 'CONFIG_ERROR',
+          message: expect.stringContaining('No framework detected'),
+        },
+      })
       expect(stderr).not.toBe('')
     })
   })

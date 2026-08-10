@@ -244,6 +244,22 @@ describe('checkUndefinedKeys — scope-aware', () => {
     expect(report.undefinedKeys).toHaveLength(2)
   })
 
+  it('resolves a relative outputFile against the project dir, not the process cwd', async () => {
+    const result = await checkUndefinedKeys({ projectDir, outputFile: 'undefined-report-rel.json' })
+
+    const expectedPath = join(projectDir, 'undefined-report-rel.json')
+    expect(result).toMatchObject({ reportFile: expectedPath })
+
+    const report = JSON.parse(await readFile(expectedPath, 'utf-8')) as Record<string, unknown>
+    expect(report.tool).toBe('find_undefined_keys')
+  })
+
+  it('rejects a relative outputFile escaping the project dir', async () => {
+    await expect(
+      checkUndefinedKeys({ projectDir, outputFile: '../escape.json' }),
+    ).rejects.toThrow(/resolves outside the project directory/)
+  })
+
   it('honors codequalityOutput: writes a CodeClimate array alongside the normal report', async () => {
     const reportPath = join(projectDir, 'undefined-report-cq.json')
     const cqPath = join(projectDir, 'gl-codequality.json')

@@ -3,6 +3,7 @@
  *
  * Verifies:
  * - When `outputFile` is provided, op writes JSON to disk and returns `{ reportFile, summary }`.
+ * - Relative paths resolve against the project dir, not the process cwd (#266).
  * - Paths outside the project directory are rejected even when `outputFile` is explicit.
  * - When `outputFile` is absent and no config-level `reportOutput`, full payload is returned inline.
  */
@@ -60,11 +61,27 @@ describe('getMissingTranslations — outputFile', () => {
     expect(parsed).toHaveProperty('missing')
   })
 
-  it('accepts explicit outputFile path (even outside project dir)', async () => {
+  it('resolves a relative outputFile against the project dir, not the process cwd', async () => {
+    const result = await getMissingTranslations({
+      projectDir: appAdminDir,
+      outputFile: '.i18n-reports/missing-rel.json',
+    })
+    expect(result).toHaveProperty('reportFile', join(appAdminDir, '.i18n-reports', 'missing-rel.json'))
+    const raw = await readFile(join(appAdminDir, '.i18n-reports', 'missing-rel.json'), 'utf-8')
+    expect(JSON.parse(raw)).toHaveProperty('tool', 'get_missing_translations')
+  })
+
+  it('rejects an outputFile outside the project dir', async () => {
     const outPath = join(tmpDir, 'missing-tmp.json')
     await expect(
       getMissingTranslations({ projectDir: appAdminDir, outputFile: outPath }),
-    ).resolves.toBeDefined()
+    ).rejects.toThrow(/resolves outside the project directory/)
+  })
+
+  it('rejects a relative outputFile escaping the project dir', async () => {
+    await expect(
+      getMissingTranslations({ projectDir: appAdminDir, outputFile: '../escape.json' }),
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -95,11 +112,11 @@ describe('findEmptyTranslations — outputFile', () => {
     expect(parsed).toHaveProperty('emptyKeys')
   })
 
-  it('accepts explicit outputFile path (even outside project dir)', async () => {
+  it('rejects an outputFile outside the project dir', async () => {
     const outPath = join(tmpDir, 'empty-tmp.json')
     await expect(
       findEmptyTranslations({ projectDir: appAdminDir, outputFile: outPath }),
-    ).resolves.toBeDefined()
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -130,11 +147,11 @@ describe('findOrphanKeys — outputFile', () => {
     expect(parsed).toHaveProperty('orphanKeys')
   })
 
-  it('accepts explicit outputFile path (even outside project dir)', async () => {
+  it('rejects an outputFile outside the project dir', async () => {
     const outPath = join(tmpDir, 'orphans-tmp.json')
     await expect(
       findOrphanKeys({ projectDir: playgroundDir, outputFile: outPath }),
-    ).resolves.toBeDefined()
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -165,11 +182,11 @@ describe('scanCodeUsage — outputFile', () => {
     expect(parsed).toHaveProperty('usages')
   })
 
-  it('accepts explicit outputFile path (even outside project dir)', async () => {
+  it('rejects an outputFile outside the project dir', async () => {
     const outPath = join(tmpDir, 'scan-tmp.json')
     await expect(
       scanCodeUsage({ projectDir: playgroundDir, outputFile: outPath }),
-    ).resolves.toBeDefined()
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('returns full inline payload when outputFile is absent', async () => {
@@ -198,6 +215,21 @@ describe('removeOrphanKeys — outputFile', () => {
     const raw = await readFile(outPath, 'utf-8')
     const parsed = JSON.parse(raw)
     expect(parsed).toHaveProperty('tool', 'remove_orphan_keys')
+  })
+
+  it('resolves a relative outputFile against the project dir in dry-run mode', async () => {
+    const result = await removeOrphanKeys({
+      projectDir: playgroundDir,
+      dryRun: true,
+      outputFile: '.i18n-reports/cleanup-rel.json',
+    })
+    expect(result).toHaveProperty('reportFile', join(playgroundDir, '.i18n-reports', 'cleanup-rel.json'))
+  })
+
+  it('rejects a relative outputFile escaping the project dir', async () => {
+    await expect(
+      removeOrphanKeys({ projectDir: playgroundDir, dryRun: true, outputFile: '../escape.json' }),
+    ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('rejects paths outside project dir (internal auto-generated paths are validated)', async () => {

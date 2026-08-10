@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty'
 import type { CommandDef } from 'citty'
 import { log } from '../utils/logger.js'
+import { toErrorMessage } from '../utils/errors.js'
 import { writeResult } from '../utils/stdout-guard.js'
 
 /** Factory for commands that call an operation and output its result. */
@@ -21,9 +22,14 @@ export function createCommand(opts: {
     meta: { name: opts.name, description: opts.description },
     args: { ...sharedArgs, ...(opts.args ?? {}) },
     async run({ args }) {
-      const result = await opts.run(args)
-      outputResult(result, args)
-      if (isTotalFailure(result) || opts.failWhen?.(result)) {
+      try {
+        const result = await opts.run(args)
+        outputResult(result, args)
+        if (isTotalFailure(result) || opts.failWhen?.(result)) {
+          process.exitCode = 1
+        }
+      } catch (error) {
+        emitErrorResult(error, args)
         process.exitCode = 1
       }
     },
@@ -85,6 +91,31 @@ function outputResult(data: unknown, args: { json?: boolean }): void {
   }
   // JSON mode emits the full result (including reportFile when present) as pure JSON
   writeResult(JSON.stringify(data, null, 2) + '\n')
+}
+
+/**
+ * Failure output. In JSON mode stdout must still carry parseable JSON —
+ * consumers pipe it into jq, and zero bytes is a parse error — so the
+ * structured error object IS the result on stdout; the human-readable
+ * message goes to stderr in every mode. Exit code stays non-zero (callers
+ * set it).
+ */
+export function emitErrorResult(error: unknown, args: { json?: boolean }): void {
+  log.error(toErrorMessage(error))
+  const jsonMode = args.json || !process.stdout.isTTY
+  if (!jsonMode) return
+  const payload = { error: { code: errorCode(error), message: toErrorMessage(error) } }
+  writeResult(JSON.stringify(payload, null, 2) + '\n')
+}
+
+/** ToolError/FileIOError carry codes; Node errors expose e.g. ENOENT. */
+function errorCode(error: unknown): string {
+  if (error instanceof Error) {
+    const code = (error as { code?: unknown }).code
+    if (typeof code === 'string') return code
+    if (error.name === 'ConfigError') return 'CONFIG_ERROR'
+  }
+  return 'UNKNOWN_ERROR'
 }
 
 /** Split a comma-separated string into a trimmed array, or return undefined */

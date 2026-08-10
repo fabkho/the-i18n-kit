@@ -12,7 +12,7 @@ import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { ToolError } from '../utils/errors.js'
 
 import { findLocaleImpl, findLocaleOrThrow } from './shared.js'
-import { resolveReportFilePath } from './report.js'
+import { resolveOutputFile, resolveReportFilePath } from './report.js'
 
 export interface DuplicateKeyCollision {
   key: string
@@ -185,7 +185,7 @@ export async function findDuplicateKeys(opts: {
     summary,
   }
 
-  const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_duplicate_keys')
+  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_duplicate_keys')
   if (reportPath) {
     await writeReportFile(reportPath, output as unknown as Record<string, unknown>, {
       tool: 'find_duplicate_keys',

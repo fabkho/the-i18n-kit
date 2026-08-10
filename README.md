@@ -402,18 +402,18 @@ The `add-feature-translations` MCP prompt codifies this as a reusable workflow. 
 
 ## Handling Large Outputs
 
-Tools like `find_orphan_keys` and `get_missing_translations` can return large payloads. Pass `--output-file` (CLI) or `outputFile` (MCP) to write the full report to disk and get only a compact summary back:
+Tools like `find_orphan_keys` and `get_missing_translations` can return large payloads. Pass `--output-file` (CLI) or `outputFile` (MCP) to write the full report to disk and get only a compact summary back. Relative paths resolve against the project dir; the path must stay within it:
 
 ```bash
-the-i18n-cli remove-orphans --output-file /tmp/orphans.json
-# → Wrote report to: /tmp/orphans.json
+the-i18n-cli remove-orphans --output-file reports/orphans.json
+# → Wrote report to: <project-dir>/reports/orphans.json
 # → { orphanCount: 1103, filesScanned: 2526, ... }
 ```
 
 ```json
 // MCP call
-{ "tool": "find_orphan_keys", "arguments": { "outputFile": "/tmp/orphans.json" } }
-// → { "reportFile": "/tmp/orphans.json", "summary": { ... } }
+{ "tool": "find_orphan_keys", "arguments": { "outputFile": "reports/orphans.json" } }
+// → { "reportFile": "<project-dir>/reports/orphans.json", "summary": { ... } }
 ```
 
 Alternatively, set `reportOutput: true` in `.i18n-mcp.json` to always write reports to `.i18n-reports/` in the project root.

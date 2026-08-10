@@ -14,7 +14,7 @@ import { ToolError } from '../utils/errors.js'
 
 import type { LocaleDirInfo, SearchMatch } from './types.js'
 import { findLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, localeRefInfo } from './shared.js'
-import { resolveReportFilePath } from './report.js'
+import { resolveOutputFile, resolveReportFilePath } from './report.js'
 
 /**
  * Detect the i18n configuration from the project, always bypassing the
@@ -237,7 +237,7 @@ export async function getMissingTranslations(opts: {
     },
   }
 
-  const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'get_missing_translations')
+  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'get_missing_translations')
   if (reportPath) {
     await writeReportFile(reportPath, output, {
       tool: 'get_missing_translations',
@@ -313,7 +313,7 @@ export async function findEmptyTranslations(opts: {
     },
   }
 
-  const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_empty_translations')
+  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_empty_translations')
   if (reportPath) {
     await writeReportFile(reportPath, output, {
       tool: 'find_empty_translations',
@@ -398,7 +398,7 @@ export async function searchTranslations(opts: {
 
   const output = { matches, totalMatches: matches.length }
 
-  const reportPath = outputFile ?? resolveReportFilePath(config, dir, 'search_translations')
+  const reportPath = resolveOutputFile(dir, outputFile) ?? resolveReportFilePath(config, dir, 'search_translations')
   if (reportPath) {
     await writeReportFile(reportPath, output, {
       tool: 'search_translations',
