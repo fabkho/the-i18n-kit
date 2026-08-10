@@ -64,6 +64,27 @@ export async function writeReportFile(
 }
 
 /**
+ * Write a GitLab Code Quality report: a bare JSON array — the format is
+ * externally specified, so no metadata wrapper (unlike writeReportFile).
+ */
+export async function writeCodequalityFile(
+  filePath: string,
+  issues: unknown[],
+): Promise<void> {
+  const content = JSON.stringify(issues, null, 2) + '\n'
+
+  try {
+    await atomicWrite(filePath, content)
+  } catch (error) {
+    if (error instanceof FileIOError) throw error
+    throw new FileIOError(
+      `Failed to write codequality file: ${filePath}: ${toErrorMessage(error)}`,
+      filePath,
+    )
+  }
+}
+
+/**
  * Read, mutate, and write back a single JSON locale file while preserving its
  * existing formatting:
  *

@@ -210,7 +210,7 @@ Outputs: `translated_count`, `failed_count`, `pr_url`.
 
 ### GitLab CI
 
-Two reusable jobs: `.i18n-translate` and `.i18n-cleanup`.
+Three reusable jobs: `.i18n-translate`, `.i18n-cleanup`, and `.i18n-check`.
 
 ```yaml
 # .gitlab-ci.yml
@@ -238,11 +238,19 @@ i18n-cleanup:
       changes:
         - components/**/*.vue
         - i18n/locales/*.json
+    # Default-branch baseline — required for the MR Code Quality widget
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+i18n-check:
+  extends: .i18n-check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
-Translations are pushed to the MR branch. Orphan findings are posted as an MR comment with expandable details (requires `I18N_PUSH_TOKEN`). Artifacts (`.i18n-reports/`) are retained for 7 days. The translate job fails when every key failed to translate.
+Translations are pushed to the MR branch. Orphan and undefined-key findings are emitted as a `gl-codequality.json` Code Quality artifact and surface in the MR's Code Quality widget. The widget diffs the MR report against the latest default-branch report — without a default-branch rule (no `changes:` filter) the widget stays blank. Artifacts (`.i18n-reports/`, `gl-codequality.json`) are retained for 7 days. The translate job fails when every key failed to translate; `.i18n-check` fails on findings but has `allow_failure: true` by default (remove it to make it a gate).
 
-Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *"Allow Git push requests to the repository"* (job token) or a project access token with `write_repository` + `api` scope in `I18N_PUSH_TOKEN`. MR comments always require `I18N_PUSH_TOKEN`.
+Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *"Allow Git push requests to the repository"* (job token) or a project access token with `write_repository` scope in `I18N_PUSH_TOKEN`.
 
 **`.i18n-translate` variables:**
 
@@ -259,10 +267,9 @@ Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *
 | `I18N_DRY_RUN` | — | `false` | Preview without writing |
 | `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
 | `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
-| `I18N_PUSH_TOKEN` | — | — | Project access token (`write_repository` + `api`) for push + MR comments |
+| `I18N_PUSH_TOKEN` | — | — | Project access token (`write_repository`) — push alternative to the job token |
 | `I18N_LOCALE_PATHS` | — | `i18n/locales/` | Space-separated globs for locale directories |
 | `I18N_COMMIT_MESSAGE` | — | auto-generated | Custom commit message |
-| `I18N_MR_COMMENT` | — | `true` | Post summary comment on MR (requires `I18N_PUSH_TOKEN`) |
 
 **`.i18n-cleanup` variables:**
 
@@ -271,7 +278,13 @@ Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *
 | `I18N_LAYER` | ✅ | — | Layer name |
 | `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
 | `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
-| `I18N_PUSH_TOKEN` | — | — | Project access token (`api` scope) for MR comments |
+
+**`.i18n-check` variables:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
+| `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
 
 > **Enterprise setups** (private registries, yarn, custom images): override `before_script` on the extending job. The template's `image`, `before_script`, `tags`, and `cache` are all overridable.
 

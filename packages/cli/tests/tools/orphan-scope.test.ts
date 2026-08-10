@@ -138,4 +138,28 @@ describe('removeOrphanKeys — scope-aware', () => {
     expect(await readLocale(projectDir)).toEqual({ root: { shared: { used: 'a', usedByAdmin: 'b' } } })
     expect(await readLocale(shopDir)).toEqual({ shop: { used: 'a' } })
   })
+
+  it('codequalityOutput writes orphan issues anchored at each layer\'s reference-locale file', async () => {
+    const cqPath = join(projectDir, 'gl-codequality.json')
+    const result = await removeOrphanKeys({ projectDir, codequalityOutput: cqPath })
+
+    // The flag is additive: the normal dry-run result is unchanged.
+    expect(result.orphanKeys).toEqual(expectedOrphans)
+
+    const issues = JSON.parse(await readFile(cqPath, 'utf-8')) as Array<Record<string, any>>
+    expect(issues).toHaveLength(2)
+    expect(issues).toContainEqual({
+      description: expect.stringContaining('"admin.orphan"'),
+      check_name: 'i18n.orphan-key',
+      fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+      severity: 'minor',
+      location: { path: 'app-admin/i18n/locales/de-DE.json', lines: { begin: 1 } },
+    })
+    expect(issues).toContainEqual(expect.objectContaining({
+      description: expect.stringContaining('"root.shared.orphan"'),
+      location: { path: 'i18n/locales/de-DE.json', lines: { begin: 1 } },
+    }))
+    // Misplaced keys (admin.usedFromShop) are not orphans and never mapped.
+    expect(JSON.stringify(issues)).not.toContain('usedFromShop')
+  })
 })

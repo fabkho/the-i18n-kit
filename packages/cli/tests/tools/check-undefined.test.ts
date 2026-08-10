@@ -243,4 +243,34 @@ describe('checkUndefinedKeys — scope-aware', () => {
     expect(report.tool).toBe('find_undefined_keys')
     expect(report.undefinedKeys).toHaveLength(2)
   })
+
+  it('honors codequalityOutput: writes a CodeClimate array alongside the normal report', async () => {
+    const reportPath = join(projectDir, 'undefined-report-cq.json')
+    const cqPath = join(projectDir, 'gl-codequality.json')
+    const result = await checkUndefinedKeys({ projectDir, outputFile: reportPath, codequalityOutput: cqPath })
+
+    // The flag is additive: the normal report behavior is unchanged.
+    expect(result).toMatchObject({ reportFile: reportPath })
+
+    const issues = JSON.parse(await readFile(cqPath, 'utf-8')) as Array<Record<string, any>>
+    // One issue per usage: admin.ghost (lines 3 + 9) and shop.only (line 4).
+    expect(issues).toHaveLength(3)
+    for (const issue of issues) {
+      expect(issue).toMatchObject({
+        description: expect.any(String),
+        check_name: 'i18n.undefined-key',
+        fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
+        severity: 'major',
+        location: { path: adminPage, lines: { begin: expect.any(Number) } },
+      })
+    }
+    // Same key, different lines → identical line-independent fingerprint.
+    const ghosts = issues.filter(i => i.description.includes('"admin.ghost"'))
+    expect(ghosts.map(i => i.location.lines.begin)).toEqual([3, 9])
+    expect(ghosts[0]!.fingerprint).toBe(ghosts[1]!.fingerprint)
+    // Uncertain findings (dynamic, $te-only) are omitted.
+    const serialized = JSON.stringify(issues)
+    expect(serialized).not.toContain('admin.optional')
+    expect(serialized).not.toContain('admin.dyn')
+  })
 })

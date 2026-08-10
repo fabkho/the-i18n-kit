@@ -7,8 +7,8 @@ import { isAbsolute, relative } from 'node:path'
 
 import { detectI18nConfig } from '../config/detector.js'
 import { buildLayerGraph } from '../config/layer-graph.js'
-import type { I18nConfig, LocaleDir } from '../config/types.js'
-import { writeReportFile } from '../io/json-writer.js'
+import type { I18nConfig, LocaleDefinition, LocaleDir } from '../config/types.js'
+import { writeCodequalityFile, writeReportFile } from '../io/json-writer.js'
 import { readLocaleData, mutateLocaleData } from '../io/locale-data.js'
 import { getLeafKeys, removeNestedValue } from '../io/key-operations.js'
 import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from '../scanner/code-scanner.js'
@@ -18,6 +18,7 @@ import { ToolError } from '../utils/errors.js'
 
 import { findLayerOrThrow, resolveReferenceLocale } from './shared.js'
 import { validateReportPath, resolveReportFilePath } from './report.js'
+import { orphanKeysToCodeQuality, referenceLocaleAnchorPaths } from './codequality.js'
 
 const MISPLACED_USAGE_NOTE
   = 'Keys referenced only from apps that do not consume their layer. '
@@ -145,6 +146,7 @@ async function resolveOrphanScanContext(
   keysByLayer: Map<string, { keys: string[]; localeDir: LocaleDir }>
   totalKeys: number
   localeCode: string
+  localeDef: LocaleDefinition
 }> {
   const { localeCode, localeDef } = resolveReferenceLocale(config, opts.locale)
 
@@ -180,7 +182,7 @@ async function resolveOrphanScanContext(
 
   const totalKeys = [...keysByLayer.values()].reduce((sum, v) => sum + v.keys.length, 0)
 
-  return { layersToCheck, keysByLayer, totalKeys, localeCode }
+  return { layersToCheck, keysByLayer, totalKeys, localeCode, localeDef }
 }
 
 /**
@@ -387,20 +389,32 @@ export async function removeOrphanKeys(opts: {
   dryRun?: boolean
   projectDir?: string
   outputFile?: string
+  /** Also write the orphan findings as a GitLab Code Quality JSON array to this path. */
+  codequalityOutput?: string
 }): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
   const { layer, locale, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? true
 
-  const { keysByLayer, totalKeys } = await resolveOrphanScanContext(config, {
+  const { keysByLayer, totalKeys, localeDef } = await resolveOrphanScanContext(config, {
     layer,
     locale,
     dir,
     toolName: 'remove_orphan_keys',
   })
 
+  // Written in every branch, even without findings: an empty array on the
+  // default branch is the baseline the MR widget diffs against.
+  const writeCodequality = async (orphans: Record<string, string[]>): Promise<void> => {
+    if (!opts.codequalityOutput) return
+    validateReportPath(dir, opts.codequalityOutput)
+    const anchors = referenceLocaleAnchorPaths(config, Object.keys(orphans), localeDef, dir)
+    await writeCodequalityFile(opts.codequalityOutput, orphanKeysToCodeQuality(orphans, anchors))
+  }
+
   if (totalKeys === 0) {
+    await writeCodequality({})
     const emptyOutput = { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
     const emptyReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (emptyReportPath) {
@@ -415,6 +429,7 @@ export async function removeOrphanKeys(opts: {
   }
 
   const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir })
+  await writeCodequality(orphanResult.orphansByLayer)
   const orphansByLayer = orphanResult.orphansByLayer
   const orphanCount = orphanResult.orphanCount
   const totalFilesScanned = orphanResult.totalFilesScanned
