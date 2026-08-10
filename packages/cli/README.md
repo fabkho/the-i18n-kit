@@ -88,6 +88,40 @@ Translations are validated before writing: placeholder parity per vue-i18n plura
 
 Locales listed in `protectedLocales` (see Project Config) are excluded from default translate targets and reported as `skipped` with reason `protected-locale`; naming one explicitly in `--targets` overrides the protection with a warning.
 
+## How Orphan Detection Works
+
+`remove-orphans` and `check` share a line-based static scanner. Knowing exactly what it can and cannot see is essential before deleting keys.
+
+**Usage evidence the scanner recognizes:**
+
+| Class | Example | Effect |
+|---|---|---|
+| Static keys | `t('a.b.c')`, `$te('a.b')`, `__('a.b')` | exact match |
+| Template patterns | `` t(`a.b.${x}`) `` | keys matching `a.b.<one segment>` count as used (`dynamic-matched`) |
+| Same-file const prefixes | `const base = 'a.b'` + `` t(`${base}.title`) `` | resolved to the exact key |
+| Unresolved variable segments | `` t(`${somePath}.title`) `` | conservatively matches **any** `*.title` key |
+| Concat prefixes | `'a.b.' + x`, `x + '.label'` | pattern-matched like templates (single-segment prefixes included) |
+| Multiline calls | prefix on a different line than `t(` | caught by bare-string fallbacks (heuristic) |
+| Multi-app scoping | key in a shared layer | usage counts only from apps that consume the layer; cross-app usages are reported as `misplacedUsages`, never removed |
+
+**Classification buckets** — only `orphanKeys` is ever removed; everything else is protective:
+
+- `orphanKeys` — no evidence of use in any consuming app: safe to remove
+- `dynamic-matched` — a dynamic pattern could produce this key: counted as used
+- `uncertainKeys` — evidence is ambiguous (e.g. `$te`-only probes): never removed
+- `ignored` — matched by `orphanScan.ignorePatterns`: never scanned
+- `misplacedUsages` — used only from non-consuming apps: never removed
+
+**Known blind spots** (declare these families in `orphanScan.ignorePatterns`):
+
+- Prefixes stored in **cross-file** constants, class fields, or object properties typed as plain strings (`obj.translationPath`) — the scanner widens these to conservative suffix patterns, but treat such families as declared-dynamic
+- Keys composed at runtime from data (API responses, database values, enums built dynamically)
+- Keys referenced only outside the scanned source (backend responses, external configs, docs)
+
+**Recommended code style for exact scanning:** prefer full literal keys, or literal key maps (`const KEYS = { draft: 'x.status.draft', ... } as const`) over string-building — every key stays greppable and the scanner needs no heuristics. Vue projects can enforce this with `@intlify/eslint-plugin-vue-i18n`'s `no-dynamic-keys` rule.
+
+`remove-orphans` is dry-run by default; run removals as a reviewed MR and treat the report's `uncertainKeys`/`dynamicKeys` sections as the audit trail.
+
 ## Supported Frameworks
 
 | Framework | Locale Format | Auto-Detection |
