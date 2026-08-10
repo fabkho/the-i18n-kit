@@ -19,7 +19,7 @@ import { ToolError } from '../utils/errors.js'
 import { log } from '../utils/logger.js'
 
 import { findLayerOrThrow, resolveReferenceLocale } from './shared.js'
-import { validateReportPath, resolveReportFilePath } from './report.js'
+import { validateReportPath, resolveOutputFile, resolveReportFilePath } from './report.js'
 import { orphanKeysToCodeQuality, referenceLocaleAnchorPaths } from './codequality.js'
 
 const MISPLACED_USAGE_NOTE
@@ -250,7 +250,7 @@ export async function findOrphanKeys(opts: {
 
   if (totalKeys === 0) {
     const emptyOutput = { orphanKeys: {} as Record<string, string[]>, summary: { totalKeys: 0, orphanCount: 0, filesScanned: 0, message: 'No translation keys found in locale files.' } }
-    const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
+    const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
     if (reportPath) {
       await writeReportFile(reportPath, emptyOutput, {
         tool: 'find_orphan_keys',
@@ -312,7 +312,7 @@ export async function findOrphanKeys(opts: {
       : undefined,
   }
 
-  const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
+  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
   if (reportPath) {
     await writeReportFile(reportPath, output, {
       tool: 'find_orphan_keys',
@@ -395,7 +395,7 @@ export async function scanCodeUsage(opts: {
     }))
   }
 
-  const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'scan_code_usage')
+  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'scan_code_usage')
   if (reportPath) {
     await writeReportFile(reportPath, output, {
       tool: 'scan_code_usage',
@@ -447,9 +447,8 @@ export async function removeOrphanKeys(opts: {
   if (totalKeys === 0) {
     await writeCodequality({})
     const emptyOutput = { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
-    const emptyReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
+    const emptyReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (emptyReportPath) {
-      validateReportPath(dir, emptyReportPath)
       await writeReportFile(emptyReportPath, emptyOutput, {
         tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
@@ -486,9 +485,8 @@ export async function removeOrphanKeys(opts: {
       misplacedUsageNote,
       summary: { totalKeys, orphanCount: 0, uncertainCount: orphanResult.uncertainCount, misplacedCount, dynamicMatchedCount, ignoredCount, filesScanned: totalFilesScanned, scanScope, message: messageParts.join(' ') },
     }
-    const zeroReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
+    const zeroReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (zeroReportPath) {
-      validateReportPath(dir, zeroReportPath)
       await writeReportFile(zeroReportPath, zeroOutput, {
         tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
@@ -532,9 +530,8 @@ export async function removeOrphanKeys(opts: {
         suggestedIgnorePattern: w.suggestedIgnorePattern,
       }))
     }
-    const dryRunReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
+    const dryRunReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (dryRunReportPath) {
-      validateReportPath(dir, dryRunReportPath)
       await writeReportFile(dryRunReportPath, output, {
         tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
@@ -588,9 +585,8 @@ export async function removeOrphanKeys(opts: {
     },
   }
 
-  const removalReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
+  const removalReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
   if (removalReportPath) {
-    validateReportPath(dir, removalReportPath)
     await writeReportFile(removalReportPath, removalOutput, {
       tool: 'remove_orphan_keys',
       args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },

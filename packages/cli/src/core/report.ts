@@ -22,6 +22,23 @@ export function validateReportPath(baseDir: string, absPath: string): void {
   }
 }
 
+/**
+ * Resolve a caller-supplied outputFile against the project dir. Relative
+ * paths must anchor to `dir`, not the process cwd — otherwise
+ * `--output-file report.json --project-dir /x` run from elsewhere can never
+ * pass the in-project guard. Absolute paths pass through unchanged; either
+ * way the result must stay within the project dir.
+ */
+export function resolveOutputFile(
+  dir: string,
+  outputFile: string | undefined,
+): string | undefined {
+  if (!outputFile) return undefined
+  const absPath = resolve(dir, outputFile)
+  validateReportPath(dir, absPath)
+  return absPath
+}
+
 export function resolveReportFilePath(
   config: I18nConfig,
   dir: string,

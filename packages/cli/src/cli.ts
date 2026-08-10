@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import { defineCommand, runCommand, runMain } from 'citty'
-import { log } from './utils/logger.js'
 import { commands as allCommands } from './commands/index.js'
+import { emitErrorResult } from './commands/_shared.js'
 
 // Diagnostic commands kept out of the public CLI surface
 const hiddenCommands = new Set(['detect', 'list-dirs', 'empty', 'scan'])
@@ -31,11 +31,14 @@ export async function runCli(): Promise<void> {
     return
   }
 
-  // For normal execution, use runCommand so we control error output
+  // For normal execution, use runCommand so we control error output.
+  // Command run() errors are handled inside createCommand; this catch only
+  // sees pre-run failures (unknown command, argument parsing) — those must
+  // also keep stdout parseable in JSON mode.
   try {
     await runCommand(main, { rawArgs })
   } catch (error: unknown) {
-    log.error(error)
+    emitErrorResult(error, { json: rawArgs.includes('--json') })
     process.exitCode = 1
   }
 }
