@@ -92,7 +92,11 @@
     # Optional — push behaviour
     I18N_PUSH_TOKEN: ""       # project access token (write_repository) — push alternative to the job token. See header comment.
     I18N_LOCALE_PATHS: "i18n/locales/"  # space-separated globs for locale directories (e.g. "i18n/locales/ app-*/i18n/locales/")
-    I18N_COMMIT_MESSAGE: ""   # custom commit message (include [skip ci] to avoid pipeline loops)
+    I18N_COMMIT_MESSAGE: ""   # custom commit message (overrides the default entirely)
+    I18N_AUTOCOMMIT_SKIP_CI: ""  # set "true" to append [skip ci] to the auto-commit. Off by default:
+                                 # [skip ci] leaves the MR head without a pipeline, which breaks the
+                                 # Code Quality widget (comparer error). A re-run is loop-safe — it
+                                 # finds nothing missing and pushes nothing.
 
   before_script:
     - if command -v apk >/dev/null; then apk add --no-cache git jq; fi
@@ -174,7 +178,10 @@
       if [ -n "${I18N_COMMIT_MESSAGE:-}" ]; then
         COMMIT_MSG="$I18N_COMMIT_MESSAGE"
       else
-        COMMIT_MSG="i18n: auto-translate missing keys ($I18N_LAYER) via $I18N_PROVIDER [skip ci]"
+        COMMIT_MSG="i18n: auto-translate missing keys ($I18N_LAYER) via $I18N_PROVIDER"
+        if [ "${I18N_AUTOCOMMIT_SKIP_CI:-}" = "true" ]; then
+          COMMIT_MSG="$COMMIT_MSG [skip ci]"
+        fi
       fi
 
       if [ -n "${I18N_PUSH_TOKEN:-}" ]; then
