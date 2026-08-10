@@ -325,8 +325,7 @@ export async function scanCodeUsage(opts: {
 
   const byKey: Record<string, Array<{ file: string; line: number; callee: string }>> = {}
   for (const usage of filteredUsages) {
-    if (!byKey[usage.key]) byKey[usage.key] = []
-    byKey[usage.key].push({
+    (byKey[usage.key] ??= []).push({
       file: toRelativePath(usage.file, dir),
       line: usage.line,
       callee: usage.callee,
@@ -334,8 +333,8 @@ export async function scanCodeUsage(opts: {
   }
 
   const sortedByKey: Record<string, Array<{ file: string; line: number; callee: string }>> = {}
-  for (const key of Object.keys(byKey).sort()) {
-    sortedByKey[key] = byKey[key]
+  for (const [key, locations] of Object.entries(byKey).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    sortedByKey[key] = locations
   }
 
   const notFound = keys

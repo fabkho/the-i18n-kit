@@ -33,10 +33,9 @@ export function detectIndentation(content: string): string {
   let usesTabs = false
 
   for (const line of lines) {
-    const match = line.match(/^(\s+)\S/)
-    if (!match) continue
+    const indent = line.match(/^(\s+)\S/)?.[1]
+    if (!indent) continue
 
-    const indent = match[1]
     if (indent.includes('\t')) {
       usesTabs = true
       break

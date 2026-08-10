@@ -61,7 +61,8 @@ export class GenericAdapter implements FrameworkAdapter {
       }
     }
 
-    const detectedFormat = await detectFileFormat(localeDirs[0].path)
+    // localeDirs mirrors projectConfig.localeDirs, whose emptiness is guarded above
+    const detectedFormat = await detectFileFormat(localeDirs[0]!.path)
     const discoveredLocales = projectConfig.locales ?? await discoverLocales(localeDirs, detectedFormat)
 
     if (discoveredLocales.length === 0) {

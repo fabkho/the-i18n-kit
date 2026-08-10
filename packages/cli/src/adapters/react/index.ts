@@ -58,14 +58,15 @@ export class ReactAdapter implements FrameworkAdapter {
     }
 
     const locales = await discoverLocales(localeDir)
-    if (locales.length === 0) {
+    const [firstLocale] = locales
+    if (firstLocale === undefined) {
       throw new ConfigError(
         `No locale files found in ${localeDir}. `
         + 'Make sure your React/Next.js project has locale directories like messages/en/ or locale JSON files.',
       )
     }
 
-    const defaultLocale = locales[0].code
+    const defaultLocale = firstLocale.code
     const fallbackLocale = { default: [defaultLocale] }
 
     return {
@@ -213,9 +214,10 @@ async function tryExtractFromNextConfig(
 
 function tryExtractPathFromConfig(projectDir: string, content: string): string | null {
   const pathMatch = content.match(/(?:messages|localeDir|locales)\s*:\s*['"]([^'"]+)/)
-  if (!pathMatch) return null
+  const rawPath = pathMatch?.[1]
+  if (!rawPath) return null
 
-  const path = pathMatch[1].replace(/\/\*\/\*$/, '').replace(/\/\*$/, '')
+  const path = rawPath.replace(/\/\*\/\*$/, '').replace(/\/\*$/, '')
   return existsSync(join(projectDir, path)) ? join(projectDir, path) : null
 }
 

@@ -120,7 +120,7 @@ async function scaffoldJsonLayer(
 
   for (const target of targets) {
     const entries = await resolveLocaleEntries(config, dir.layer, target)
-    const targetPath = entries.length > 0 ? entries[0].path : join(dir.path, target.file ?? `${target.code}.json`)
+    const targetPath = entries[0]?.path ?? join(dir.path, target.file ?? `${target.code}.json`)
 
     if (existsSync(targetPath)) {
       skipped.push({ locale: target.code, layer: dir.layer, file: targetPath, keys: keyCount })

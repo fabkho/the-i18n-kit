@@ -86,8 +86,8 @@ export function claimLocaleDir(
 
   if (owner !== existing.layer) {
     const ownerIndex = dirs.findIndex(d => d.layer === existing.layer && !d.aliasOf)
-    if (ownerIndex !== -1) {
-      const previousOwner = dirs[ownerIndex]
+    const previousOwner = ownerIndex !== -1 ? dirs[ownerIndex] : undefined
+    if (previousOwner) {
       const promoted = { ...incoming }
       delete promoted.aliasOf
       dirs[ownerIndex] = promoted

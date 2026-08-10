@@ -61,7 +61,8 @@ export class VueAdapter implements FrameworkAdapter {
     }
 
     const rawLocales = await discoverLocales(localeDir)
-    if (rawLocales.length === 0) {
+    const [firstRawLocale] = rawLocales
+    if (firstRawLocale === undefined) {
       throw new ConfigError(
         `No JSON locale files found in ${localeDir}. `
         + 'Make sure your Vue i18n project has locale files like en.json, de.json etc.',
@@ -69,7 +70,7 @@ export class VueAdapter implements FrameworkAdapter {
     }
 
     const locales = applyLocaleOverride(rawLocales, projectConfig?.locales)
-    const defaultLocale = extractDefaultLocale(projectDir) ?? locales[0].code
+    const defaultLocale = extractDefaultLocale(projectDir) ?? locales[0]?.code ?? firstRawLocale.code
     const fallbackLocale = { default: [defaultLocale] }
 
     return {
@@ -145,6 +146,10 @@ async function findLocaleDir(projectDir: string): Promise<string | null> {
   return tryCommonPaths(projectDir)
 }
 
+function firstMatchGroup(content: string, regex: RegExp): string | undefined {
+  return content.match(regex)?.[1]
+}
+
 async function tryExtractFromConfig(projectDir: string): Promise<string | null> {
   for (const file of I18N_CONFIG_FILES) {
     const fullPath = join(projectDir, file)
@@ -153,16 +158,16 @@ async function tryExtractFromConfig(projectDir: string): Promise<string | null> 
     try {
       const content = await readFile(fullPath, 'utf-8')
 
-      const dirMatch = content.match(LOCALE_DIR_REGEX)
+      const dirMatch = firstMatchGroup(content, LOCALE_DIR_REGEX)
       if (dirMatch) {
-        const extracted = resolve(projectDir, dirMatch[1])
+        const extracted = resolve(projectDir, dirMatch)
         if (existsSync(extracted)) return extracted
       }
 
-      const msgMatch = content.match(MESSAGES_REGEX)
+      const msgMatch = firstMatchGroup(content, MESSAGES_REGEX)
       if (msgMatch) {
         const configDir = fullPath.replace(/\/[^/]+$/, '')
-        const extracted = resolve(configDir, msgMatch[1])
+        const extracted = resolve(configDir, msgMatch)
         const parentDir = extracted.replace(/\/[^/]+$/, '')
         if (existsSync(parentDir)) return parentDir
       }
