@@ -27,6 +27,7 @@ The-i18n-kit auto-detects your project structure (Nuxt, Laravel, or any generic 
 ```bash
 the-i18n-cli missing              # what's not translated yet?
 the-i18n-cli remove-orphans      # what keys are dead code? (dry-run by default)
+the-i18n-cli check               # what keys are used but never defined? (non-zero exit — CI gate)
 the-i18n-cli rename --layer root --oldKey old.key --newKey new.key   # rename across all locales at once
 the-i18n-cli translate-key --layer root --key common.save --sourceLocale en-US --sourceValue "Save"  # update one key and translate targets
 the-i18n-cli translate --layer root --provider google --model gemini-2.5-flash  # auto-translate all missing keys

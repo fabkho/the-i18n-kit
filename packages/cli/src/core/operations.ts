@@ -74,3 +74,13 @@ export type {
   FindDuplicateKeysResult,
   FindDuplicateKeysSummary,
 } from './ops-duplicates.js'
+
+export { checkUndefinedKeys } from './ops-check.js'
+
+export type {
+  KeyUsageLocation,
+  UndefinedKeyFinding,
+  UncertainKeyFinding,
+  CheckUndefinedKeysResult,
+  CheckUndefinedKeysSummary,
+} from './ops-check.js'

@@ -28,6 +28,7 @@ the-i18n-cli write --layer root --translations '{"common.btn.ok": {"en": "OK", "
 the-i18n-cli translate-key --layer root --key common.btn.save --sourceLocale en-US --sourceValue "Save"
 the-i18n-cli translate --layer root --provider openai --model gpt-4o-mini   # Auto-translate missing keys
 the-i18n-cli remove-orphans                  # Find orphan keys (dry-run by default)
+the-i18n-cli check                           # Find used-but-undefined keys (non-zero exit — CI gate)
 ```
 
 ## Commands
@@ -45,6 +46,8 @@ the-i18n-cli remove-orphans                  # Find orphan keys (dry-run by defa
 | `translate` | Find missing translations and translate them via LLM (see Translation Modes). Also available as `translate-missing`, matching the MCP tool name |
 | `translate-key` | Translate one source key into target locales; can overwrite stale values |
 | `remove-orphans` | Find and remove keys not referenced in source code (dry-run by default) |
+| `check` | Find keys referenced in code but defined in no consumed locale layer — the inverse of `remove-orphans`. Exits non-zero when any are found, so it can gate CI. Dynamically built keys are reported as uncertain, never as hard findings |
+| `find-duplicates` | Find keys defined in both a shared layer and a consuming child layer (with divergence detection) |
 | `scaffold` | Create empty locale files for new languages |
 
 Run `the-i18n-cli <command> --help` for per-command options.
@@ -56,7 +59,7 @@ Run `the-i18n-cli <command> --help` for per-command options.
 | `-d, --projectDir <dir>` | Project directory (default: cwd) |
 | `--json` | Output as JSON (default when piped) |
 | `--dryRun` | Preview changes without writing |
-| `--output-file <path>` | `missing` / `remove-orphans`: write the full report to a file, return only a summary |
+| `--output-file <path>` | `missing` / `remove-orphans` / `check`: write the full report to a file, return only a summary |
 
 ## Translation Modes
 

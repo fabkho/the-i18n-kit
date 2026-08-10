@@ -19,6 +19,7 @@ export {
   scanCodeUsage,
   removeOrphanKeys,
   findDuplicateKeys,
+  checkUndefinedKeys,
   scaffoldLocaleFiles,
   listNamespaces,
   findLocaleImpl,
@@ -28,6 +29,11 @@ export type {
   DuplicateKeyCollision,
   FindDuplicateKeysResult,
   FindDuplicateKeysSummary,
+  KeyUsageLocation,
+  UndefinedKeyFinding,
+  UncertainKeyFinding,
+  CheckUndefinedKeysResult,
+  CheckUndefinedKeysSummary,
 } from './core/operations.js'
 
 // Core types
