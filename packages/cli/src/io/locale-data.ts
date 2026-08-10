@@ -161,8 +161,9 @@ export async function mutateLocaleData(
     if (!localeDir) return filesWritten
 
     const localePath = join(localeDir, locale.code)
-    const fileExt = entries.length > 0
-      ? extname(entries[0].path) // '.php' or '.json'
+    const firstEntry = entries[0]
+    const fileExt = firstEntry
+      ? extname(firstEntry.path) // '.php' or '.json'
       : config.localeFileFormat === 'php-array' ? '.php' : '.json'
 
     const preSnapshots = new Map<string, string>()
@@ -193,8 +194,9 @@ export async function mutateLocaleData(
       return filesWritten
     }
 
-    if (entries.length === 0) return filesWritten
-    const filePath = entries[0].path
+    const firstEntry = entries[0]
+    if (!firstEntry) return filesWritten
+    const filePath = firstEntry.path
     await writeLocaleEntryFile(filePath, data)
     filesWritten.add(filePath)
   }

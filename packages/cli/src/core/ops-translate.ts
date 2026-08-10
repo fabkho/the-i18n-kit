@@ -251,8 +251,10 @@ export function validatePlaceholders(
       const missing = new Set<string>()
       const extra = new Set<string>()
       for (const [index, sourceVariant] of sourceVariants.entries()) {
+        const targetVariant = targetVariants[index]
+        if (targetVariant === undefined) continue
         const variantPlaceholders = extractPlaceholders(sourceVariant, format)
-        const diff = diffPlaceholders(variantPlaceholders, targetVariants[index], format)
+        const diff = diffPlaceholders(variantPlaceholders, targetVariant, format)
         for (const placeholder of diff.missing) missing.add(placeholder)
         for (const placeholder of diff.extra) extra.add(placeholder)
       }
@@ -734,7 +736,9 @@ export async function translateMissing(opts: {
   }))
 
   for (const [i, { result, fallbackContext }] of localeResults.entries()) {
-    const localeCode = targets[i].code
+    const target = targets[i]
+    if (target === undefined) continue
+    const localeCode = target.code
     results[localeCode] = result
     if (fallbackContext) {
       fallbackContexts[localeCode] = fallbackContext
@@ -996,8 +1000,9 @@ export async function translateKey(opts: {
 
     const validation = validatePlaceholders(opts.key, sourceValue, [{ locale: locale.code, value: targetValue }], config.localeFileFormat)
     placeholderValidations.push(validation)
-    if (!validation.ok) {
-      failed.push({ locale: locale.code, reason: failReasonForIssue(validation.errors[0]) })
+    const firstIssue = validation.errors[0]
+    if (firstIssue !== undefined) {
+      failed.push({ locale: locale.code, reason: failReasonForIssue(firstIssue) })
       continue
     }
 

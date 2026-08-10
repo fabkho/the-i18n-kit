@@ -146,8 +146,7 @@ export function detectPhpStyle(content: string): { quoteStyle: 'single' | 'doubl
   }
   const quoteStyle: 'single' | 'double' = singleCount > doubleCount ? 'single' : 'double'
 
-  const indentMatch = content.match(/^([ \t]+)['"]/m)
-  const indent = indentMatch ? indentMatch[1] : '    '
+  const indent = content.match(/^([ \t]+)['"]/m)?.[1] ?? '    '
 
   return { quoteStyle, indent }
 }

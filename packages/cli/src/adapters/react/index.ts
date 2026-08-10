@@ -55,7 +55,8 @@ export class ReactAdapter implements FrameworkAdapter {
     }
 
     const locales = await discoverLocales(localeDir)
-    if (locales.length === 0) {
+    const [firstLocale] = locales
+    if (firstLocale === undefined) {
       throw new ConfigError(
         `No locale files found in ${localeDir}. `
         + 'Make sure your React/Next.js project has locale directories like messages/en/ or locale JSON files.',
@@ -65,7 +66,7 @@ export class ReactAdapter implements FrameworkAdapter {
     return buildSingleDirConfig({
       projectDir,
       localeDir,
-      defaultLocale: locales[0].code,
+      defaultLocale: firstLocale.code,
       locales: applyLocaleOverride(locales, projectConfig?.locales),
       projectConfig,
     })
@@ -183,9 +184,10 @@ async function tryExtractFromNextConfig(
 
 function tryExtractPathFromConfig(projectDir: string, content: string): string | null {
   const pathMatch = content.match(/(?:messages|localeDir|locales)\s*:\s*['"]([^'"]+)/)
-  if (!pathMatch) return null
+  const rawPath = pathMatch?.[1]
+  if (!rawPath) return null
 
-  const path = pathMatch[1].replace(/\/\*\/\*$/, '').replace(/\/\*$/, '')
+  const path = rawPath.replace(/\/\*\/\*$/, '').replace(/\/\*$/, '')
   return existsSync(join(projectDir, path)) ? join(projectDir, path) : null
 }
 

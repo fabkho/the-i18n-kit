@@ -71,9 +71,9 @@ export async function listLocaleDirs(projectDir?: string): Promise<LocaleDirInfo
       const jsonFiles = files.filter(f => f.endsWith('.json'))
 
       let topLevelKeys: string[] = []
-      if (config.locales.length > 0 && jsonFiles.length > 0) {
+      const sampleLocale = config.locales[0]
+      if (sampleLocale !== undefined && jsonFiles.length > 0) {
         try {
-          const sampleLocale = config.locales[0]
           const data = await readLocaleData(config, localeDir.layer, sampleLocale)
           topLevelKeys = Object.keys(data)
         } catch {}
@@ -221,10 +221,7 @@ export async function getMissingTranslations(opts: {
       })
 
       if (missing.length > 0) {
-        if (!result[target.code]) {
-          result[target.code] = {}
-        }
-        result[target.code][localeDir.layer] = missing
+        (result[target.code] ??= {})[localeDir.layer] = missing
         totalMissing += missing.length
       }
     }
@@ -301,8 +298,7 @@ export async function findEmptyTranslations(opts: {
       const empty = leafKeys.filter(k => getNestedValue(data, k) === '')
 
       if (empty.length > 0) {
-        if (!emptyKeys[loc.code]) emptyKeys[loc.code] = {}
-        emptyKeys[loc.code][localeDir.layer] = empty
+        (emptyKeys[loc.code] ??= {})[localeDir.layer] = empty
         totalEmpty += empty.length
       }
     }

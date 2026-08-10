@@ -55,14 +55,13 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
 
   const lines = content.split('\n')
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
+  for (const [i, line] of lines.entries()) {
     const lineNumber = i + 1
 
     for (const regex of pat.staticKeyPatterns) {
       regex.lastIndex = 0
       for (const match of line.matchAll(regex)) {
-        const callee = match[1]
+        const callee = match[1] ?? ''
         const key = match[3]
         if (!key) continue
         if (key.includes('{$')) continue
@@ -74,8 +73,9 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
     for (const regex of pat.dynamicKeyPatterns) {
       regex.lastIndex = 0
       for (const match of line.matchAll(regex)) {
-        const callee = match[1]
+        const callee = match[1] ?? ''
         const expression = match[2]
+        if (!expression) continue
         const hasDollarBrace = expression.includes('${')
         const hasBraceDollar = expression.includes('{$')
         const hasBarePHP = !hasDollarBrace && !hasBraceDollar && /\$[a-zA-Z_]/.test(expression)
@@ -93,14 +93,14 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
           : hasBarePHP
             ? expression.replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
             : expression
-        dynamicKeys.push({ expression: `\`${normalized}\``, file: filePath, line: lineNumber, callee: match[1] })
+        dynamicKeys.push({ expression: `\`${normalized}\``, file: filePath, line: lineNumber, callee })
       }
     }
 
     for (const regex of pat.concatKeyPatterns) {
       regex.lastIndex = 0
       for (const match of line.matchAll(regex)) {
-        const callee = match[1]
+        const callee = match[1] ?? ''
         const prefix = match[3]
         if (!prefix) continue
         if (pat.requiresDotForCallee?.(callee) && !prefix.includes('.')) continue
@@ -261,13 +261,14 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
 
     BARE_DOTTED_STRING.lastIndex = 0
     for (const match of content.matchAll(BARE_DOTTED_STRING)) {
-      bareStringCandidates.add(match[2])
+      const candidate = match[2]
+      if (candidate) bareStringCandidates.add(candidate)
     }
 
     BARE_DYNAMIC_TEMPLATE.lastIndex = 0
     for (const match of content.matchAll(BARE_DYNAMIC_TEMPLATE)) {
       const expr = match[1]
-      if (!expr.includes('.')) continue
+      if (!expr?.includes('.')) continue
       const normalized = expr.replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '${_}')
       bareDynamicCandidates.add(`\`${normalized}\``)
     }
@@ -275,7 +276,7 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     BARE_PHP_DYNAMIC.lastIndex = 0
     for (const match of content.matchAll(BARE_PHP_DYNAMIC)) {
       const expr = match[1]
-      if (!expr.includes('.')) continue
+      if (!expr?.includes('.')) continue
       const normalized = expr
         .replace(/\{\$[^}]+\}/g, '${_}')
         .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
@@ -314,17 +315,18 @@ export function buildIgnorePatternRegexes(patterns: string[]): RegExp[] {
     let regexStr = ''
     let i = 0
     while (i < pattern.length) {
-      if (pattern[i] === '*' && pattern[i + 1] === '*') {
+      const ch = pattern.charAt(i)
+      if (ch === '*' && pattern[i + 1] === '*') {
         regexStr += '.*'
         i += 2
-      } else if (pattern[i] === '*') {
+      } else if (ch === '*') {
         regexStr += '[^.]*'
         i += 1
-      } else if ('.+?^${}()|[]\\'.includes(pattern[i])) {
-        regexStr += '\\' + pattern[i]
+      } else if ('.+?^${}()|[]\\'.includes(ch)) {
+        regexStr += '\\' + ch
         i += 1
       } else {
-        regexStr += pattern[i]
+        regexStr += ch
         i += 1
       }
     }

@@ -21,15 +21,16 @@ export function getNestedValue(obj: Record<string, unknown>, path: string): unkn
  */
 export function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
   const parts = path.split('.')
+  const lastKey = parts.pop()
+  if (lastKey === undefined) return
   let current: Record<string, unknown> = obj
-  for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i]
+  for (const part of parts) {
     if (!(part in current) || typeof current[part] !== 'object' || current[part] === null) {
       current[part] = {}
     }
     current = current[part] as Record<string, unknown>
   }
-  current[parts[parts.length - 1]] = value
+  current[lastKey] = value
 }
 
 /**
@@ -39,11 +40,12 @@ export function setNestedValue(obj: Record<string, unknown>, path: string, value
  */
 export function removeNestedValue(obj: Record<string, unknown>, path: string): boolean {
   const parts = path.split('.')
+  const lastKey = parts.pop()
+  if (lastKey === undefined) return false
   const parents: Array<{ obj: Record<string, unknown>; key: string }> = []
   let current: Record<string, unknown> = obj
 
-  for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i]
+  for (const part of parts) {
     if (!(part in current) || typeof current[part] !== 'object' || current[part] === null) {
       return false
     }
@@ -51,15 +53,13 @@ export function removeNestedValue(obj: Record<string, unknown>, path: string): b
     current = current[part] as Record<string, unknown>
   }
 
-  const lastKey = parts[parts.length - 1]
   if (!(lastKey in current)) {
     return false
   }
 
   delete current[lastKey]
 
-  for (let i = parents.length - 1; i >= 0; i--) {
-    const { obj: parentObj, key } = parents[i]
+  for (const { obj: parentObj, key } of [...parents].reverse()) {
     const child = parentObj[key] as Record<string, unknown>
     if (Object.keys(child).length === 0) {
       delete parentObj[key]
@@ -131,7 +131,8 @@ export function orderKeysPreserving(
   for (const key of newKeys) {
     let insertAt = 0
     for (let i = orderedKeys.length - 1; i >= 0; i--) {
-      if (orderedKeys[i] <= key) {
+      const existingKey = orderedKeys[i]
+      if (existingKey !== undefined && existingKey <= key) {
         insertAt = i + 1
         break
       }
