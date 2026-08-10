@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.0.0...the-i18n-cli-4.1.0) (2026-08-10)
+
+
+### Features
+
+* **cli:** GitLab Code Quality output for check and remove-orphans ([#271](https://github.com/fabkho/the-i18n-kit/issues/271)) ([09a0e99](https://github.com/fabkho/the-i18n-kit/commit/09a0e99d7551b6722f9d12de931de28b8535fdd0)), closes [#270](https://github.com/fabkho/the-i18n-kit/issues/270)
+
 ## [4.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-3.2.0...the-i18n-cli-4.0.0) (2026-08-10)
 
 

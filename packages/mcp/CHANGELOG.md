@@ -1,5 +1,16 @@
 # Changelog
 
+## [7.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-6.2.0...the-i18n-mcp-7.0.0) (2026-08-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** the published package now requires Node.js >= 20 (v2 SDK minimum). Wire behavior toward existing legacy hosts is unchanged.
+
+### Features
+
+* **mcp:** migrate to MCP SDK v2 and serve the 2026-07-28 era alongside legacy ([#260](https://github.com/fabkho/the-i18n-kit/issues/260)) ([b04bad1](https://github.com/fabkho/the-i18n-kit/commit/b04bad1aa15e09b68b697d31ac50f3b689fa822f))
+
 ## [6.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-6.1.0...the-i18n-mcp-6.2.0) (2026-08-10)
 
 
