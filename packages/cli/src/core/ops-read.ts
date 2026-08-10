@@ -8,12 +8,12 @@ import { readdir } from 'node:fs/promises'
 import { detectI18nConfig, clearConfigCache } from '../config/detector.js'
 import type { I18nConfig } from '../config/types.js'
 import { writeReportFile } from '../io/json-writer.js'
-import { readLocaleData, resolveLocaleEntries } from '../io/locale-data.js'
+import { readLocaleData, readLocaleDataIfPresent, resolveLocaleEntries } from '../io/locale-data.js'
 import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { ToolError } from '../utils/errors.js'
 
 import type { LocaleDirInfo, SearchMatch } from './types.js'
-import { findLayerOrThrow, findLocaleImpl, localeRefInfo } from './shared.js'
+import { findLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, localeRefInfo } from './shared.js'
 import { resolveReportFilePath } from './report.js'
 
 /**
@@ -171,11 +171,7 @@ export async function getMissingTranslations(opts: {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
-  const refCode = opts.referenceLocale ?? config.defaultLocale
-  const refLocale = findLocaleImpl(config, refCode)
-  if (!refLocale) {
-    throw new ToolError(`Reference locale not found: "${refCode}". Available: ${config.locales.map(l => l.code).join(', ')}. Pass a valid locale code as referenceLocale, or omit it to use the project default.`, 'REFERENCE_LOCALE_NOT_FOUND')
-  }
+  const refLocale = findReferenceLocaleOrThrow(config, opts.referenceLocale)
 
   const resolvedTargets = opts.targetLocales ?? opts.locales
   const targets = resolvedTargets
@@ -203,13 +199,8 @@ export async function getMissingTranslations(opts: {
   let totalMissing = 0
 
   for (const localeDir of layersToScan) {
-    let refData: Record<string, unknown>
-    try {
-      refData = await readLocaleData(config, localeDir.layer, refLocale)
-    } catch {
-      continue
-    }
-    if (Object.keys(refData).length === 0) continue
+    const refData = await readLocaleDataIfPresent(config, localeDir.layer, refLocale)
+    if (!refData) continue
 
     const refKeys = getLeafKeys(refData).filter(k => {
       const v = getNestedValue(refData, k)
@@ -303,13 +294,8 @@ export async function findEmptyTranslations(opts: {
 
   for (const localeDir of layersToScan) {
     for (const loc of localesToCheck) {
-      let data: Record<string, unknown>
-      try {
-        data = await readLocaleData(config, localeDir.layer, loc)
-      } catch {
-        continue
-      }
-      if (Object.keys(data).length === 0) continue
+      const data = await readLocaleDataIfPresent(config, localeDir.layer, loc)
+      if (!data) continue
 
       const leafKeys = getLeafKeys(data)
       const empty = leafKeys.filter(k => getNestedValue(data, k) === '')
@@ -386,13 +372,8 @@ export async function searchTranslations(opts: {
 
   for (const localeDir of layersToSearch) {
     for (const loc of localesToSearch) {
-      let data: Record<string, unknown>
-      try {
-        data = await readLocaleData(config, localeDir.layer, loc)
-      } catch {
-        continue
-      }
-      if (Object.keys(data).length === 0) continue
+      const data = await readLocaleDataIfPresent(config, localeDir.layer, loc)
+      if (!data) continue
 
       const leafKeys = getLeafKeys(data)
 

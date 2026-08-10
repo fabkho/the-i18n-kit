@@ -8,10 +8,6 @@ export function registerAdapter(adapter: FrameworkAdapter): void {
   adapters.push(adapter)
 }
 
-export function getRegisteredAdapters(): readonly FrameworkAdapter[] {
-  return adapters
-}
-
 export function resetRegistry(): void {
   adapters.length = 0
 }

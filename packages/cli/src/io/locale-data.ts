@@ -39,11 +39,11 @@ export async function resolveLocaleEntries(
   if (!localeDir) return []
 
   if (config.localeFileFormat === 'php-array') {
-    return resolvePhpEntries(localeDir, locale.code)
+    return resolveNamespacedEntries(localeDir, locale.code, '.php')
   }
 
   // Namespaced JSON (Next.js/React: messages/en/common.json)
-  const jsonEntries = await resolveJsonEntries(localeDir, locale.code)
+  const jsonEntries = await resolveNamespacedEntries(localeDir, locale.code, '.json')
   if (jsonEntries.length > 0) return jsonEntries
 
   // Flat JSON (Nuxt: i18n/en-US.json)
@@ -74,6 +74,25 @@ export async function resolveLocaleEntries(
  *
  * Missing files are treated as empty objects (no error thrown).
  */
+/**
+ * Like readLocaleData, but treats unreadable and empty layers as absent —
+ * for scan loops that skip locales without data.
+ */
+export async function readLocaleDataIfPresent(
+  config: I18nConfig,
+  layer: string,
+  locale: LocaleDefinition,
+): Promise<Record<string, unknown> | null> {
+  let data: Record<string, unknown>
+  try {
+    data = await readLocaleData(config, layer, locale)
+  }
+  catch {
+    return null
+  }
+  return Object.keys(data).length === 0 ? null : data
+}
+
 export async function readLocaleData(
   config: I18nConfig,
   layer: string,
@@ -305,7 +324,7 @@ async function hasNamespacedJsonLayout(config: I18nConfig, layer: string): Promi
   return false
 }
 
-async function resolveJsonEntries(localeDir: string, localeCode: string): Promise<LocaleEntry[]> {
+async function resolveNamespacedEntries(localeDir: string, localeCode: string, extension: '.json' | '.php'): Promise<LocaleEntry[]> {
   const localePath = join(localeDir, localeCode)
 
   if (!existsSync(localePath)) return []
@@ -320,33 +339,10 @@ async function resolveJsonEntries(localeDir: string, localeCode: string): Promis
   }
 
   return files
-    .filter(f => f.endsWith('.json'))
+    .filter(f => f.endsWith(extension))
     .sort()
     .map(f => ({
       path: join(localePath, f),
-      namespace: f.replace(/\.json$/, ''),
-    }))
-}
-
-async function resolvePhpEntries(langDir: string, localeCode: string): Promise<LocaleEntry[]> {
-  const localePath = join(langDir, localeCode)
-
-  if (!existsSync(localePath)) return []
-
-  let files: string[]
-  try {
-    files = await readdir(localePath)
-  }
-  catch (err) {
-    log.debug(`Failed to read locale directory ${localePath}: ${err instanceof Error ? err.message : String(err)}`)
-    return []
-  }
-
-  return files
-    .filter(f => f.endsWith('.php'))
-    .sort()
-    .map(f => ({
-      path: join(localePath, f),
-      namespace: f.replace(/\.php$/, ''),
+      namespace: f.slice(0, -extension.length),
     }))
 }

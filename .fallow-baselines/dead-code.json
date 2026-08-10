@@ -1,31 +1,9 @@
 {
   "unused_files": [],
-  "unused_exports": [
-    "packages/cli/src/adapters/registry.ts:getRegisteredAdapters",
-    "packages/cli/src/commands/_shared.ts:sharedArgs",
-    "packages/cli/src/commands/_shared.ts:outputResult",
-    "packages/cli/src/core/operations.ts:findLayerOrThrow",
-    "packages/cli/src/core/operations.ts:localeRefInfo",
-    "packages/cli/src/core/operations.ts:findLocaleOrThrow",
-    "packages/cli/src/core/operations.ts:resolveReportFilePath",
-    "packages/cli/src/core/operations.ts:extractPlaceholders",
-    "packages/cli/src/core/operations.ts:buildFallbackContext",
-    "packages/cli/src/core/operations.ts:applyTranslations",
-    "packages/cli/src/core/operations.ts:resolveOrphanIgnorePatterns",
-    "packages/cli/src/core/ops-orphans.ts:resolveOrphanIgnorePatterns",
-    "packages/cli/src/core/ops-translate.ts:extractPlaceholders",
-    "packages/cli/src/core/ops-translate.ts:buildFallbackContext",
-    "packages/cli/src/core/ops-write.ts:applyTranslations",
-    "packages/cli/src/io/php-writer.ts:detectPhpFileStyle"
-  ],
-  "unused_types": [
-    "packages/cli/src/core/operations.ts:NamespaceNode",
-    "packages/cli/src/core/operations.ts:ListNamespacesResult"
-  ],
+  "unused_exports": [],
+  "unused_types": [],
   "private_type_leaks": [],
-  "unused_dependencies": [
-    "packages/cli/package.json:dependency-graph"
-  ],
+  "unused_dependencies": [],
   "unused_dev_dependencies": [],
   "circular_dependencies": [],
   "re_export_cycles": [],
@@ -34,9 +12,7 @@
   "unused_class_members": [],
   "unresolved_imports": [],
   "unlisted_dependencies": [],
-  "duplicate_exports": [
-    "ScaffoldLocaleResult|packages/cli/src/core/types.ts|packages/cli/src/tools/scaffold-locale.ts"
-  ],
+  "duplicate_exports": [],
   "type_only_dependencies": [],
   "test_only_dependencies": [],
   "boundary_violations": [],

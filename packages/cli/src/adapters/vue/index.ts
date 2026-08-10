@@ -6,6 +6,7 @@ import type { I18nConfig, LocaleDefinition } from '../../config/types'
 import { loadProjectConfig } from '../../config/project-config'
 import { applyLocaleOverride } from '../../config/locale-override'
 import { ConfigError } from '../../utils/errors'
+import { loadPackageJson, collectDependencies, hasNuxtConfig, noLocaleDirError, buildSingleDirConfig } from '../shared'
 
 const COMMON_LOCALE_DIRS = [
   'src/locales',
@@ -53,11 +54,7 @@ export class VueAdapter implements FrameworkAdapter {
 
     const localeDir = await findLocaleDir(projectDir)
     if (!localeDir) {
-      throw new ConfigError(
-        `No locale directory found in ${projectDir}. `
-        + 'Looked in: ' + COMMON_LOCALE_DIRS.join(', ') + '. '
-        + 'Configure a .i18n-mcp.json with localeDirs for custom paths.',
-      )
+      throw noLocaleDirError(projectDir, COMMON_LOCALE_DIRS)
     }
 
     const rawLocales = await discoverLocales(localeDir)
@@ -70,45 +67,24 @@ export class VueAdapter implements FrameworkAdapter {
 
     const locales = applyLocaleOverride(rawLocales, projectConfig?.locales)
     const defaultLocale = extractDefaultLocale(projectDir) ?? locales[0].code
-    const fallbackLocale = { default: [defaultLocale] }
 
-    return {
-      rootDir: projectDir,
+    return buildSingleDirConfig({
+      projectDir,
+      localeDir,
       defaultLocale,
-      fallbackLocale,
       locales,
-      localeDirs: [{ path: localeDir, layer: 'root', layerRootDir: projectDir }],
-      layerRootDirs: [projectDir],
-      projectConfig: projectConfig ?? undefined,
-      apps: [{ name: 'default', rootDir: projectDir, layers: ['root'] }],
-    }
+      projectConfig,
+    })
   }
 }
 
 // ─── Detection helpers ──────────────────────────────────────────
 
-async function loadPackageJson(projectDir: string): Promise<Record<string, unknown> | null> {
-  try {
-    const raw = await readFile(join(projectDir, 'package.json'), 'utf-8')
-    return JSON.parse(raw) as Record<string, unknown>
-  }
-  catch {
-    return null
-  }
-}
-
-function collectDependencies(pkg: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...(pkg.dependencies ?? {}) as Record<string, unknown>,
-    ...(pkg.devDependencies ?? {}) as Record<string, unknown>,
-  }
-}
-
 function isNuxtProject(projectDir: string, deps: Record<string, unknown>): boolean {
   for (const indicator of NUPT_INDICATORS) {
     if (indicator in deps) return true
   }
-  return findNuxtConfig(projectDir) !== null
+  return hasNuxtConfig(projectDir)
 }
 
 async function computeScore(projectDir: string, deps: Record<string, unknown>): Promise<number> {
@@ -130,13 +106,6 @@ async function computeScore(projectDir: string, deps: Record<string, unknown>): 
 }
 
 // ─── Resolution helpers ─────────────────────────────────────────
-
-function findNuxtConfig(dir: string): string | null {
-  for (const name of ['nuxt.config.ts', 'nuxt.config.js', 'nuxt.config.mjs']) {
-    if (existsSync(join(dir, name))) return name
-  }
-  return null
-}
 
 async function findLocaleDir(projectDir: string): Promise<string | null> {
   const fromConfig = await tryExtractFromConfig(projectDir)

@@ -56,7 +56,7 @@ export function isTotalFailure(result: unknown): boolean {
   return false
 }
 
-export const sharedArgs = {
+const sharedArgs = {
   projectDir: {
     type: 'string' as const,
     alias: 'd',
@@ -70,7 +70,7 @@ export const sharedArgs = {
 }
 
 /** Output result — stdout always carries the result, machine-parseable when piped/--json */
-export function outputResult(data: unknown, args: { json?: boolean }): void {
+function outputResult(data: unknown, args: { json?: boolean }): void {
   const jsonMode = args.json || !process.stdout.isTTY
   if (
     !jsonMode &&

@@ -44,9 +44,6 @@ importers:
       consola:
         specifier: ^3.4.2
         version: 3.4.2
-      dependency-graph:
-        specifier: ^1.0.0
-        version: 1.0.0
       openai:
         specifier: ^4.0.0 || ^5.0.0
         version: 5.23.2(ws@8.19.0)(zod@4.3.6)
@@ -2781,10 +2778,6 @@ packages:
   depd@2.0.0:
     resolution: {integrity: sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==}
     engines: {node: '>= 0.8'}
-
-  dependency-graph@1.0.0:
-    resolution: {integrity: sha512-cW3gggJ28HZ/LExwxP2B++aiKxhJXMSIt9K48FOXQkm+vuG5gyatXnLsONRJdzO/7VfjDIiaOOa/bs4l464Lwg==}
-    engines: {node: '>=4'}
 
   destr@2.0.5:
     resolution: {integrity: sha512-ugFTXCtDZunbzasqBxrK93Ik/DRYsO6S/fedkWEMKqt04xZ4csmnmwGDBAb07QWNaGMAmnTIemsYZCksjATwsA==}
@@ -7730,8 +7723,6 @@ snapshots:
   denque@2.1.0: {}
 
   depd@2.0.0: {}
-
-  dependency-graph@1.0.0: {}
 
   destr@2.0.5: {}
 

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { I18nConfig, LocaleDefinition } from '../config/types'
+import type { ScaffoldLocaleFileInfo } from '../core/types'
 import { readLocaleData, resolveLocaleEntries } from '../io/locale-data'
 import { readLocale, writeLocale } from '../io/locale-io'
 import { getLeafKeys } from '../io/key-operations'
@@ -12,17 +13,9 @@ export interface ScaffoldLocaleOptions {
   dryRun?: boolean
 }
 
-export interface ScaffoldedFile {
-  locale: string
-  layer: string
-  file: string
-  keys: number
-  namespace?: string
-}
-
-export interface ScaffoldLocaleResult {
-  created: ScaffoldedFile[]
-  skipped: ScaffoldedFile[]
+export interface ScaffoldOutcome {
+  created: ScaffoldLocaleFileInfo[]
+  skipped: ScaffoldLocaleFileInfo[]
 }
 
 export function buildEmptyStructure(data: Record<string, unknown>): Record<string, unknown> {
@@ -42,7 +35,7 @@ export function buildEmptyStructure(data: Record<string, unknown>): Record<strin
 export async function scaffoldLocale(
   config: I18nConfig,
   options: ScaffoldLocaleOptions = {},
-): Promise<ScaffoldLocaleResult> {
+): Promise<ScaffoldOutcome> {
   const { locales: localeCodes, layer: layerFilter, dryRun } = options
 
   const layers = layerFilter
@@ -84,8 +77,8 @@ export async function scaffoldLocale(
       })
     : findNewLocales(config, layers)
 
-  const created: ScaffoldedFile[] = []
-  const skipped: ScaffoldedFile[] = []
+  const created: ScaffoldLocaleFileInfo[] = []
+  const skipped: ScaffoldLocaleFileInfo[] = []
 
   for (const dir of layers) {
     if (config.localeFileFormat === 'php-array') {
@@ -104,8 +97,8 @@ async function scaffoldJsonLayer(
   refLocale: LocaleDefinition,
   targets: LocaleDefinition[],
   dryRun: boolean | undefined,
-  created: ScaffoldedFile[],
-  skipped: ScaffoldedFile[],
+  created: ScaffoldLocaleFileInfo[],
+  skipped: ScaffoldLocaleFileInfo[],
 ): Promise<void> {
   const refData = await readLocaleData(config, dir.layer, refLocale)
   if (Object.keys(refData).length === 0) {
@@ -140,8 +133,8 @@ async function scaffoldPhpLayer(
   refLocale: LocaleDefinition,
   targets: LocaleDefinition[],
   dryRun: boolean | undefined,
-  created: ScaffoldedFile[],
-  skipped: ScaffoldedFile[],
+  created: ScaffoldLocaleFileInfo[],
+  skipped: ScaffoldLocaleFileInfo[],
 ): Promise<void> {
   const refEntries = await resolveLocaleEntries(config, dir.layer, refLocale)
   if (refEntries.length === 0) {
