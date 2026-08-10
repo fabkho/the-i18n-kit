@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-3.2.0...the-i18n-cli-4.0.0) (2026-08-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** locale write output formatting changed. Existing files keep their detected indentation, trailing newline, PHP quote style and existing key order instead of being normalized to tab indentation and fully re-sorted keys; new keys are inserted alphabetically among their siblings. Namespace files are now only deleted when the mutation explicitly removed the namespace, with a warning per deleted file.
+
+### Features
+
+* **cli:** check — used-but-undefined key detection with CI exit gating ([#245](https://github.com/fabkho/the-i18n-kit/issues/245)) ([6c4b9bf](https://github.com/fabkho/the-i18n-kit/commit/6c4b9bffec124529b415bcbfa1be21af00f715bf))
+* **cli:** find_duplicate_keys — cross-layer key collisions with divergence detection ([#243](https://github.com/fabkho/the-i18n-kit/issues/243)) ([cf2343d](https://github.com/fabkho/the-i18n-kit/commit/cf2343dcc6cd17dcf2400cb234e542c464ab54d7))
+* **cli:** layer graph — canonical layers, ownership, app-consumption edges ([#240](https://github.com/fabkho/the-i18n-kit/issues/240)) ([a2c2046](https://github.com/fabkho/the-i18n-kit/commit/a2c204616e7715dc68791ad22f9c931b3ec200f4)), closes [#234](https://github.com/fabkho/the-i18n-kit/issues/234)
+* **cli:** layer-scope-aware orphan scanning with misplaced-usage detection ([#244](https://github.com/fabkho/the-i18n-kit/issues/244)) ([04cc252](https://github.com/fabkho/the-i18n-kit/commit/04cc2521e323cf9b87e131b0fc39320182a731af))
+* **cli:** translate-missing alias for translate ([#230](https://github.com/fabkho/the-i18n-kit/issues/230)) ([3c3ca8b](https://github.com/fabkho/the-i18n-kit/commit/3c3ca8bf63e36818c6e38feeffc82a9037c78f38))
+
+
+### Bug Fixes
+
+* **cli:** preserve locale file formatting, deliberate deletes, PHP escaping, React flat layouts ([#241](https://github.com/fabkho/the-i18n-kit/issues/241)) ([d1a435b](https://github.com/fabkho/the-i18n-kit/commit/d1a435b4141f24d0b8473ed002f68930d137fe1d)), closes [#194](https://github.com/fabkho/the-i18n-kit/issues/194)
+* **cli:** unify locale-dir claim logic, stop dropping dirs behind alias owners ([#238](https://github.com/fabkho/the-i18n-kit/issues/238)) ([7ae3b8f](https://github.com/fabkho/the-i18n-kit/commit/7ae3b8fcbd23ee91c0fe51c9c6882520ee3f1495)), closes [#233](https://github.com/fabkho/the-i18n-kit/issues/233)
+
 ## [3.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-3.1.0...the-i18n-cli-3.2.0) (2026-08-09)
 
 
