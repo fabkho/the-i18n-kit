@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { extractKeys, scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes } from '../../src/scanner/code-scanner.js'
+import { extractKeys, findOrphanKeysForConfig, scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes } from '../../src/scanner/code-scanner.js'
 
 const tmpDir = join(dirname(fileURLToPath(import.meta.url)), '../../.tmp-test/scanner')
 
@@ -605,8 +605,9 @@ describe('scanSourceFiles', () => {
     expect(result.filesScanned).toBe(0)
   })
 
-  it('extracts bare dynamic candidates from template literals with dots and interpolation', async () => {
+  it('extracts bare dynamic candidates from key-shaped template literals with dots and interpolation', async () => {
     await writeFile(join(tmpDir, 'Component.vue'), [
+      // #275 — URLs are not key-shaped (`:`, `/`) and are no longer candidates.
       'const url = `https://api.example.com/${id}`',
       'const label = `common.plans.trialPeriod.${interval}`',
       'const title = `pages.${section}.items.${id}.label`',
@@ -614,8 +615,7 @@ describe('scanSourceFiles', () => {
     ].join('\n'))
 
     const result = await scanSourceFiles(tmpDir)
-    expect(result.bareDynamicCandidates.size).toBe(3)
-    expect(result.bareDynamicCandidates.has('`https://api.example.com/${_}`')).toBe(true)
+    expect(result.bareDynamicCandidates.size).toBe(2)
     expect(result.bareDynamicCandidates.has('`common.plans.trialPeriod.${_}`')).toBe(true)
     expect(result.bareDynamicCandidates.has('`pages.${_}.items.${_}.label`')).toBe(true)
   })
@@ -653,6 +653,69 @@ describe('scanSourceFiles', () => {
     expect(result.bareDynamicCandidates.has('`api.orders.status.${_}`')).toBe(true)
     const regexes = buildDynamicKeyRegexes([...result.bareDynamicCandidates].map(e => ({ expression: e })))
     expect(regexes.some(re => re.test('api.orders.status.open'))).toBe(true)
+  })
+
+  // #275 — a stray backtick must not turn the span to the next backtick into a
+  // mega-expression; only candidates with i18n-key shape survive.
+  describe('bare-template mega-capture rejection (#275)', () => {
+    it('rejects stray-backtick spans and prose templates, keeps key-shaped ones', async () => {
+      await writeFile(join(tmpDir, 'Stray.vue'), [
+        // Stray backtick followed by `${` inside a string: the permissive
+        // collector captured `${', x.count, ` here (quote-parity poisoning)
+        // and LOST the genuine template that follows on the same line.
+        "const row = fmt('`${', x.count, `${sep}.list.end`)",
+        'const msg = `Deleted ${count} rows. Undo?`',
+        'const key = `pages.${section}.title`',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir)
+      expect(result.bareDynamicCandidates).toEqual(new Set([
+        '`${_}.list.end`',
+        '`pages.${_}.title`',
+      ]))
+    })
+
+    it('drops key-shaped candidates over the max plausible key length', async () => {
+      const longKey = 'seg.'.repeat(40) // 160 chars of valid key charset
+      await writeFile(join(tmpDir, 'Long.vue'), [
+        `const long = \`${longKey}\${x}\``,
+        'const ok = `common.actions.${action}`',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir)
+      expect(result.bareDynamicCandidates).toEqual(new Set(['`common.actions.${_}`']))
+    })
+
+    it('rejects interpolation-only templates whose dot sits inside the interpolation', async () => {
+      await writeFile(join(tmpDir, 'InterpOnly.vue'), [
+        'const v = `${config.mode}`',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir)
+      expect(result.bareDynamicCandidates.size).toBe(0)
+    })
+
+    it('ground truth: a mega-capture regex must not suppress unrelated orphans', async () => {
+      // The old capture `${', x.count, ` compiled to /^[^.]+$/ and dynamic-
+      // matched EVERY single-segment key; 'promo' must stay a safe orphan.
+      // The recovered genuine `${_}.list.end` still vouches for themes.list.end.
+      await writeFile(join(tmpDir, 'Stray.vue'), [
+        "const row = fmt('`${', x.count, `${sep}.list.end`)",
+        "const title = t('pages.home.title')",
+      ].join('\n'))
+
+      const result = await findOrphanKeysForConfig({
+        keysByLayer: new Map([['root', {
+          keys: ['promo', 'themes.list.end', 'pages.home.title'],
+          localeDir: { layer: 'root' },
+        }]]),
+        resolveIgnorePatterns: () => undefined,
+        scanDirs: [tmpDir],
+      })
+
+      expect(result.orphansByLayer.root ?? []).toEqual(['promo'])
+      expect(result.dynamicMatchedCount).toBe(1)
+    })
   })
 })
 

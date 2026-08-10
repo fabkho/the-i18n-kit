@@ -239,7 +239,19 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   let filesScanned = 0
 
   const BARE_DOTTED_STRING = /(['"])((?:[\w-]+\.)+[\w-]+)\1/g
-  const BARE_DYNAMIC_TEMPLATE = /`([^`\\\n]{0,200}\$\{[^`\\\n]{0,200})`/g
+  /**
+   * Matches bare template literals with i18n-key shape, regardless of call
+   * context: content outside `${...}` interpolations restricted to key-like
+   * chars ([\w.-], mirroring BARE_PHP_DYNAMIC), at least one interpolation
+   * (single-level brace nesting), no newlines. A permissive backtick-to-next-
+   * backtick match turns every stray backtick (comments, strings, markdown)
+   * into a mega-expression swallowing whole code spans — bloating reports and
+   * compiling to over-matching dynamic-key regexes when it starts with an
+   * interpolation.
+   */
+  const BARE_DYNAMIC_TEMPLATE = /`([\w.-]*(?:\$\{(?:[^`{}\n]|\{[^`{}\n]*\})*\}[\w.-]*)+)`/g
+  /** Longer candidates cannot plausibly be i18n keys — drop, don't truncate. */
+  const MAX_BARE_TEMPLATE_LENGTH = 120
   /**
    * Matches PHP double-quoted interpolated strings with i18n-key shape,
    * regardless of call context — `$transKey = "api.x.{$key}"` assigned first
@@ -283,8 +295,12 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     BARE_DYNAMIC_TEMPLATE.lastIndex = 0
     for (const match of content.matchAll(BARE_DYNAMIC_TEMPLATE)) {
       const expr = match[1]
-      if (!expr?.includes('.')) continue
+      if (!expr || expr.length > MAX_BARE_TEMPLATE_LENGTH) continue
       const normalized = expr.replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '${_}')
+      // The dot must survive interpolation stripping (like BARE_PHP_DYNAMIC):
+      // `${a.b}` alone has no literal key segment and would compile to a
+      // match-any-single-segment regex.
+      if (!normalized.replace(/\$\{_\}/g, '').includes('.')) continue
       bareDynamicCandidates.add(`\`${normalized}\``)
     }
 
