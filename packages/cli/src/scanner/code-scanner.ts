@@ -368,24 +368,25 @@ export interface MisplacedUsage {
   usingApps: string[]
 }
 
-export interface OrphanScanOptions {
+interface OrphanScanBaseOptions {
   keysByLayer: Map<string, { keys: string[]; localeDir: { layer: string } }>
-  /**
-   * Explicit root directories to scan recursively — manual scope control.
-   * When set, every layer is checked against ONE combined usage set from
-   * these dirs (the pre-scope-aware global behavior): `scanPlan` is ignored
-   * and no misplaced-usage detection happens.
-   */
-  scanDirs?: string[]
-  /**
-   * Scope-aware scan plan (see `buildOrphanScanPlan`). Used when `scanDirs`
-   * is absent. One of `scanDirs` / `scanPlan` is required.
-   */
-  scanPlan?: OrphanScanPlan
   excludeDirs?: string[]
   resolveIgnorePatterns: (layerName: string) => string[] | undefined
   patterns?: ScanPatternSet
 }
+
+/**
+ * Exactly one scan source is required:
+ * - `scanDirs` — explicit root directories, scanned recursively; manual
+ *   scope control. Every layer is checked against ONE combined usage set
+ *   (the pre-scope-aware global behavior) and no misplaced-usage
+ *   detection happens.
+ * - `scanPlan` — scope-aware plan from `buildOrphanScanPlan`.
+ */
+export type OrphanScanOptions = OrphanScanBaseOptions & (
+  | { scanDirs: string[]; scanPlan?: undefined }
+  | { scanDirs?: undefined; scanPlan: OrphanScanPlan }
+)
 
 export interface UnresolvedKeyWarning {
   /** The dynamic expression as detected (e.g., `` `notifications.subscriptions.${_}.message` ``) */
@@ -446,14 +447,14 @@ function nestedUnitIgnores(unit: ScanUnit, units: ScanUnit[]): string[] {
 }
 
 export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promise<OrphanScanResult> {
-  const { keysByLayer, scanDirs, scanPlan, excludeDirs, resolveIgnorePatterns, patterns } = options
+  const { keysByLayer, excludeDirs, resolveIgnorePatterns, patterns } = options
 
   // Explicit scanDirs = manual scope control: one combined usage set shared
   // by all layers, no misplaced-usage detection (pre-scope-aware behavior).
-  const globalScope = scanDirs !== undefined || !scanPlan
-  const units: ScanUnit[] = scanDirs !== undefined
-    ? scanDirs.map(d => ({ name: d, dir: d }))
-    : scanPlan!.units
+  const globalScope = options.scanDirs !== undefined
+  const units: ScanUnit[] = options.scanDirs !== undefined
+    ? options.scanDirs.map(d => ({ name: d, dir: d }))
+    : options.scanPlan.units
 
   // Scan each unit dir exactly once. In plan mode, nested unit dirs are
   // excluded from ancestor scans; explicit scanDirs are scanned as given.
@@ -516,9 +517,9 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
   const scanScopeByLayer: Record<string, string[]> = {}
 
   for (const [layerName, { keys }] of keysByLayer) {
-    const scopeNames = (globalScope
+    const scopeNames = (options.scanDirs !== undefined
       ? allUnitNames
-      : scanPlan!.scopeByLayer.get(layerName) ?? allUnitNames)
+      : options.scanPlan.scopeByLayer.get(layerName) ?? allUnitNames)
       .filter(name => evidenceByName.has(name))
     scanScopeByLayer[layerName] = scopeNames.map(name => evidenceByName.get(name)!.unit.dir)
 

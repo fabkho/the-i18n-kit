@@ -113,7 +113,8 @@ async function runOrphanScan(
 ): Promise<OrphanScanResult> {
   return findOrphanKeysForConfig({
     keysByLayer,
-    ...(opts.scanDirs ? { scanDirs: opts.scanDirs } : { scanPlan: buildOrphanScanPlan(config, opts.dir) }),
+    // an empty scanDirs array means "not provided" (matches excludeDirs)
+    ...(opts.scanDirs?.length ? { scanDirs: opts.scanDirs } : { scanPlan: buildOrphanScanPlan(config, opts.dir) }),
     excludeDirs: opts.excludeDirs || undefined,
     resolveIgnorePatterns: layerName => resolveOrphanIgnorePatterns(config, layerName),
     patterns: getPatternSet(config.localeFileFormat),

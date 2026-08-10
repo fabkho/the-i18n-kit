@@ -5,7 +5,7 @@
  * removal never touching misplaced keys.
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest'
 import { mkdir, writeFile, rm, mkdtemp, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -41,19 +41,6 @@ beforeAll(async () => {
   adminDir = join(projectDir, 'app-admin')
   shopDir = join(projectDir, 'app-shop')
 
-  // Locale files.
-  await mkdir(join(projectDir, 'i18n/locales'), { recursive: true })
-  await writeFile(join(projectDir, 'i18n/locales/de-DE.json'), JSON.stringify({
-    root: { shared: { used: 'a', usedByAdmin: 'b', orphan: 'c' } },
-  }))
-  await mkdir(join(adminDir, 'i18n/locales'), { recursive: true })
-  await writeFile(join(adminDir, 'i18n/locales/de-DE.json'), JSON.stringify({
-    admin: { used: 'a', usedFromShop: 'b', orphan: 'c' },
-  }))
-  await mkdir(join(shopDir, 'i18n/locales'), { recursive: true })
-  await writeFile(join(shopDir, 'i18n/locales/de-DE.json'), JSON.stringify({
-    shop: { used: 'a' },
-  }))
 
   // Source files: root-layer code uses root key; app-admin uses its own and a
   // shared key; app-shop uses its own key plus an app-admin key (misplaced).
@@ -71,6 +58,23 @@ beforeAll(async () => {
   ].join('\n'))
 
   holder.config = createTempMultiAppConfig(projectDir)
+})
+
+// Fresh locale contents per test: the destructive removeOrphanKeys case
+// mutates them, and the suite must not be order-dependent.
+beforeEach(async () => {
+  await mkdir(join(projectDir, 'i18n/locales'), { recursive: true })
+  await writeFile(join(projectDir, 'i18n/locales/de-DE.json'), JSON.stringify({
+    root: { shared: { used: 'a', usedByAdmin: 'b', orphan: 'c' } },
+  }))
+  await mkdir(join(adminDir, 'i18n/locales'), { recursive: true })
+  await writeFile(join(adminDir, 'i18n/locales/de-DE.json'), JSON.stringify({
+    admin: { used: 'a', usedFromShop: 'b', orphan: 'c' },
+  }))
+  await mkdir(join(shopDir, 'i18n/locales'), { recursive: true })
+  await writeFile(join(shopDir, 'i18n/locales/de-DE.json'), JSON.stringify({
+    shop: { used: 'a' },
+  }))
 })
 
 afterAll(async () => {

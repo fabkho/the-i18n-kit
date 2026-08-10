@@ -75,7 +75,7 @@ describe('findOrphanKeysForConfig — scope-aware plan', () => {
       localeDir: { layer: 'root' },
     }],
     ['app-admin', {
-      keys: ['admin.used', 'admin.usedFromShop', 'admin.fromRoot', 'admin.dyn.one', 'admin.orphan'],
+      keys: ['admin.used', 'admin.usedEverywhere', 'admin.usedFromShop', 'admin.fromRoot', 'admin.dyn.one', 'admin.orphan'],
       localeDir: { layer: 'app-admin' },
     }],
     ['app-shop', {
@@ -108,6 +108,7 @@ describe('findOrphanKeysForConfig — scope-aware plan', () => {
     await mkdir(join(adminDir, 'pages'), { recursive: true })
     await writeFile(join(adminDir, 'pages/index.vue'), [
       `{{ $t('admin.used') }}`,
+      `{{ $t('admin.usedEverywhere') }}`,
       `{{ $t('root.shared.usedByAdmin') }}`,
     ].join('\n'))
 
@@ -116,6 +117,7 @@ describe('findOrphanKeysForConfig — scope-aware plan', () => {
     await mkdir(join(shopDir, 'pages'), { recursive: true })
     await writeFile(join(shopDir, 'pages/index.vue'), [
       `{{ $t('shop.used') }}`,
+      `{{ $t('admin.usedEverywhere') }}`,
       `{{ $t('admin.usedFromShop') }}`,
       'const label = t(`admin.dyn.${variant}`)',
     ].join('\n'))
@@ -142,6 +144,9 @@ describe('findOrphanKeysForConfig — scope-aware plan', () => {
     const result = await findOrphanKeysForConfig(scanOptions())
 
     expect(result.orphansByLayer['app-admin']).toEqual(['admin.orphan'])
+    // In-scope evidence wins: a key also used by a non-consuming unit is
+    // plain "used" — neither orphan nor misplaced.
+    expect(result.misplacedUsages.map(m => m.key)).not.toContain('admin.usedEverywhere')
     expect(result.misplacedUsages).toEqual([
       { key: 'admin.dyn.one', layer: 'app-admin', usingApps: ['app-shop'] },
       { key: 'admin.fromRoot', layer: 'app-admin', usingApps: ['root'] },
