@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.1.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.1.0...the-i18n-cli-4.1.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* **cli:** deterministic orphan reports and orphanScan layer-key validation ([#268](https://github.com/fabkho/the-i18n-kit/issues/268)) ([ccec19a](https://github.com/fabkho/the-i18n-kit/commit/ccec19a5d34ef8bf8c95f93c6da9b644dc65a953))
+* **cli:** never classify indirectly-consumed or Laravel-idiom keys as hard findings ([#269](https://github.com/fabkho/the-i18n-kit/issues/269)) ([4a7f1a2](https://github.com/fabkho/the-i18n-kit/commit/4a7f1a2407909594f01f516fdd81c0fa67aaed46)), closes [#262](https://github.com/fabkho/the-i18n-kit/issues/262) [#267](https://github.com/fabkho/the-i18n-kit/issues/267)
+* **cli:** resolve relative --output-file against project dir, emit JSON error object on failure ([#280](https://github.com/fabkho/the-i18n-kit/issues/280)) ([181da7e](https://github.com/fabkho/the-i18n-kit/commit/181da7e28bad659a70e4d64b9097262fa4e92af7))
+* **cli:** restrict bare-template collector to key-shaped candidates ([#281](https://github.com/fabkho/the-i18n-kit/issues/281)) ([86b1a48](https://github.com/fabkho/the-i18n-kit/commit/86b1a48f16b6e70490f1765d3c94c45b4e997560)), closes [#275](https://github.com/fabkho/the-i18n-kit/issues/275)
+
 ## [4.1.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.0.0...the-i18n-cli-4.1.0) (2026-08-10)
 
 

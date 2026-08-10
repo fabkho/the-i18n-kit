@@ -6,12 +6,12 @@
     "url": "https://github.com/fabkho/the-i18n-kit",
     "source": "github"
   },
-  "version": "7.0.0",
+  "version": "7.0.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "the-i18n-mcp",
-      "version": "7.0.0",
+      "version": "7.0.1",
       "transport": {
         "type": "stdio"
       }
