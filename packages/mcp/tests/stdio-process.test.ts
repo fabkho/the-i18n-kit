@@ -71,6 +71,24 @@ describe('the-i18n-mcp over a spawned stdio process', () => {
     }
   })
 
+  // Issue #264 repro: I18N_PROJECT_DIR alone must be enough — tools must not
+  // fall back to the server process cwd when projectDir is omitted.
+  it('answers discover without a projectDir argument via I18N_PROJECT_DIR', async () => {
+    const client = new Client({ name: 'stdio-env-dir', version: '0.0.0' })
+    await client.connect(new StdioClientTransport(spawnParams()))
+    try {
+      const result = await client.callTool({ name: 'discover', arguments: {} })
+      expect(result.isError).toBeFalsy()
+
+      const text = (result.content as Array<{ text: string }>)[0]?.text ?? ''
+      const json = JSON.parse(text) as { defaultLocale: string, layers: Array<{ layer: string }> }
+      expect(json.defaultLocale).toBe('de')
+      expect(json.layers).toEqual([expect.objectContaining({ layer: 'root' })])
+    } finally {
+      await client.close()
+    }
+  })
+
   it('negotiates the modern era against the same entry', async () => {
     const client = new Client(
       { name: 'stdio-modern', version: '0.0.0' },
