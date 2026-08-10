@@ -55,10 +55,10 @@
     },
     "packages/cli/src/core/ops-read.ts": {
       "complexity_high": {
-        "count": 5
+        "count": 4
       },
       "complexity_moderate": {
-        "count": 1
+        "count": 2
       }
     },
     "packages/cli/src/core/ops-translate.ts": {
@@ -121,7 +121,7 @@
     "packages/cli/src/core/ops-write.ts:complexity",
     "packages/cli/src/core/ops-orphans.ts:complexity",
     "packages/cli/src/core/ops-translate.ts:complexity",
-    "packages/cli/src/scanner/code-scanner.ts:complexity",
-    "packages/cli/src/core/ops-read.ts:complexity"
+    "packages/cli/src/core/ops-read.ts:complexity",
+    "packages/cli/src/scanner/code-scanner.ts:complexity"
   ]
 }
