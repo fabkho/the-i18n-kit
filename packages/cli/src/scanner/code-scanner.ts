@@ -434,7 +434,7 @@ interface UnitEvidence {
  * scope-aware scan visits every file exactly once and attributes it to the
  * innermost unit.
  */
-function nestedUnitIgnores(unit: ScanUnit, units: ScanUnit[]): string[] {
+export function nestedUnitIgnores(unit: ScanUnit, units: ScanUnit[]): string[] {
   const ignores: string[] = []
   for (const other of units) {
     if (other.dir === unit.dir) continue

@@ -69,6 +69,25 @@ export function findLocaleImpl(config: I18nConfig, localeRef: string) {
   )
 }
 
+/**
+ * Resolve the reference locale for scan operations: the requested ref or the
+ * project default. Throws LOCALE_NOT_FOUND listing the available codes.
+ */
+export function resolveReferenceLocale(
+  config: I18nConfig,
+  requested?: string,
+): { localeCode: string; localeDef: LocaleDefinition } {
+  const localeCode = requested ?? config.defaultLocale
+  const localeDef = findLocaleImpl(config, localeCode)
+  if (!localeDef) {
+    throw new ToolError(
+      `Locale not found: "${localeCode}". Available: ${config.locales.map(l => l.code).join(', ')}`,
+      'LOCALE_NOT_FOUND',
+    )
+  }
+  return { localeCode, localeDef }
+}
+
 export function findLocaleOrThrow(config: I18nConfig, localeRef: string): LocaleDefinition {
   const locale = findLocaleImpl(config, localeRef)
   if (!locale) {

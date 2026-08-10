@@ -9,23 +9,11 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vites
 import { mkdir, writeFile, rm, mkdtemp, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import type { I18nConfig } from '../../src/config/types.js'
 import { createTempMultiAppConfig } from '../fixtures/config.js'
 
 const holder = vi.hoisted(() => ({ config: undefined as unknown }))
-
-vi.mock('../../src/config/detector.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../src/config/detector.js')>()
-  return {
-    ...original,
-    detectI18nConfig: async () => {
-      if (!holder.config) throw new Error('Test config not initialized')
-      return holder.config as I18nConfig
-    },
-    clearConfigCache: () => { },
-    getCachedConfig: () => (holder.config as I18nConfig | undefined) ?? null,
-  }
-})
+vi.mock('../../src/config/detector.js', async importOriginal =>
+  (await import('../fixtures/holder-detector.js')).holderDetectorMock(holder, importOriginal))
 
 const { findOrphanKeys, removeOrphanKeys } = await import('../../src/core/operations.js')
 

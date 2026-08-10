@@ -110,6 +110,7 @@ Then just ask your agent:
 | `translate_missing` | Find and translate missing keys — provider mode translates directly, agent mode returns fallback contexts |
 | `translate_key` | Translate one source key into target locales; can overwrite stale values |
 | `find_orphan_keys` | Find keys not referenced in source code |
+| `find_undefined_keys` | Find keys referenced in code but defined in no consumed locale layer — the inverse of `find_orphan_keys` (this direction ships raw keys to production). Dynamic keys are reported as uncertain |
 | `remove_orphan_keys` | Find + remove orphan keys. **Dry-run by default** |
 | `scaffold_locale` | Create empty locale files for new languages |
 

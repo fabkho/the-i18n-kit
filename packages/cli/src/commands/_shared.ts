@@ -8,6 +8,13 @@ export function createCommand(opts: {
   name: string
   description: string
   args?: Record<string, unknown>
+  /**
+   * Command-specific CI gate: when it returns true for the (already
+   * emitted) result, the process exits non-zero — e.g. `check` failing
+   * the build on undefined-key findings. Runs in addition to the generic
+   * isTotalFailure check.
+   */
+  failWhen?: (result: unknown) => boolean
   run: (args: any) => Promise<unknown>
 }): CommandDef {
   return defineCommand({
@@ -16,7 +23,7 @@ export function createCommand(opts: {
     async run({ args }) {
       const result = await opts.run(args)
       outputResult(result, args)
-      if (isTotalFailure(result)) {
+      if (isTotalFailure(result) || opts.failWhen?.(result)) {
         process.exitCode = 1
       }
     },

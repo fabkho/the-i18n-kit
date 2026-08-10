@@ -16,7 +16,7 @@ import type { OrphanScanPlan, OrphanScanResult } from '../scanner/code-scanner.j
 import { getPatternSet } from '../scanner/patterns.js'
 import { ToolError } from '../utils/errors.js'
 
-import { findLayerOrThrow, findLocaleImpl } from './shared.js'
+import { findLayerOrThrow, resolveReferenceLocale } from './shared.js'
 import { validateReportPath, resolveReportFilePath } from './report.js'
 
 const MISPLACED_USAGE_NOTE
@@ -146,14 +146,7 @@ async function resolveOrphanScanContext(
   totalKeys: number
   localeCode: string
 }> {
-  const localeCode = opts.locale ?? config.defaultLocale
-  const localeDef = findLocaleImpl(config, localeCode)
-  if (!localeDef) {
-    throw new ToolError(
-      `Locale not found: "${localeCode}". Available: ${config.locales.map(l => l.code).join(', ')}`,
-      'LOCALE_NOT_FOUND',
-    )
-  }
+  const { localeCode, localeDef } = resolveReferenceLocale(config, opts.locale)
 
   const layersToCheck = opts.layer
     ? config.localeDirs.filter(d => d.layer === opts.layer)

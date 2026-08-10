@@ -24,6 +24,7 @@ import {
   findOrphanKeys,
   removeOrphanKeys,
   findDuplicateKeys,
+  checkUndefinedKeys,
   scaffoldLocaleFiles,
   listNamespaces,
   findLocaleImpl,
@@ -163,6 +164,17 @@ function jsonContent(data: unknown) {
     content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
   }
 }
+
+// Shared input-schema fragments (identical wording across tools).
+const projectDirInput = () => z
+  .string()
+  .optional()
+  .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".')
+
+const outputFileInput = (example: string) => z
+  .string()
+  .optional()
+  .describe(`Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "${example}"`)
 
 export interface CreateServerOptions {
   /**
@@ -735,6 +747,46 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     },
   )
 
+  // ─── Tool: find_undefined_keys ────────────────────────────────
+
+  server.registerTool(
+    'find_undefined_keys',
+    {
+      title: 'Find Used-But-Undefined Translation Keys',
+      description:
+        'The inverse of find_orphan_keys: find keys referenced in source code but defined in NO locale file of the '
+        + 'using app\'s consumed layers — the direction that ships raw keys to production. '
+        + 'Scope-aware: each scan unit (app) is checked against the layers it consumes (summary.searchedLayersByApp); '
+        + 'a key defined only in a layer the using app does not consume is still undefined for that app. '
+        + 'Known limitation: extraction is line-based and static — dynamically built keys (template literals, '
+        + 'concatenation) cannot be verified and are reported as uncertainKeys, never as hard findings.',
+      inputSchema: {
+        locale: z
+          .string()
+          .optional()
+          .describe('Reference locale to resolve key definitions in (e.g., "en", "en-US"). Defaults to the project default locale.'),
+        scanDirs: z
+          .array(z.string())
+          .optional()
+          .describe('Absolute paths to directories to scan for source code usage. Overrides scope-aware scanning: every layer counts as resolvable from these dirs. Example: ["/home/user/my-app/apps/admin"].'),
+        excludeDirs: z
+          .array(z.string())
+          .optional()
+          .describe('Directory names to skip when scanning source files. Example: ["storybook", "__tests__", "node_modules"].'),
+        projectDir: projectDirInput(),
+        outputFile: outputFileInput('/tmp/undefined-keys.json'),
+      },
+    },
+    async ({ locale, scanDirs, excludeDirs, projectDir, outputFile }) => {
+      try {
+        const result = await checkUndefinedKeys({ locale, scanDirs, excludeDirs, projectDir, outputFile })
+        return jsonContent(result)
+      } catch (error) {
+        return toolErrorResponse('finding undefined keys', error)
+      }
+    },
+  )
+
   // ─── Tool: find_duplicate_keys ────────────────────────────────
 
   server.registerTool(
@@ -752,14 +804,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Locale code to compare values in (e.g., "de", "en-US"). Defaults to the project default locale.'),
-        projectDir: z
-          .string()
-          .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
-        outputFile: z
-          .string()
-          .optional()
-          .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/duplicate-keys.json"'),
+        projectDir: projectDirInput(),
+        outputFile: outputFileInput('/tmp/duplicate-keys.json'),
       },
     },
     async ({ locale, projectDir, outputFile }) => {

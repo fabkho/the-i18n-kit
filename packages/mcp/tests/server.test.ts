@@ -94,6 +94,7 @@ describe('the-i18n-mcp server over in-memory transport', () => {
       'discover',
       'find_duplicate_keys',
       'find_orphan_keys',
+      'find_undefined_keys',
       'get_missing_translations',
       'get_translations',
       'list_namespaces',
@@ -189,6 +190,17 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.summary.locale).toBe('de')
     expect(json?.summary.message).toBeDefined()
     expect(json?.guidance).toBeDefined()
+  })
+
+  it('find_undefined_keys returns a clean result for a project without code usage', async () => {
+    const { json } = await callTool('find_undefined_keys', { projectDir })
+
+    expect(json?.undefinedKeys).toEqual([])
+    expect(json?.uncertainKeys).toEqual([])
+    expect(json?.summary.undefinedCount).toBe(0)
+    expect(json?.summary.usedKeysChecked).toBe(0)
+    expect(json?.summary.locale).toBe('de')
+    expect(json?.limitation).toContain('line-based')
   })
 
   it('rejects invalid tool input via schema validation', async () => {
