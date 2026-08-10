@@ -40,6 +40,54 @@ export interface ScanResult {
   bareDynamicCandidates: Set<string>
 }
 
+// ─── Const-table resolution (#284) ──────────────────────────────
+
+/**
+ * Matches `const`/`let` declarations initialized to a key-shaped string
+ * literal (≥1 dot). Scope is deliberately tight: identifier = literal only —
+ * no object properties, no expressions.
+ */
+const CONST_KEY_DECL = /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"])((?:[\w-]+\.)+[\w-]+)\2/g
+
+/**
+ * Collects same-file `const NAME = 'dotted.path'` declarations so
+ * `${NAME}` interpolations can be substituted with the literal value.
+ * Same-file only — imported/cross-file constants are NOT resolved and fall
+ * back to the conservative `${_}` widening in buildDynamicKeyRegexes.
+ * A name bound to different values (shadowing across scopes) is ambiguous
+ * and dropped: substituting one of several possible values could narrow a
+ * pattern past a live key.
+ */
+function collectConstKeyTable(content: string): Map<string, string> {
+  const table = new Map<string, string>()
+  const ambiguous = new Set<string>()
+  CONST_KEY_DECL.lastIndex = 0
+  for (const match of content.matchAll(CONST_KEY_DECL)) {
+    const name = match[1]
+    const value = match[3]
+    if (!name || !value || ambiguous.has(name)) continue
+    const existing = table.get(name)
+    if (existing !== undefined && existing !== value) {
+      table.delete(name)
+      ambiguous.add(name)
+      continue
+    }
+    table.set(name, value)
+  }
+  return table
+}
+
+/**
+ * Substitutes `${NAME}` interpolations with the const table's literal value,
+ * producing an exact or narrower pattern: `${i18nBase}.title` +
+ * `const i18nBase = 'a.b.c'` → `a.b.c.title`. Only plain-identifier
+ * interpolations qualify; member expressions and anything else stay dynamic.
+ */
+function substituteConstIdentifiers(expr: string, table: Map<string, string>): string {
+  if (table.size === 0 || !expr.includes('${')) return expr
+  return expr.replace(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g, (whole, name: string) => table.get(name) ?? whole)
+}
+
 // ─── Extraction ─────────────────────────────────────────────────
 
 /**
@@ -48,68 +96,100 @@ export interface ScanResult {
  *
  * When `patterns` is omitted, defaults to Vue/Nuxt patterns.
  */
-export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[] } {
-  const pat = patterns ?? VUE_NUXT_PATTERNS
-  const usages: KeyUsage[] = []
-  const dynamicKeys: DynamicKeyUsage[] = []
+interface LineExtraction {
+  pat: ScanPatternSet
+  constTable: Map<string, string>
+  filePath: string
+  usages: KeyUsage[]
+  dynamicKeys: DynamicKeyUsage[]
+}
 
-  const lines = content.split('\n')
-
-  for (const [i, line] of lines.entries()) {
-    const lineNumber = i + 1
-
-    for (const regex of pat.staticKeyPatterns) {
-      regex.lastIndex = 0
-      for (const match of line.matchAll(regex)) {
-        const callee = match[1] ?? ''
-        const key = match[3]
-        if (!key) continue
-        if (key.includes('{$')) continue
-        if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
-        usages.push({ key, file: filePath, line: lineNumber, callee })
-      }
-    }
-
-    for (const regex of pat.dynamicKeyPatterns) {
-      regex.lastIndex = 0
-      for (const match of line.matchAll(regex)) {
-        const callee = match[1] ?? ''
-        const expression = match[2]
-        if (!expression) continue
-        const hasDollarBrace = expression.includes('${')
-        const hasBraceDollar = expression.includes('{$')
-        const hasBarePHP = !hasDollarBrace && !hasBraceDollar && /\$[a-zA-Z_]/.test(expression)
-        if (!hasDollarBrace && !hasBraceDollar && !hasBarePHP) {
-          if (pat.promoteStaticDynamicMatches) {
-            const key = expression
-            if (!key) continue
-            if (pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
-            usages.push({ key, file: filePath, line: lineNumber, callee })
-          }
-          continue
-        }
-        const normalized = hasBraceDollar
-          ? expression.replace(/\{\$[^}]+\}/g, '${_}')
-          : hasBarePHP
-            ? expression.replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
-            : expression
-        dynamicKeys.push({ expression: `\`${normalized}\``, file: filePath, line: lineNumber, callee })
-      }
-    }
-
-    for (const regex of pat.concatKeyPatterns) {
-      regex.lastIndex = 0
-      for (const match of line.matchAll(regex)) {
-        const callee = match[1] ?? ''
-        const prefix = match[3]
-        if (!prefix) continue
-        if (pat.requiresDotForCallee?.(callee) && !prefix.includes('.')) continue
-        dynamicKeys.push({ expression: `\`${prefix}\${_}\``, file: filePath, line: lineNumber, callee })
-      }
+function extractStaticMatches(line: string, lineNumber: number, ctx: LineExtraction): void {
+  for (const regex of ctx.pat.staticKeyPatterns) {
+    regex.lastIndex = 0
+    for (const match of line.matchAll(regex)) {
+      const callee = match[1] ?? ''
+      const key = match[3]
+      if (!key) continue
+      if (key.includes('{$')) continue
+      if (ctx.pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
+      ctx.usages.push({ key, file: ctx.filePath, line: lineNumber, callee })
     }
   }
+}
 
-  return { usages, dynamicKeys }
+/**
+ * Normalizes every interpolation syntax (JS `${expr}`, PHP `{$expr}` and
+ * bare `$var->prop`) to `${_}` slots. Returns undefined when the expression
+ * contains no interpolation at all.
+ */
+function normalizeDynamicExpression(expression: string): string | undefined {
+  const hasDollarBrace = expression.includes('${')
+  const hasBraceDollar = expression.includes('{$')
+  const hasBarePHP = !hasDollarBrace && !hasBraceDollar && /\$[a-zA-Z_]/.test(expression)
+  if (!hasDollarBrace && !hasBraceDollar && !hasBarePHP) return undefined
+  return hasBraceDollar
+    ? expression.replace(/\{\$[^}]+\}/g, '${_}')
+    : hasBarePHP
+      ? expression.replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
+      : expression
+}
+
+function extractDynamicMatches(line: string, lineNumber: number, ctx: LineExtraction): void {
+  for (const regex of ctx.pat.dynamicKeyPatterns) {
+    regex.lastIndex = 0
+    for (const match of line.matchAll(regex)) {
+      const callee = match[1] ?? ''
+      const raw = match[2]
+      if (!raw) continue
+      // Const-resolved expressions lose their interpolation and, with
+      // promoteStaticDynamicMatches, become exact static usages below.
+      const expression = substituteConstIdentifiers(raw, ctx.constTable)
+      const normalized = normalizeDynamicExpression(expression)
+      if (normalized === undefined) {
+        if (!ctx.pat.promoteStaticDynamicMatches) continue
+        if (!expression) continue
+        if (ctx.pat.requiresDotForCallee?.(callee) && !expression.includes('.')) continue
+        ctx.usages.push({ key: expression, file: ctx.filePath, line: lineNumber, callee })
+        continue
+      }
+      ctx.dynamicKeys.push({ expression: `\`${normalized}\``, file: ctx.filePath, line: lineNumber, callee })
+    }
+  }
+}
+
+function extractConcatMatches(line: string, lineNumber: number, ctx: LineExtraction): void {
+  for (const regex of ctx.pat.concatKeyPatterns) {
+    regex.lastIndex = 0
+    for (const match of line.matchAll(regex)) {
+      const callee = match[1] ?? ''
+      const prefix = match[3]
+      if (!prefix) continue
+      if (ctx.pat.requiresDotForCallee?.(callee) && !prefix.includes('.')) continue
+      ctx.dynamicKeys.push({ expression: `\`${prefix}\${_}\``, file: ctx.filePath, line: lineNumber, callee })
+    }
+  }
+}
+
+export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[] } {
+  const pat = patterns ?? VUE_NUXT_PATTERNS
+  const ctx: LineExtraction = {
+    pat,
+    constTable: pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>(),
+    filePath,
+    usages: [],
+    dynamicKeys: [],
+  }
+
+  const lines = content.split('\n')
+  for (const [i, line] of lines.entries()) {
+    const lineNumber = i + 1
+    extractStaticMatches(line, lineNumber, ctx)
+    extractDynamicMatches(line, lineNumber, ctx)
+    extractConcatMatches(line, lineNumber, ctx)
+  }
+
+  return { usages: ctx.usages, dynamicKeys: ctx.dynamicKeys }
 }
 
 // ─── Dynamic key pattern matching ───────────────────────────────
@@ -163,9 +243,22 @@ export function buildDynamicKeyRegexes(dynamicKeys: Pick<DynamicKeyUsage, 'expre
 
     if (!expr.includes('${')) continue
 
-    const pattern = splitInterpolations(expr)
+    const parts = splitInterpolations(expr)
+    // #284: an interpolated variable can hold a dotted path (`${i18nBase}.title`
+    // with `const i18nBase = 'a.b.c'`), so `${_}` compiles to `.+?` — any number
+    // of segments — in leading, interior, and trailing position. This
+    // over-suppresses: keys a single-segment variable could never reach are
+    // counted as dynamic-matched. For a deletion tool that is the correct
+    // trade-off — the safe-orphan list must stay safe. Guard: widening is
+    // anchored to a literal key fragment — some literal part must contain a
+    // word char adjacent to a dot (`.title`, `a.b.`). Without that anchor
+    // (`${x}`, `${a}.${b}`, `v${major}.${minor}`) the widened regex would match
+    // essentially every key (a real anny-ui scan drops to zero orphans), so
+    // the bounded single-segment `[^.]+` stays for those.
+    const wildcard = parts.some(part => /[\w-]\.|\.[\w-]/.test(part)) ? '.+?' : '[^.]+'
+    const pattern = parts
       .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-      .join('[^.]+')
+      .join(wildcard)
 
     if (seen.has(pattern)) continue
     seen.add(pattern)
@@ -214,6 +307,124 @@ function buildUnresolvedWarnings(dynamicKeys: DynamicKeyUsage[]): UnresolvedKeyW
   return warnings
 }
 
+// ─── Bare candidate collection ──────────────────────────────────
+
+const BARE_DOTTED_STRING = /(['"])((?:[\w-]+\.)+[\w-]+)\1/g
+/**
+ * Matches bare template literals with i18n-key shape, regardless of call
+ * context: content outside `${...}` interpolations restricted to key-like
+ * chars ([\w.-], mirroring BARE_PHP_DYNAMIC), at least one interpolation
+ * (single-level brace nesting), no newlines. A permissive backtick-to-next-
+ * backtick match turns every stray backtick (comments, strings, markdown)
+ * into a mega-expression swallowing whole code spans — bloating reports and
+ * compiling to over-matching dynamic-key regexes when it starts with an
+ * interpolation.
+ */
+const BARE_DYNAMIC_TEMPLATE = /`([\w.-]*(?:\$\{(?:[^`{}\n]|\{[^`{}\n]*\})*\}[\w.-]*)+)`/g
+/** Longer candidates cannot plausibly be i18n keys — drop, don't truncate. */
+const MAX_BARE_TEMPLATE_LENGTH = 120
+/**
+ * Matches PHP double-quoted interpolated strings with i18n-key shape,
+ * regardless of call context — `$transKey = "api.x.{$key}"` assigned first
+ * and passed to Lang::get() later must still suppress api.x.* orphans.
+ * Content is restricted to key-like chars plus {$expr} / $var->prop
+ * interpolations: a permissive "any double-quoted string containing $"
+ * match swallows the code BETWEEN quoted strings (PHP code is full of $),
+ * shifting quote parity past the real candidates.
+ */
+const BARE_PHP_DYNAMIC = /"((?:[\w.-]|\{\$[^}]+\}|\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*)+)"/g
+/**
+ * Matches prefix-shaped string literals (≥1 key-like segment, trailing dot,
+ * closing quote right after the dot) regardless of call context: concat
+ * prefixes ('menu.' + var, __('a.b.' . $x) — incl. multiline t() calls where
+ * the prefix sits on its own line) and prefixes passed as plain arguments
+ * (->translationPrefix('api.invoices.status.')) concatenated in a helper.
+ * Group 2: the prefix including the trailing dot.
+ */
+const BARE_PREFIX_LITERAL = /(['"])((?:[\w-]+\.)+)\1/g
+/**
+ * Matches suffix-only concat construction (#284): a string literal that is
+ * entirely dot-leading key-shaped segments ('.labelPlural'), adjacent to
+ * `+` on either side — `obj.translationPath + '.labelPlural'`. The variable
+ * prefix is unresolvable, so the candidate keeps a bare `${_}` prefix; with
+ * the `${_}` → `.+?` widening that suppresses every key ending in the
+ * suffix. `+`-adjacency is required: dot-leading literals appear everywhere
+ * (file extensions, decimals) and only concat context makes them key
+ * evidence. A trailing `+` means the constructed key continues past the
+ * literal, so the candidate gets a trailing `${_}` too. Template-literal
+ * suffixes (`` `${x}.select` ``) already reach the same shape via
+ * BARE_DYNAMIC_TEMPLATE. Group 1: `+` before; group 3: suffix; group 4: `+` after.
+ */
+const BARE_SUFFIX_CONCAT = /(\+[ \t]*)?(['"])((?:\.[\w-]+)+)\2(?:[ \t]*(\+))?/g
+
+function collectBareTemplateCandidates(content: string, constTable: Map<string, string>, bareStrings: Set<string>, bareDynamics: Set<string>): void {
+  BARE_DYNAMIC_TEMPLATE.lastIndex = 0
+  for (const match of content.matchAll(BARE_DYNAMIC_TEMPLATE)) {
+    const raw = match[1]
+    if (!raw || raw.length > MAX_BARE_TEMPLATE_LENGTH) continue
+    const expr = substituteConstIdentifiers(raw, constTable)
+    // Fully resolved by the const table → an exact candidate, not a pattern.
+    if (!expr.includes('${')) {
+      if (expr.includes('.')) bareStrings.add(expr)
+      continue
+    }
+    const normalized = expr.replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '${_}')
+    // The dot must survive interpolation stripping (like BARE_PHP_DYNAMIC):
+    // `${a.b}` alone has no literal key segment and would compile to a
+    // match-any-single-segment regex.
+    if (!normalized.replace(/\$\{_\}/g, '').includes('.')) continue
+    bareDynamics.add(`\`${normalized}\``)
+  }
+}
+
+function collectBarePhpCandidates(content: string, bareDynamics: Set<string>): void {
+  BARE_PHP_DYNAMIC.lastIndex = 0
+  for (const match of content.matchAll(BARE_PHP_DYNAMIC)) {
+    const expr = match[1]
+    // The $-check keeps plain dotted strings out (BARE_DOTTED_STRING's job);
+    // the dot must survive interpolation stripping so `{$a}$b` (no literal
+    // key segment) does not become an everything-matches candidate.
+    if (!expr?.includes('$')) continue
+    const normalized = expr
+      .replace(/\{\$[^}]+\}/g, '${_}')
+      .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
+    if (!normalized.replace(/\$\{_\}/g, '').includes('.')) continue
+    bareDynamics.add(`\`${normalized}\``)
+  }
+}
+
+function collectBareConcatCandidates(content: string, bareDynamics: Set<string>): void {
+  BARE_PREFIX_LITERAL.lastIndex = 0
+  for (const match of content.matchAll(BARE_PREFIX_LITERAL)) {
+    bareDynamics.add(`\`${match[2]}\${_}\``)
+  }
+
+  BARE_SUFFIX_CONCAT.lastIndex = 0
+  for (const match of content.matchAll(BARE_SUFFIX_CONCAT)) {
+    const suffix = match[3]
+    if (!suffix || suffix.length > MAX_BARE_TEMPLATE_LENGTH) continue
+    if (!match[1] && !match[4]) continue
+    bareDynamics.add(`\`\${_}${suffix}${match[4] ? '${_}' : ''}\``)
+  }
+}
+
+/**
+ * Collects context-free key evidence from one file's content: exact dotted
+ * strings into `bareStrings`, interpolated/concatenated shapes into
+ * `bareDynamics` (normalized to `${_}` slots for buildDynamicKeyRegexes).
+ */
+function collectBareCandidates(content: string, constTable: Map<string, string>, bareStrings: Set<string>, bareDynamics: Set<string>): void {
+  BARE_DOTTED_STRING.lastIndex = 0
+  for (const match of content.matchAll(BARE_DOTTED_STRING)) {
+    const candidate = match[2]
+    if (candidate) bareStrings.add(candidate)
+  }
+
+  collectBareTemplateCandidates(content, constTable, bareStrings, bareDynamics)
+  collectBarePhpCandidates(content, bareDynamics)
+  collectBareConcatCandidates(content, bareDynamics)
+}
+
 // ─── Scanning ───────────────────────────────────────────────────
 
 /**
@@ -238,40 +449,6 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   const bareDynamicCandidates = new Set<string>()
   let filesScanned = 0
 
-  const BARE_DOTTED_STRING = /(['"])((?:[\w-]+\.)+[\w-]+)\1/g
-  /**
-   * Matches bare template literals with i18n-key shape, regardless of call
-   * context: content outside `${...}` interpolations restricted to key-like
-   * chars ([\w.-], mirroring BARE_PHP_DYNAMIC), at least one interpolation
-   * (single-level brace nesting), no newlines. A permissive backtick-to-next-
-   * backtick match turns every stray backtick (comments, strings, markdown)
-   * into a mega-expression swallowing whole code spans — bloating reports and
-   * compiling to over-matching dynamic-key regexes when it starts with an
-   * interpolation.
-   */
-  const BARE_DYNAMIC_TEMPLATE = /`([\w.-]*(?:\$\{(?:[^`{}\n]|\{[^`{}\n]*\})*\}[\w.-]*)+)`/g
-  /** Longer candidates cannot plausibly be i18n keys — drop, don't truncate. */
-  const MAX_BARE_TEMPLATE_LENGTH = 120
-  /**
-   * Matches PHP double-quoted interpolated strings with i18n-key shape,
-   * regardless of call context — `$transKey = "api.x.{$key}"` assigned first
-   * and passed to Lang::get() later must still suppress api.x.* orphans.
-   * Content is restricted to key-like chars plus {$expr} / $var->prop
-   * interpolations: a permissive "any double-quoted string containing $"
-   * match swallows the code BETWEEN quoted strings (PHP code is full of $),
-   * shifting quote parity past the real candidates.
-   */
-  const BARE_PHP_DYNAMIC = /"((?:[\w.-]|\{\$[^}]+\}|\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*)+)"/g
-  /**
-   * Matches prefix-shaped string literals (≥1 key-like segment, trailing dot,
-   * closing quote right after the dot) regardless of call context: concat
-   * prefixes ('menu.' + var, __('a.b.' . $x) — incl. multiline t() calls where
-   * the prefix sits on its own line) and prefixes passed as plain arguments
-   * (->translationPrefix('api.invoices.status.')) concatenated in a helper.
-   * Group 2: the prefix including the trailing dot.
-   */
-  const BARE_PREFIX_LITERAL = /(['"])((?:[\w-]+\.)+)\1/g
-
   for (const relPath of relativePaths) {
     const filePath = join(rootDir, relPath)
     let content: string
@@ -286,42 +463,8 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     allUsages.push(...usages)
     allDynamicKeys.push(...dynamicKeys)
 
-    BARE_DOTTED_STRING.lastIndex = 0
-    for (const match of content.matchAll(BARE_DOTTED_STRING)) {
-      const candidate = match[2]
-      if (candidate) bareStringCandidates.add(candidate)
-    }
-
-    BARE_DYNAMIC_TEMPLATE.lastIndex = 0
-    for (const match of content.matchAll(BARE_DYNAMIC_TEMPLATE)) {
-      const expr = match[1]
-      if (!expr || expr.length > MAX_BARE_TEMPLATE_LENGTH) continue
-      const normalized = expr.replace(/\$\{(?:[^{}]|\{[^}]*\})*\}/g, '${_}')
-      // The dot must survive interpolation stripping (like BARE_PHP_DYNAMIC):
-      // `${a.b}` alone has no literal key segment and would compile to a
-      // match-any-single-segment regex.
-      if (!normalized.replace(/\$\{_\}/g, '').includes('.')) continue
-      bareDynamicCandidates.add(`\`${normalized}\``)
-    }
-
-    BARE_PHP_DYNAMIC.lastIndex = 0
-    for (const match of content.matchAll(BARE_PHP_DYNAMIC)) {
-      const expr = match[1]
-      // The $-check keeps plain dotted strings out (BARE_DOTTED_STRING's job);
-      // the dot must survive interpolation stripping so `{$a}$b` (no literal
-      // key segment) does not become an everything-matches candidate.
-      if (!expr?.includes('$')) continue
-      const normalized = expr
-        .replace(/\{\$[^}]+\}/g, '${_}')
-        .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
-      if (!normalized.replace(/\$\{_\}/g, '').includes('.')) continue
-      bareDynamicCandidates.add(`\`${normalized}\``)
-    }
-
-    BARE_PREFIX_LITERAL.lastIndex = 0
-    for (const match of content.matchAll(BARE_PREFIX_LITERAL)) {
-      bareDynamicCandidates.add(`\`${match[2]}\${_}\``)
-    }
+    const constTable = pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()
+    collectBareCandidates(content, constTable, bareStringCandidates, bareDynamicCandidates)
 
     filesScanned++
   }

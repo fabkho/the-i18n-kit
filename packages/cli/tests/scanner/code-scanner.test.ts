@@ -213,6 +213,70 @@ describe('extractKeys', () => {
     })
   })
 
+  // #284: same-file `const NAME = 'dotted.path'` declarations resolve
+  // `${NAME}` interpolations into exact keys.
+  describe('const-table resolution (#284)', () => {
+    it('resolves a same-file const prefix into an exact static usage', () => {
+      const content = [
+        "const i18nBase = 'pages.organization.settings.tabs.aiAgent.widgetConfigurator'",
+        'const title = t(`${i18nBase}.title`)',
+      ].join('\n')
+      const { usages, dynamicKeys } = extract(content)
+      expect(dynamicKeys).toHaveLength(0)
+      expect(usages).toHaveLength(1)
+      expect(usages[0]).toMatchObject({
+        key: 'pages.organization.settings.tabs.aiAgent.widgetConfigurator.title',
+        callee: 't',
+        line: 2,
+      })
+    })
+
+    it('resolves let declarations and double-quoted values', () => {
+      const content = [
+        'let base = "components.integrations"',
+        'const label = $t(`${base}.title`)',
+      ].join('\n')
+      const { usages, dynamicKeys } = extract(content)
+      expect(dynamicKeys).toHaveLength(0)
+      expect(usages[0].key).toBe('components.integrations.title')
+    })
+
+    it('narrows partially resolvable templates instead of leaving them fully dynamic', () => {
+      const content = [
+        "const base = 'components.integrations'",
+        'const label = t(`${base}.${type}.label`)',
+      ].join('\n')
+      const { usages, dynamicKeys } = extract(content)
+      expect(usages).toHaveLength(0)
+      expect(dynamicKeys).toHaveLength(1)
+      expect(dynamicKeys[0].expression).toBe('`components.integrations.${type}.label`')
+    })
+
+    it('leaves member expressions and unknown identifiers dynamic', () => {
+      const { dynamicKeys } = extract('t(`${lockType.translationPath}.select`)')
+      expect(dynamicKeys).toHaveLength(1)
+      expect(dynamicKeys[0].expression).toBe('`${lockType.translationPath}.select`')
+    })
+
+    it('ignores non-key-shaped const values (no dot)', () => {
+      const content = [
+        "const word = 'title'",
+        'const label = t(`pages.${word}`)',
+      ].join('\n')
+      const { dynamicKeys } = extract(content)
+      expect(dynamicKeys).toHaveLength(1)
+      expect(dynamicKeys[0].expression).toBe('`pages.${word}`')
+    })
+
+    it('drops names shadowed with different values (ambiguous)', () => {
+      const { usages, dynamicKeys } = extract(
+        "const base = 'pages.settings'\nconst base = 'pages.account'\nconst label = t(`${base}.title`)",
+      )
+      expect(usages).toHaveLength(0)
+      expect(dynamicKeys.map(d => d.expression)).toEqual(['`${base}.title`'])
+    })
+  })
+
   describe('mixed static and dynamic on same line', () => {
     it('extracts both static and dynamic from a complex expression', () => {
       const content = `t('pages.dashboard.widgets.label') + \` / \${t(\`common.datetime.terms.\${options.frequency}\`)}\``
@@ -346,7 +410,10 @@ describe('buildDynamicKeyRegexes', () => {
     const regexes = buildDynamicKeyRegexes([makeDynamic('`settings.${section}.${field}`')])
     expect(regexes).toHaveLength(1)
     expect(regexes[0].test('settings.general.name')).toBe(true)
-    expect(regexes[0].test('settings.general.name.extra')).toBe(false)
+    // #284: interpolated variables can hold dotted paths, so extra segments
+    // now match too — accepted over-suppression.
+    expect(regexes[0].test('settings.general.name.extra')).toBe(true)
+    expect(regexes[0].test('other.general.name')).toBe(false)
   })
 
   it('escapes special regex characters in static parts', () => {
@@ -374,8 +441,52 @@ describe('buildDynamicKeyRegexes', () => {
     const regexes = buildDynamicKeyRegexes([makeDynamic('`common.${type}`')])
     expect(regexes).toHaveLength(1)
     expect(regexes[0].test('common.button')).toBe(true)
-    expect(regexes[0].test('common.button.extra')).toBe(false)
+    // #284: `${type}` may hold a dotted path — accepted over-suppression.
+    expect(regexes[0].test('common.button.extra')).toBe(true)
     expect(regexes[0].test('prefix.common.button')).toBe(false)
+  })
+
+  // #284: `${_}` widens to `.+?` because a variable can hold a dotted path.
+  describe('variable-prefix widening (#284)', () => {
+    it('widens a leading interpolation to any number of segments', () => {
+      const regexes = buildDynamicKeyRegexes([makeDynamic('`${lockType.translationPath}.select`')])
+      expect(regexes).toHaveLength(1)
+      expect(regexes[0].test('components.integrations.pinCodeLock.select')).toBe(true)
+      expect(regexes[0].test('single.select')).toBe(true)
+      expect(regexes[0].test('components.integrations.pinCodeLock.label')).toBe(false)
+    })
+
+    it('widens interior interpolations too', () => {
+      const regexes = buildDynamicKeyRegexes([makeDynamic('`api.${path}.title`')])
+      expect(regexes[0].test('api.deep.nested.path.title')).toBe(true)
+      expect(regexes[0].test('other.deep.title')).toBe(false)
+    })
+
+    it('keeps literal bounds: trailing interpolation still requires the prefix', () => {
+      const regexes = buildDynamicKeyRegexes([makeDynamic('`a.b.${x}`')])
+      expect(regexes[0].test('a.b.c')).toBe(true)
+      expect(regexes[0].test('a.b.c.d')).toBe(true)
+      expect(regexes[0].test('z.b.c')).toBe(false)
+      expect(regexes[0].test('other.a.b.c')).toBe(false)
+    })
+
+    it('does not widen dotless templates into match-everything', () => {
+      const regexes = buildDynamicKeyRegexes([makeDynamic('`${x}`'), makeDynamic('`btn${x}`')])
+      expect(regexes[0].test('word')).toBe(true)
+      expect(regexes[0].test('some.dotted.key')).toBe(false)
+      expect(regexes[1].test('btnPrimary')).toBe(true)
+      expect(regexes[1].test('btn.dotted.key')).toBe(false)
+    })
+
+    it('does not widen when no literal part anchors a key fragment', () => {
+      // `${a}.${b}` / `v${major}.${minor}` would compile to match-(nearly-)
+      // everything under widening; they keep single-segment slots.
+      const regexes = buildDynamicKeyRegexes([makeDynamic('`${a}.${b}`'), makeDynamic('`v${major}.${minor}`')])
+      expect(regexes[0].test('two.segments')).toBe(true)
+      expect(regexes[0].test('deep.nested.key')).toBe(false)
+      expect(regexes[1].test('v1.2')).toBe(true)
+      expect(regexes[1].test('vouchers.list.title')).toBe(false)
+    })
   })
 
   it('handles empty array', () => {
@@ -695,6 +806,48 @@ describe('scanSourceFiles', () => {
       expect(result.bareDynamicCandidates.size).toBe(0)
     })
 
+    it('#284: suffix-only concat produces a bare ${_} candidate', async () => {
+      await writeFile(join(tmpDir, 'LockType.ts'), [
+        "const plural = lockType.translationPath + '.labelPlural'",
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir)
+      expect(result.bareDynamicCandidates.has('`${_}.labelPlural`')).toBe(true)
+      const regexes = buildDynamicKeyRegexes([...result.bareDynamicCandidates].map(e => ({ expression: e })))
+      expect(regexes.some(re => re.test('components.integrations.pinCodeLock.labelPlural'))).toBe(true)
+    })
+
+    it('#284: suffix literal followed by more concat keeps a trailing wildcard', async () => {
+      await writeFile(join(tmpDir, 'Chain.ts'), [
+        "const key = base + '.fields' + suffix",
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir)
+      expect(result.bareDynamicCandidates.has('`${_}.fields${_}`')).toBe(true)
+    })
+
+    it('#284: dot-leading literals without concat adjacency are not candidates', async () => {
+      await writeFile(join(tmpDir, 'NoConcat.ts'), [
+        "import styles from './styles.module'",
+        "const ext = '.json'",
+        "const cls = someEl.classList.contains('.active')",
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir)
+      expect(result.bareDynamicCandidates.size).toBe(0)
+    })
+
+    it('#284: const-resolved bare templates become exact string candidates', async () => {
+      await writeFile(join(tmpDir, 'Bare.ts'), [
+        "const i18nBase = 'pages.widgets.config'",
+        'const key = `${i18nBase}.title`',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir)
+      expect(result.bareStringCandidates.has('pages.widgets.config.title')).toBe(true)
+      expect(result.bareDynamicCandidates.size).toBe(0)
+    })
+
     it('ground truth: a mega-capture regex must not suppress unrelated orphans', async () => {
       // The old capture `${', x.count, ` compiled to /^[^.]+$/ and dynamic-
       // matched EVERY single-segment key; 'promo' must stay a safe orphan.
@@ -715,6 +868,40 @@ describe('scanSourceFiles', () => {
 
       expect(result.orphansByLayer.root ?? []).toEqual(['promo'])
       expect(result.dynamicMatchedCount).toBe(1)
+    })
+  })
+
+  // #284 — the three anny-ui idioms that classified 34 live keys as safe
+  // orphans. Live keys must never land in orphansByLayer.
+  describe('variable-prefix ground truth (#284)', () => {
+    it('const-prefix template, member-expression template, and suffix concat all vouch for their keys', async () => {
+      await writeFile(join(tmpDir, 'WidgetConfigurator.vue'), [
+        "const i18nBase = 'pages.organization.settings.tabs.aiAgent.widgetConfigurator'",
+        'const title = t(`${i18nBase}.title`)',
+      ].join('\n'))
+      await writeFile(join(tmpDir, 'LockTypes.vue'), [
+        'const label = t(`${lockType.translationPath}.select`)',
+        "const plural = this.$t(lockType.translationPath + '.labelPlural')",
+      ].join('\n'))
+
+      const result = await findOrphanKeysForConfig({
+        keysByLayer: new Map([['root', {
+          keys: [
+            'pages.organization.settings.tabs.aiAgent.widgetConfigurator.title',
+            'components.integrations.pinCodeLock.select',
+            'components.integrations.pinCodeLock.labelPlural',
+            'truly.orphaned.key',
+          ],
+          localeDir: { layer: 'root' },
+        }]]),
+        resolveIgnorePatterns: () => undefined,
+        scanDirs: [tmpDir],
+      })
+
+      // The const-resolved key is an exact usage, the others dynamic-matched;
+      // only the genuinely unreferenced key survives as an orphan.
+      expect(result.orphansByLayer.root ?? []).toEqual(['truly.orphaned.key'])
+      expect(result.uncertainByLayer.root ?? []).toEqual([])
     })
   })
 })
