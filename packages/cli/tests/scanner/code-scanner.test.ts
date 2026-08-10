@@ -641,6 +641,19 @@ describe('scanSourceFiles', () => {
     expect(result.bareDynamicCandidates.size).toBe(1)
     expect(result.bareDynamicCandidates.has('`prefix.${_}.suffix`')).toBe(true)
   })
+
+  // #262 — prefix-shaped literals count as dynamic candidates in any context,
+  // not only directly left of a concat operator.
+  it('collects prefix-shaped string literals passed as plain arguments', async () => {
+    await writeFile(join(tmpDir, 'columns.ts'), [
+      `columns.push(translatedColumn('status', 'api.orders.status.'))`,
+    ].join('\n'))
+
+    const result = await scanSourceFiles(tmpDir)
+    expect(result.bareDynamicCandidates.has('`api.orders.status.${_}`')).toBe(true)
+    const regexes = buildDynamicKeyRegexes([...result.bareDynamicCandidates].map(e => ({ expression: e })))
+    expect(regexes.some(re => re.test('api.orders.status.open'))).toBe(true)
+  })
 })
 
 describe('toRelativePath', () => {

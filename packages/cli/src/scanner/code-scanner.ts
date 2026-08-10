@@ -235,15 +235,25 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
 
   const BARE_DOTTED_STRING = /(['"])((?:[\w-]+\.)+[\w-]+)\1/g
   const BARE_DYNAMIC_TEMPLATE = /`([^`\\\n]{0,200}\$\{[^`\\\n]{0,200})`/g
-  /** Matches PHP double-quoted strings containing $var or {$var} interpolation with at least one dot */
-  const BARE_PHP_DYNAMIC = /"((?:[^"\\]|\\.)*(?:\{\$|\$[a-zA-Z_])(?:[^"\\]|\\.)*)"/g
   /**
-   * Matches string concat prefixes ending with a dot: 'some.key.' + var —
-   * including single-segment prefixes like 'menu.' + var.
-   * Catches multiline t() calls where the prefix is on a separate line from t(.
-   * Group 2: the prefix without trailing dot.
+   * Matches PHP double-quoted interpolated strings with i18n-key shape,
+   * regardless of call context — `$transKey = "api.x.{$key}"` assigned first
+   * and passed to Lang::get() later must still suppress api.x.* orphans.
+   * Content is restricted to key-like chars plus {$expr} / $var->prop
+   * interpolations: a permissive "any double-quoted string containing $"
+   * match swallows the code BETWEEN quoted strings (PHP code is full of $),
+   * shifting quote parity past the real candidates.
    */
-  const BARE_CONCAT_PREFIX = /['"](([\w-]+(?:\.[\w-]+)*)\.)['"]\s*\+/g
+  const BARE_PHP_DYNAMIC = /"((?:[\w.-]|\{\$[^}]+\}|\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*)+)"/g
+  /**
+   * Matches prefix-shaped string literals (≥1 key-like segment, trailing dot,
+   * closing quote right after the dot) regardless of call context: concat
+   * prefixes ('menu.' + var, __('a.b.' . $x) — incl. multiline t() calls where
+   * the prefix sits on its own line) and prefixes passed as plain arguments
+   * (->translationPrefix('api.invoices.status.')) concatenated in a helper.
+   * Group 2: the prefix including the trailing dot.
+   */
+  const BARE_PREFIX_LITERAL = /(['"])((?:[\w-]+\.)+)\1/g
 
   for (const relPath of relativePaths) {
     const filePath = join(rootDir, relPath)
@@ -276,16 +286,20 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     BARE_PHP_DYNAMIC.lastIndex = 0
     for (const match of content.matchAll(BARE_PHP_DYNAMIC)) {
       const expr = match[1]
-      if (!expr?.includes('.')) continue
+      // The $-check keeps plain dotted strings out (BARE_DOTTED_STRING's job);
+      // the dot must survive interpolation stripping so `{$a}$b` (no literal
+      // key segment) does not become an everything-matches candidate.
+      if (!expr?.includes('$')) continue
       const normalized = expr
         .replace(/\{\$[^}]+\}/g, '${_}')
         .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
+      if (!normalized.replace(/\$\{_\}/g, '').includes('.')) continue
       bareDynamicCandidates.add(`\`${normalized}\``)
     }
 
-    BARE_CONCAT_PREFIX.lastIndex = 0
-    for (const match of content.matchAll(BARE_CONCAT_PREFIX)) {
-      bareDynamicCandidates.add(`\`${match[2]}.\${_}\``)
+    BARE_PREFIX_LITERAL.lastIndex = 0
+    for (const match of content.matchAll(BARE_PREFIX_LITERAL)) {
+      bareDynamicCandidates.add(`\`${match[2]}\${_}\``)
     }
 
     filesScanned++

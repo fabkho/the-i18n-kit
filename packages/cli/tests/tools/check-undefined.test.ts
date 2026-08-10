@@ -77,6 +77,28 @@ async function runCheck(): Promise<CheckUndefinedKeysResult> {
   return result
 }
 
+/**
+ * Run one check against a throwaway multi-app project built from `files`,
+ * restoring the shared holder config afterwards (tests in this file share it).
+ */
+async function checkTempProject(prefix: string, files: Record<string, string>): Promise<CheckUndefinedKeysResult> {
+  const dir = await mkdtemp(join(tmpdir(), prefix))
+  try {
+    for (const [rel, content] of Object.entries(files)) {
+      const path = join(dir, rel)
+      await mkdir(dirname(path), { recursive: true })
+      await writeFile(path, content)
+    }
+    holder.config = createTempMultiAppConfig(dir)
+    const result = await checkUndefinedKeys({ projectDir: dir })
+    if ('reportFile' in result) throw new Error('Expected inline result')
+    return result
+  } finally {
+    holder.config = config
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
 describe('checkUndefinedKeys — scope-aware', () => {
   it('keys defined in a consumed layer (own, shared, or parent node) are clean', async () => {
     const result = await runCheck()
@@ -193,41 +215,61 @@ describe('checkUndefinedKeys — scope-aware', () => {
 
   it('multiline single-segment concat: the bare fallback downgrades matching static keys', async () => {
     // `t(` and the 'menu.' + suffix prefix on separate lines: only the
-    // BARE_CONCAT_PREFIX fallback sees this usage. Its `menu.${_}` candidate
+    // BARE_PREFIX_LITERAL fallback sees this usage. Its `menu.${_}` candidate
     // must downgrade the statically used, nowhere-defined menu.ghost from a
     // hard undefined finding to uncertain.
-    const dir = await mkdtemp(join(tmpdir(), 'i18n-check-concat-'))
-    try {
-      const write = async (rel: string, content: string): Promise<void> => {
-        const path = join(dir, rel)
-        await mkdir(dirname(path), { recursive: true })
-        await writeFile(path, content)
-      }
-      await write('i18n/locales/de-DE.json', JSON.stringify({ root: { used: 'a' } }))
-      await write('app-admin/i18n/locales/de-DE.json', '{}')
-      await write('app-shop/i18n/locales/de-DE.json', '{}')
-      await write('components/Menu.vue', [
+    const result = await checkTempProject('i18n-check-concat-', {
+      'i18n/locales/de-DE.json': JSON.stringify({ root: { used: 'a' } }),
+      'app-admin/i18n/locales/de-DE.json': '{}',
+      'app-shop/i18n/locales/de-DE.json': '{}',
+      'components/Menu.vue': [
         'const menuLabel = t(',
         `  'menu.' + suffix,`,
         ')',
         `{{ $t('menu.ghost') }}`,
-      ].join('\n'))
-      holder.config = createTempMultiAppConfig(dir)
+      ].join('\n'),
+    })
 
-      const result = await checkUndefinedKeys({ projectDir: dir })
-      if ('reportFile' in result) throw new Error('Expected inline result')
+    expect(result.undefinedKeys).toEqual([])
+    expect(result.uncertainKeys).toContainEqual(
+      expect.objectContaining({
+        key: 'menu.ghost',
+        reason: expect.stringContaining('dynamic key pattern'),
+      }),
+    )
+  })
 
-      expect(result.undefinedKeys).toEqual([])
+  it('string-keys and package-namespaced keys are uncertain, never hard findings (#267)', async () => {
+    // Mimics the bookings-api Laravel idioms: full-sentence JSON-style keys
+    // (Nova labels, `__('Server Error')`) render as-is when unresolved, and
+    // `namespace::group.key` resolves in vendor lang dirs this scan cannot
+    // see. Both must land in uncertainKeys with distinct reasons.
+    const result = await checkTempProject('i18n-check-stringkey-', {
+      'i18n/locales/de-DE.json': JSON.stringify({ root: { used: 'a' } }),
+      'app-admin/i18n/locales/de-DE.json': '{}',
+      'app-shop/i18n/locales/de-DE.json': '{}',
+      'components/Nova.vue': [
+        `{{ $t('Server Error') }}`,
+        `{{ $t('30 Days') }}`,
+        `{{ $t('Logout') }}`,
+        `{{ $t('accounting::messages.invoice.table.total') }}`,
+        `{{ $t('admin.truly.missing') }}`,
+      ].join('\n'),
+    })
+
+    // Only the well-shaped, nowhere-defined key stays a hard finding.
+    expect(result.undefinedKeys.map(f => f.key)).toEqual(['admin.truly.missing'])
+    for (const key of ['Server Error', '30 Days', 'Logout']) {
       expect(result.uncertainKeys).toContainEqual(
-        expect.objectContaining({
-          key: 'menu.ghost',
-          reason: expect.stringContaining('dynamic key pattern'),
-        }),
+        expect.objectContaining({ key, reason: expect.stringContaining('string-key') }),
       )
-    } finally {
-      holder.config = config
-      await rm(dir, { recursive: true, force: true })
     }
+    expect(result.uncertainKeys).toContainEqual(
+      expect.objectContaining({
+        key: 'accounting::messages.invoice.table.total',
+        reason: expect.stringContaining('package-namespaced'),
+      }),
+    )
   })
 
   it('honors outputFile: writes the full report and returns only the summary', async () => {
