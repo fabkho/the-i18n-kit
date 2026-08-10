@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.0.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.0.0...the-i18n-mcp-7.0.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* **mcp:** default tool projectDir to I18N_PROJECT_DIR ([#279](https://github.com/fabkho/the-i18n-kit/issues/279)) ([16dbcf6](https://github.com/fabkho/the-i18n-kit/commit/16dbcf6acf4563cf4f09a89665773bb3461d09e3)), closes [#264](https://github.com/fabkho/the-i18n-kit/issues/264)
+
 ## [7.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-6.2.0...the-i18n-mcp-7.0.0) (2026-08-10)
 
 
