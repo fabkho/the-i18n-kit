@@ -24,7 +24,6 @@
 
   "audit": {
     "gate": "new-only",
-    "deadCodeBaseline": ".fallow-baselines/dead-code.json",
     "healthBaseline": ".fallow-baselines/health.json",
     "dupesBaseline": ".fallow-baselines/dupes.json"
   }
