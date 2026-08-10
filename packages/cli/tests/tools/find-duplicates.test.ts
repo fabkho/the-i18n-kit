@@ -113,6 +113,35 @@ async function makeNoAppsProject(): Promise<string> {
   return dir
 }
 
+
+/** Minimal two-layer temp project (root + app-shop) for focused cases. */
+async function makeTwoLayerProject(
+  prefix: string,
+  rootDe: Record<string, unknown> | string,
+  shopDe: Record<string, unknown> | string,
+): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), prefix))
+  const rootLocales = join(dir, 'i18n', 'locales')
+  const shopLocales = join(dir, 'app-shop', 'i18n', 'locales')
+  await mkdir(rootLocales, { recursive: true })
+  await mkdir(shopLocales, { recursive: true })
+  await writeFile(join(rootLocales, 'de.json'), typeof rootDe === 'string' ? rootDe : JSON.stringify(rootDe))
+  await writeFile(join(shopLocales, 'de.json'), typeof shopDe === 'string' ? shopDe : JSON.stringify(shopDe))
+  state.configs.set(dir, {
+    rootDir: dir,
+    defaultLocale: 'de',
+    fallbackLocale: { default: ['en'] },
+    locales: structuredClone(locales),
+    localeDirs: [
+      { path: rootLocales, layer: 'root', layerRootDir: dir },
+      { path: shopLocales, layer: 'app-shop', layerRootDir: join(dir, 'app-shop') },
+    ],
+    layerRootDirs: [dir, join(dir, 'app-shop')],
+    apps: [{ name: 'app-shop', rootDir: join(dir, 'app-shop'), layers: ['app-shop', 'root'] }],
+  } as I18nConfig)
+  return dir
+}
+
 let multiDir: string
 let noAppsDir: string
 
@@ -244,29 +273,9 @@ describe('findDuplicateKeys — degenerate config without app info', () => {
   })
 
   it('compares non-primitive leaf values structurally, not by reference', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'i18n-dup-arrays-'))
-    const rootLocales = join(dir, 'i18n', 'locales')
-    const shopLocales = join(dir, 'app-shop', 'i18n', 'locales')
-    await mkdir(rootLocales, { recursive: true })
-    await mkdir(shopLocales, { recursive: true })
-    await writeFile(join(rootLocales, 'de.json'), JSON.stringify({
-      list: { equal: ['a', 'b'], different: ['x'] },
-    }))
-    await writeFile(join(shopLocales, 'de.json'), JSON.stringify({
-      list: { equal: ['a', 'b'], different: ['y'] },
-    }))
-    state.configs.set(dir, {
-      rootDir: dir,
-      defaultLocale: 'de',
-      fallbackLocale: { default: ['en'] },
-      locales: structuredClone(locales),
-      localeDirs: [
-        { path: rootLocales, layer: 'root', layerRootDir: dir },
-        { path: shopLocales, layer: 'app-shop', layerRootDir: join(dir, 'app-shop') },
-      ],
-      layerRootDirs: [dir, join(dir, 'app-shop')],
-      apps: [{ name: 'app-shop', rootDir: join(dir, 'app-shop'), layers: ['app-shop', 'root'] }],
-    } as I18nConfig)
+    const dir = await makeTwoLayerProject('i18n-dup-arrays-',
+      { list: { equal: ['a', 'b'], different: ['x'] } },
+      { list: { equal: ['a', 'b'], different: ['y'] } })
     try {
       const result = asResult(await findDuplicateKeys({ projectDir: dir }))
       expect(result.collisions).toContainEqual(
@@ -282,25 +291,9 @@ describe('findDuplicateKeys — degenerate config without app info', () => {
   })
 
   it('propagates malformed locale data instead of treating it as empty', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'i18n-dup-malformed-'))
-    const rootLocales = join(dir, 'i18n', 'locales')
-    const shopLocales = join(dir, 'app-shop', 'i18n', 'locales')
-    await mkdir(rootLocales, { recursive: true })
-    await mkdir(shopLocales, { recursive: true })
-    await writeFile(join(rootLocales, 'de.json'), '{ this is not JSON')
-    await writeFile(join(shopLocales, 'de.json'), JSON.stringify({ a: 'b' }))
-    state.configs.set(dir, {
-      rootDir: dir,
-      defaultLocale: 'de',
-      fallbackLocale: { default: ['en'] },
-      locales: structuredClone(locales),
-      localeDirs: [
-        { path: rootLocales, layer: 'root', layerRootDir: dir },
-        { path: shopLocales, layer: 'app-shop', layerRootDir: join(dir, 'app-shop') },
-      ],
-      layerRootDirs: [dir, join(dir, 'app-shop')],
-      apps: [{ name: 'app-shop', rootDir: join(dir, 'app-shop'), layers: ['app-shop', 'root'] }],
-    } as I18nConfig)
+    const dir = await makeTwoLayerProject('i18n-dup-malformed-',
+      '{ this is not JSON',
+      { a: 'b' })
     try {
       await expect(findDuplicateKeys({ projectDir: dir })).rejects.toThrow()
     } finally {

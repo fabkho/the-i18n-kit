@@ -65,21 +65,31 @@ interface LayerPair {
  * (pathological), the first-seen direction wins. With no app info there
  * are no pairs.
  */
+/** An app's locale-backed canonical layers in its configured precedence order. */
+function orderedCanonicalLayers(
+  layerNames: string[],
+  graph: ReturnType<typeof buildLayerGraph>,
+  canonicalByName: Map<string, LocaleDir>,
+): LocaleDir[] {
+  const ordered: LocaleDir[] = []
+  const seen = new Set<string>()
+  for (const name of layerNames) {
+    const canonical = canonicalByName.get(graph.ownerOf(name))
+    if (canonical && !seen.has(canonical.layer)) {
+      seen.add(canonical.layer)
+      ordered.push(canonical)
+    }
+  }
+  return ordered
+}
+
 function deriveLayerPairs(config: I18nConfig, graph: ReturnType<typeof buildLayerGraph>): LayerPair[] {
   const canonicalByName = new Map(graph.canonicalLayers.map(d => [d.layer, d]))
   const pairs: LayerPair[] = []
   const seen = new Set<string>()
 
   for (const app of config.apps ?? []) {
-    const ordered: LocaleDir[] = []
-    const seenLayers = new Set<string>()
-    for (const name of app.layers) {
-      const canonical = canonicalByName.get(graph.ownerOf(name))
-      if (canonical && !seenLayers.has(canonical.layer)) {
-        seenLayers.add(canonical.layer)
-        ordered.push(canonical)
-      }
-    }
+    const ordered = orderedCanonicalLayers(app.layers, graph, canonicalByName)
     for (let i = 0; i < ordered.length; i++) {
       for (let j = i + 1; j < ordered.length; j++) {
         const id = [ordered[i].layer, ordered[j].layer].sort().join('\u0000')
