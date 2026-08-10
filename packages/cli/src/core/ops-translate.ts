@@ -28,7 +28,7 @@ import type {
   PlaceholderValidationResult,
   TranslateKeyResult,
 } from './types.js'
-import { findLayerOrThrow, findLocaleImpl, findLocaleOrThrow, localeRefInfo } from './shared.js'
+import { findWritableLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, findLocaleOrThrow, localeRefInfo } from './shared.js'
 
 // ─── Shared helpers (exported for reuse) ────────────────────────
 
@@ -174,7 +174,7 @@ function partitionTranslateKeyTargets(
 
 // ─── Translation prompt helpers ─────────────────────────────────
 
-export function extractPlaceholders(value: string, format?: LocaleFileFormat): string[] {
+function extractPlaceholders(value: string, format?: LocaleFileFormat): string[] {
   const placeholders = new Set<string>()
 
   if (format === 'php-array') {
@@ -405,7 +405,7 @@ export function extractJsonFromResponse(responseText: string): Record<string, un
   throw new Error(`No valid JSON object found in response. Preview: ${trimmed.substring(0, 200)}`)
 }
 
-export function buildFallbackContext(
+function buildFallbackContext(
   projectConfig: ProjectConfig | undefined,
   referenceLocaleCode: string,
   targetLocaleCode: string,
@@ -466,16 +466,10 @@ export async function translateMissing(opts: {
     throw new ToolError(`Invalid batchSize: ${opts.batchSize}. Must be a positive integer.`, 'INVALID_BATCH_SIZE')
   }
 
-  const localeDir = findLayerOrThrow(config, layer)
-  if (localeDir.aliasOf) {
-    throw new ToolError(`Layer "${layer}" is an alias of "${localeDir.aliasOf}". Modify the source layer "${localeDir.aliasOf}" instead.`, 'LAYER_IS_ALIAS')
-  }
+  findWritableLayerOrThrow(config, layer)
 
   const refCode = opts.referenceLocale ?? config.defaultLocale
-  const refLocale = findLocaleImpl(config, refCode)
-  if (!refLocale) {
-    throw new ToolError(`Reference locale not found: "${refCode}". Available: ${config.locales.map(l => l.code).join(', ')}. Pass a valid locale code as referenceLocale, or omit it to use the project default.`, 'REFERENCE_LOCALE_NOT_FOUND')
-  }
+  const refLocale = findReferenceLocaleOrThrow(config, opts.referenceLocale)
 
   const refData = await readLocaleData(config, layer, refLocale)
   if (Object.keys(refData).length === 0) {

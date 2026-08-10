@@ -27,6 +27,31 @@ export function findLayerOrThrow(config: I18nConfig, layer: string): LocaleDir {
   return localeDir
 }
 
+/**
+ * Look up a layer that will be written to: same as findLayerOrThrow, but also
+ * rejects alias layers (writes must target the source layer).
+ */
+export function findWritableLayerOrThrow(config: I18nConfig, layer: string): LocaleDir {
+  const localeDir = findLayerOrThrow(config, layer)
+  if (localeDir.aliasOf) {
+    throw new ToolError(`Layer "${layer}" is an alias of "${localeDir.aliasOf}". Modify the source layer "${localeDir.aliasOf}" instead.`, 'LAYER_IS_ALIAS')
+  }
+  return localeDir
+}
+
+/**
+ * Resolve the reference locale (requested or project default) and throw
+ * REFERENCE_LOCALE_NOT_FOUND when it does not exist.
+ */
+export function findReferenceLocaleOrThrow(config: I18nConfig, requested?: string): LocaleDefinition {
+  const refCode = requested ?? config.defaultLocale
+  const refLocale = findLocaleImpl(config, refCode)
+  if (!refLocale) {
+    throw new ToolError(`Reference locale not found: "${refCode}". Available: ${config.locales.map(l => l.code).join(', ')}. Pass a valid locale code as referenceLocale, or omit it to use the project default.`, 'REFERENCE_LOCALE_NOT_FOUND')
+  }
+  return refLocale
+}
+
 export function localeRefInfo(locale: LocaleDefinition): LocaleRefInfo {
   return {
     code: locale.code,

@@ -9,28 +9,18 @@
  * Errors are thrown (ToolError etc.) rather than returned as isError responses.
  */
 
-export {
-  findLayerOrThrow,
-  localeRefInfo,
-  findLocaleImpl,
-  findLocaleOrThrow,
-} from './shared.js'
+export { findLocaleImpl } from './shared.js'
 
-export {
-  validateReportPath,
-  resolveReportFilePath,
-} from './report.js'
+export { validateReportPath } from './report.js'
 
 export {
   computeMaxTokens,
   computeProgressTotal,
   resolveProtectedLocales,
-  extractPlaceholders,
   validatePlaceholders,
   buildTranslationSystemPrompt,
   buildTranslationUserMessage,
   extractJsonFromResponse,
-  buildFallbackContext,
   translateMissing,
   translateKey,
 } from './ops-translate.js'
@@ -45,13 +35,7 @@ export {
   listNamespaces,
 } from './ops-read.js'
 
-export type {
-  NamespaceNode,
-  ListNamespacesResult,
-} from './ops-read.js'
-
 export {
-  applyTranslations,
   writeTranslations,
   addTranslations,
   updateTranslations,
@@ -61,7 +45,6 @@ export {
 } from './ops-write.js'
 
 export {
-  resolveOrphanIgnorePatterns,
   findOrphanKeys,
   scanCodeUsage,
   removeOrphanKeys,

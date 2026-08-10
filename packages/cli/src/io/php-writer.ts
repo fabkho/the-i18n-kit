@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
 import { FileIOError } from '../utils/errors'
 import { toErrorMessage } from '../utils/errors'
 import { sortKeysDeep, orderKeysPreserving } from './key-operations'
@@ -133,20 +132,6 @@ function renderArray(
       const escaped = escapePhpString(String(value), q)
       lines.push(`${prefix}${q}${escaped}${q},`)
     }
-  }
-}
-
-export async function detectPhpFileStyle(filePath: string): Promise<{ quoteStyle: 'single' | 'double'; indent: string }> {
-  if (!existsSync(filePath)) {
-    return { quoteStyle: 'double', indent: '    ' }
-  }
-
-  try {
-    const content = await readFile(filePath, 'utf-8')
-    return detectPhpStyle(content)
-  }
-  catch {
-    return { quoteStyle: 'double', indent: '    ' }
   }
 }
 

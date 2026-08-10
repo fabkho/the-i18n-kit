@@ -9,16 +9,10 @@
       }
     },
     "packages/cli/src/adapters/nuxt/index.ts": {
-      "complexity_critical": {
+      "complexity_high": {
         "count": 1
       },
-      "complexity_moderate": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_moderate": {
+      "crap_high": {
         "count": 1
       }
     },
@@ -60,11 +54,8 @@
       }
     },
     "packages/cli/src/core/ops-read.ts": {
-      "complexity_critical": {
-        "count": 1
-      },
       "complexity_high": {
-        "count": 4
+        "count": 5
       },
       "complexity_moderate": {
         "count": 1
@@ -88,18 +79,15 @@
       "complexity_critical": {
         "count": 1
       },
-      "complexity_high": {
-        "count": 1
-      },
       "complexity_moderate": {
-        "count": 1
+        "count": 2
       },
       "crap_critical": {
         "count": 1
       }
     },
     "packages/cli/src/io/locale-data.ts": {
-      "complexity_high": {
+      "complexity_moderate": {
         "count": 1
       }
     },
@@ -107,8 +95,11 @@
       "complexity_critical": {
         "count": 1
       },
+      "complexity_high": {
+        "count": 1
+      },
       "complexity_moderate": {
-        "count": 2
+        "count": 1
       },
       "crap_critical": {
         "count": 1
@@ -126,12 +117,11 @@
   "runtime_coverage_findings": [],
   "target_keys": [
     "packages/cli/src/adapters/nuxt/index.ts:complexity",
-    "packages/cli/src/core/ops-orphans.ts:complexity",
     "packages/cli/src/core/shared.ts:high impact",
-    "packages/cli/src/io/locale-data.ts:complexity",
+    "packages/cli/src/core/ops-write.ts:complexity",
+    "packages/cli/src/core/ops-orphans.ts:complexity",
     "packages/cli/src/core/ops-translate.ts:complexity",
     "packages/cli/src/scanner/code-scanner.ts:complexity",
-    "packages/cli/src/core/ops-write.ts:complexity",
     "packages/cli/src/core/ops-read.ts:complexity"
   ]
 }

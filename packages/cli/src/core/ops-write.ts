@@ -5,7 +5,7 @@
 
 import { detectI18nConfig } from '../config/detector.js'
 import type { I18nConfig, LocaleDefinition } from '../config/types.js'
-import { readLocaleData, mutateLocaleData } from '../io/locale-data.js'
+import { readLocaleData, readLocaleDataIfPresent, mutateLocaleData } from '../io/locale-data.js'
 import {
   getNestedValue,
   setNestedValue,
@@ -25,15 +25,16 @@ import type {
   WriteTranslationsResult,
   UpdateTranslationsResult,
   ScaffoldLocaleResult,
+  ScaffoldLocaleFileInfo,
   PlaceholderValidationResult,
 } from './types.js'
-import { findLayerOrThrow, findLocaleImpl, findLocaleSuggestion } from './shared.js'
+import { findWritableLayerOrThrow, findLocaleImpl, findLocaleSuggestion } from './shared.js'
 import { validatePlaceholders, mergePlaceholderValidation } from './ops-translate.js'
 
 /**
  * Shared logic for write_translations (supports add, update, and upsert modes).
  */
-export async function applyTranslations(
+async function applyTranslations(
   config: I18nConfig,
   layer: string,
   translations: Record<string, Record<string, string>>,
@@ -316,10 +317,7 @@ export async function removeTranslations(opts: {
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? false
 
-  const localeDir = findLayerOrThrow(config, layer)
-  if (localeDir.aliasOf) {
-    throw new ToolError(`Layer "${layer}" is an alias of "${localeDir.aliasOf}". Modify the source layer "${localeDir.aliasOf}" instead.`, 'LAYER_IS_ALIAS')
-  }
+  findWritableLayerOrThrow(config, layer)
 
   const preview: Array<{ locale: string; key: string; oldValue: unknown }> = []
   const removed: string[] = []
@@ -327,13 +325,8 @@ export async function removeTranslations(opts: {
   const filesWritten = new Set<string>()
 
   for (const locale of config.locales) {
-    let data: Record<string, unknown>
-    try {
-      data = await readLocaleData(config, layer, locale)
-    } catch {
-      continue
-    }
-    if (Object.keys(data).length === 0) continue
+    const data = await readLocaleDataIfPresent(config, layer, locale)
+    if (!data) continue
 
     if (isDryRun) {
       for (const key of keys) {
@@ -395,10 +388,7 @@ export async function renameTranslationKey(opts: {
     throw new ToolError(`Old key and new key are the same: "${oldKey}". Provide a different newKey to rename to.`, 'SAME_KEY')
   }
 
-  const localeDir = findLayerOrThrow(config, layer)
-  if (localeDir.aliasOf) {
-    throw new ToolError(`Layer "${layer}" is an alias of "${localeDir.aliasOf}". Modify the source layer "${localeDir.aliasOf}" instead.`, 'LAYER_IS_ALIAS')
-  }
+  findWritableLayerOrThrow(config, layer)
 
   const preview: Array<{ locale: string; oldKey: string; newKey: string; value: unknown }> = []
   const renamed: string[] = []
@@ -407,13 +397,8 @@ export async function renameTranslationKey(opts: {
   const filesWritten = new Set<string>()
 
   for (const locale of config.locales) {
-    let data: Record<string, unknown>
-    try {
-      data = await readLocaleData(config, layer, locale)
-    } catch {
-      continue
-    }
-    if (Object.keys(data).length === 0) continue
+    const data = await readLocaleDataIfPresent(config, layer, locale)
+    if (!data) continue
 
     const oldValue = getNestedValue(data, oldKey)
     if (oldValue === undefined) {
@@ -489,21 +474,17 @@ export async function scaffoldLocaleFiles(opts: {
 
   const result = await scaffoldLocale(config, { locales: opts.locales, layer: opts.layer, dryRun: opts.dryRun })
 
+  const toFileInfo = (f: ScaffoldLocaleFileInfo): ScaffoldLocaleFileInfo => ({
+    locale: f.locale,
+    layer: f.layer,
+    file: toRelativePath(f.file, config.rootDir),
+    keys: f.keys,
+    ...(f.namespace ? { namespace: f.namespace } : {}),
+  })
+
   return {
-    created: result.created.map(f => ({
-      locale: f.locale,
-      layer: f.layer,
-      file: toRelativePath(f.file, config.rootDir),
-      keys: f.keys,
-      ...(f.namespace ? { namespace: f.namespace } : {}),
-    })),
-    skipped: result.skipped.map(f => ({
-      locale: f.locale,
-      layer: f.layer,
-      file: toRelativePath(f.file, config.rootDir),
-      keys: f.keys,
-      ...(f.namespace ? { namespace: f.namespace } : {}),
-    })),
+    created: result.created.map(toFileInfo),
+    skipped: result.skipped.map(toFileInfo),
     dryRun: opts.dryRun ?? false,
   }
 }
