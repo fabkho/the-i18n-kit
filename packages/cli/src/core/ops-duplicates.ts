@@ -43,40 +43,49 @@ const DUPLICATE_GUIDANCE
   + 'authoritative, or the child copy to fall through to the shared value. Never move the key: '
   + 'both layers already define it.'
 
+/** Leaf values may be arrays (getLeafKeys treats them as leaves) — compare
+ *  those structurally; identity covers primitives. */
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 interface LayerPair {
   shared: LocaleDir
   child: LocaleDir
 }
 
 /**
- * Derive the (shared layer, consuming child layer) pairs to check: for each
- * shared layer S, every other canonical layer of an app that consumes S.
- * With no consumption edges (no app info) there are no pairs — the graph's
- * degenerate-case semantics make every layer "shared" but nothing a child.
+ * Derive the (shared layer, child layer) pairs to check from each app's
+ * configured layer order: earlier entries override later ones at runtime,
+ * so for any two locale-backed layers an app consumes, the earlier one is
+ * the child (its values shadow) and the later one is the shared base.
+ * Pairs are deduped unordered; if two apps ever disagree on precedence
+ * (pathological), the first-seen direction wins. With no app info there
+ * are no pairs.
  */
-function deriveLayerPairs(graph: ReturnType<typeof buildLayerGraph>): LayerPair[] {
+function deriveLayerPairs(config: I18nConfig, graph: ReturnType<typeof buildLayerGraph>): LayerPair[] {
+  const canonicalByName = new Map(graph.canonicalLayers.map(d => [d.layer, d]))
   const pairs: LayerPair[] = []
   const seen = new Set<string>()
 
-  // Pairs are unordered: when both layers are shared (overlapping app sets),
-  // the same collision would otherwise be reported in both directions.
-  // Canonicalize once, with the more widely consumed layer as the shared
-  // side (ties break by name).
-  const canonicalize = (a: LocaleDir, b: LocaleDir): LayerPair => {
-    const aApps = graph.appsUsingLayer(a.layer).length
-    const bApps = graph.appsUsingLayer(b.layer).length
-    const aIsShared = aApps > bApps || (aApps === bApps && a.layer <= b.layer)
-    return aIsShared ? { shared: a, child: b } : { shared: b, child: a }
-  }
-
-  for (const shared of graph.sharedLayers) {
-    for (const app of graph.appsUsingLayer(shared.layer)) {
-      for (const child of graph.layersOfApp(app)) {
-        if (child.layer === shared.layer) continue
-        const id = [shared.layer, child.layer].sort().join('\u0000')
+  for (const app of config.apps ?? []) {
+    const ordered: LocaleDir[] = []
+    const seenLayers = new Set<string>()
+    for (const name of app.layers) {
+      const canonical = canonicalByName.get(graph.ownerOf(name))
+      if (canonical && !seenLayers.has(canonical.layer)) {
+        seenLayers.add(canonical.layer)
+        ordered.push(canonical)
+      }
+    }
+    for (let i = 0; i < ordered.length; i++) {
+      for (let j = i + 1; j < ordered.length; j++) {
+        const id = [ordered[i].layer, ordered[j].layer].sort().join('\u0000')
         if (seen.has(id)) continue
         seen.add(id)
-        pairs.push(canonicalize(shared, child))
+        pairs.push({ shared: ordered[j], child: ordered[i] })
       }
     }
   }
@@ -90,7 +99,7 @@ function emptyPairsMessage(config: I18nConfig): string {
       + '(shared layer, child layer) pairs can be derived. Duplicate detection needs '
       + 'app-to-layer consumption info (e.g. a multi-app Nuxt monorepo config).'
   }
-  return 'No (shared layer, child layer) pairs to check — no layer is consumed by more than one app.'
+  return 'No (shared layer, child layer) pairs to check — no app consumes more than one locale-backed layer.'
 }
 
 /**
@@ -114,14 +123,16 @@ export async function findDuplicateKeys(opts: {
   }
 
   const graph = buildLayerGraph(config)
-  const pairs = deriveLayerPairs(graph)
+  const pairs = deriveLayerPairs(config, graph)
 
   // Each layer's data is read once even when it appears in several pairs.
   const layerDataCache = new Map<string, Promise<Record<string, unknown>>>()
   const dataFor = (layer: string): Promise<Record<string, unknown>> => {
     let cached = layerDataCache.get(layer)
     if (!cached) {
-      cached = readLocaleData(config, layer, locale).catch(() => ({}))
+      // readLocaleData already yields {} for missing files; real failures
+      // (parse errors, permissions) must surface, not read as "no keys".
+      cached = readLocaleData(config, layer, locale)
       layerDataCache.set(layer, cached)
     }
     return cached
@@ -145,7 +156,7 @@ export async function findDuplicateKeys(opts: {
         childLayer: child.layer,
         sharedValue,
         childValue,
-        divergent: sharedValue !== childValue,
+        divergent: !valuesEqual(sharedValue, childValue),
       })
     }
   }

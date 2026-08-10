@@ -243,6 +243,99 @@ describe('findDuplicateKeys — degenerate config without app info', () => {
     }
   })
 
+  it('compares non-primitive leaf values structurally, not by reference', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'i18n-dup-arrays-'))
+    const rootLocales = join(dir, 'i18n', 'locales')
+    const shopLocales = join(dir, 'app-shop', 'i18n', 'locales')
+    await mkdir(rootLocales, { recursive: true })
+    await mkdir(shopLocales, { recursive: true })
+    await writeFile(join(rootLocales, 'de.json'), JSON.stringify({
+      list: { equal: ['a', 'b'], different: ['x'] },
+    }))
+    await writeFile(join(shopLocales, 'de.json'), JSON.stringify({
+      list: { equal: ['a', 'b'], different: ['y'] },
+    }))
+    state.configs.set(dir, {
+      rootDir: dir,
+      defaultLocale: 'de',
+      fallbackLocale: { default: ['en'] },
+      locales: structuredClone(locales),
+      localeDirs: [
+        { path: rootLocales, layer: 'root', layerRootDir: dir },
+        { path: shopLocales, layer: 'app-shop', layerRootDir: join(dir, 'app-shop') },
+      ],
+      layerRootDirs: [dir, join(dir, 'app-shop')],
+      apps: [{ name: 'app-shop', rootDir: join(dir, 'app-shop'), layers: ['app-shop', 'root'] }],
+    } as I18nConfig)
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir }))
+      expect(result.collisions).toContainEqual(
+        expect.objectContaining({ key: 'list.equal', divergent: false }),
+      )
+      expect(result.collisions).toContainEqual(
+        expect.objectContaining({ key: 'list.different', divergent: true }),
+      )
+    } finally {
+      state.configs.delete(dir)
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('propagates malformed locale data instead of treating it as empty', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'i18n-dup-malformed-'))
+    const rootLocales = join(dir, 'i18n', 'locales')
+    const shopLocales = join(dir, 'app-shop', 'i18n', 'locales')
+    await mkdir(rootLocales, { recursive: true })
+    await mkdir(shopLocales, { recursive: true })
+    await writeFile(join(rootLocales, 'de.json'), '{ this is not JSON')
+    await writeFile(join(shopLocales, 'de.json'), JSON.stringify({ a: 'b' }))
+    state.configs.set(dir, {
+      rootDir: dir,
+      defaultLocale: 'de',
+      fallbackLocale: { default: ['en'] },
+      locales: structuredClone(locales),
+      localeDirs: [
+        { path: rootLocales, layer: 'root', layerRootDir: dir },
+        { path: shopLocales, layer: 'app-shop', layerRootDir: join(dir, 'app-shop') },
+      ],
+      layerRootDirs: [dir, join(dir, 'app-shop')],
+      apps: [{ name: 'app-shop', rootDir: join(dir, 'app-shop'), layers: ['app-shop', 'root'] }],
+    } as I18nConfig)
+    try {
+      await expect(findDuplicateKeys({ projectDir: dir })).rejects.toThrow()
+    } finally {
+      state.configs.delete(dir)
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('derives shared/child from app layer precedence, not consumer counts', async () => {
+    // "big" is consumed by three apps, "small" by one — a consumer-count
+    // heuristic would call big the shared side. But the app that consumes
+    // both lists big FIRST (big overrides small at runtime), so big is the
+    // child and small the shared base.
+    const dir = multiDir
+    const config = structuredClone(state.configs.get(dir)) as I18nConfig
+    config.apps = [
+      { name: 'app-a', rootDir: join(dir, 'a'), layers: ['app-shop', 'root'] }, // app-shop = big, first = overriding
+      { name: 'app-b', rootDir: join(dir, 'b'), layers: ['app-shop'] },
+      { name: 'app-c', rootDir: join(dir, 'c'), layers: ['app-shop'] },
+    ]
+    const precDir = `${dir}-prec`
+    state.configs.set(precDir, config)
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: precDir }))
+      expect(result.summary.pairsChecked).toBe(1)
+      for (const c of result.collisions) {
+        expect(c.childLayer).toBe('app-shop') // big overrides → child
+        expect(c.sharedLayer).toBe('root') // small is the base → shared
+      }
+      expect(result.collisions.length).toBeGreaterThan(0)
+    } finally {
+      state.configs.delete(precDir)
+    }
+  })
+
   it('returns an empty result with a clear message instead of guessing pairs', async () => {
     const result = asResult(await findDuplicateKeys({ projectDir: noAppsDir }))
 
