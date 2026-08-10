@@ -216,6 +216,17 @@ describe('extractKeys', () => {
   // #284: same-file `const NAME = 'dotted.path'` declarations resolve
   // `${NAME}` interpolations into exact keys.
   describe('const-table resolution (#284)', () => {
+    it('never substitutes let bindings — reassignment would stale the literal', () => {
+      const content = [
+        `let base = 'menu.items'`,
+        `base = computePrefix()`,
+        'const label = t(`${base}.title`)',
+      ].join('\n')
+      const { usages, dynamicKeys } = extractKeys(content, 'test.ts')
+      expect(usages.map(u => u.key)).not.toContain('menu.items.title')
+      expect(dynamicKeys.map(d => d.expression)).toContain('`${base}.title`')
+    })
+
     it('resolves a same-file const prefix into an exact static usage', () => {
       const content = [
         "const i18nBase = 'pages.organization.settings.tabs.aiAgent.widgetConfigurator'",
@@ -231,9 +242,9 @@ describe('extractKeys', () => {
       })
     })
 
-    it('resolves let declarations and double-quoted values', () => {
+    it('resolves double-quoted const values', () => {
       const content = [
-        'let base = "components.integrations"',
+        'const base = "components.integrations"',
         'const label = $t(`${base}.title`)',
       ].join('\n')
       const { usages, dynamicKeys } = extract(content)

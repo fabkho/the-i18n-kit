@@ -43,11 +43,12 @@ export interface ScanResult {
 // ─── Const-table resolution (#284) ──────────────────────────────
 
 /**
- * Matches `const`/`let` declarations initialized to a key-shaped string
- * literal (≥1 dot). Scope is deliberately tight: identifier = literal only —
- * no object properties, no expressions.
+ * Matches `const` declarations initialized to a key-shaped string literal
+ * (≥1 dot). Scope is deliberately tight: identifier = literal only — no
+ * object properties, no expressions, and no `let` (a reassigned binding
+ * would substitute a stale literal and bypass the conservative widening).
  */
-const CONST_KEY_DECL = /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"])((?:[\w-]+\.)+[\w-]+)\2/g
+const CONST_KEY_DECL = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(['"])((?:[\w-]+\.)+[\w-]+)\2/g
 
 /**
  * Collects same-file `const NAME = 'dotted.path'` declarations so
@@ -171,11 +172,11 @@ function extractConcatMatches(line: string, lineNumber: number, ctx: LineExtract
   }
 }
 
-export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[] } {
+export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet, constTable?: Map<string, string>): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[] } {
   const pat = patterns ?? VUE_NUXT_PATTERNS
   const ctx: LineExtraction = {
     pat,
-    constTable: pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>(),
+    constTable: constTable ?? (pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()),
     filePath,
     usages: [],
     dynamicKeys: [],
@@ -459,11 +460,11 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
       continue
     }
 
-    const { usages, dynamicKeys } = extractKeys(content, filePath, pat)
+    const constTable = pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()
+    const { usages, dynamicKeys } = extractKeys(content, filePath, pat, constTable)
     allUsages.push(...usages)
     allDynamicKeys.push(...dynamicKeys)
 
-    const constTable = pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()
     collectBareCandidates(content, constTable, bareStringCandidates, bareDynamicCandidates)
 
     filesScanned++
