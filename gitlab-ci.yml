@@ -1,8 +1,10 @@
 # the-i18n-kit — GitLab CI template
 #
-# Provides two reusable jobs:
+# Provides three reusable jobs:
 #   .i18n-translate  – find missing keys and auto-translate via LLM
-#   .i18n-cleanup    – find orphan keys and report findings on the MR
+#   .i18n-cleanup    – find orphan keys, report them as a Code Quality artifact
+#   .i18n-check      – find used-but-undefined keys (render as raw keys),
+#                      report them as a Code Quality artifact
 #
 # Usage in your .gitlab-ci.yml:
 #
@@ -30,17 +32,43 @@
 #         changes:
 #           - components/**/*.vue
 #           - i18n/locales/*.json
+#       # Default-branch baseline — REQUIRED for the MR widget, see below.
+#       - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 #
-# Pushing translations back to the branch requires ONE of:
+#   i18n-check:
+#     extends: .i18n-check
+#     rules:
+#       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+#       - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+#
+# ── Code Quality widget (MR findings) ────────────────────────────────────────
+# .i18n-cleanup and .i18n-check emit `gl-codequality.json` declared as
+# artifacts:reports:codequality. GitLab's MR widget shows the DIFF between the
+# MR pipeline's report and the report of the latest default-branch pipeline.
+# WITHOUT A DEFAULT-BRANCH BASELINE THE WIDGET STAYS BLANK — by design:
+# there is nothing to diff against. So every job you adopt needs a rule that
+# also runs it on the default branch, WITHOUT a `changes:` filter (a filtered
+# rule would skip the baseline whenever the MR that just merged didn't touch
+# those paths, leaving the widget blank for the next MRs):
+#
+#   rules:
+#     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+#
+# Artifact expiry: the widget reads the newest default-branch report; when it
+# has expired (expire_in below is 7 days), the widget is blank again until the
+# next default-branch pipeline refreshes the baseline. Raise expire_in on the
+# extending job if your default branch is quieter than that.
+#
+# ── Pushing translations back to the branch ──────────────────────────────────
+# Requires ONE of:
 #   a) Project setting: Settings → CI/CD → Job token permissions →
 #      "Allow Git push requests to the repository" (GitLab ≥ 17.2).
 #      Then the default CI_JOB_TOKEN push just works.
-#   b) A project access token with `write_repository` + `api` scope in the
-#      I18N_PUSH_TOKEN CI variable (also used to post MR comments).
-# MR comments always require I18N_PUSH_TOKEN (a job token cannot call the
-# notes API) — without it, comment posting is skipped with a warning.
+#   b) A project access token with `write_repository` scope in the
+#      I18N_PUSH_TOKEN CI variable — the push alternative when (a) is not
+#      available.
 
-# ─── Base image used by both jobs ────────────────────────────────────────────
+# ─── Base image used by all jobs ─────────────────────────────────────────────
 .i18n-base:
   image: node:22-alpine
 
@@ -61,14 +89,13 @@
     I18N_CLI_VERSION: "latest"  # pin the-i18n-cli (npm version or dist-tag)
     I18N_INSTALL_PEER_DEPS: ""  # extra npm packages to install globally alongside the CLI
 
-    # Optional — push/MR behaviour
-    I18N_PUSH_TOKEN: ""       # project access token (write_repository + api). See header comment.
+    # Optional — push behaviour
+    I18N_PUSH_TOKEN: ""       # project access token (write_repository) — push alternative to the job token. See header comment.
     I18N_LOCALE_PATHS: "i18n/locales/"  # space-separated globs for locale directories (e.g. "i18n/locales/ app-*/i18n/locales/")
     I18N_COMMIT_MESSAGE: ""   # custom commit message (include [skip ci] to avoid pipeline loops)
-    I18N_MR_COMMENT: "true"   # post a summary comment on the MR (requires I18N_PUSH_TOKEN)
 
   before_script:
-    - if command -v apk >/dev/null; then apk add --no-cache git curl jq; fi
+    - if command -v apk >/dev/null; then apk add --no-cache git jq; fi
     - |
       # Install the CLI plus the SDK for the chosen provider (optional peer dep)
       case "${I18N_PROVIDER:-}" in
@@ -170,21 +197,6 @@
 
       echo "Pushed ${CHANGED_FILES} locale file(s) to ${CI_COMMIT_REF_NAME}"
 
-      # Post MR comment (only in MR context; requires an API-capable token)
-      if [ "$I18N_MR_COMMENT" = "true" ] && [ -n "${CI_MERGE_REQUEST_IID:-}" ]; then
-        if [ -z "${I18N_PUSH_TOKEN:-}" ]; then
-          echo "WARNING: skipping MR comment — set I18N_PUSH_TOKEN (api scope) to enable it."
-        else
-          BODY="## i18n Auto-Translate 🌐\n\nAuto-translated missing keys from source locale to target locales.\n\n| | |\n|---|---|\n| Provider | ${I18N_PROVIDER} |\n| Model | ${I18N_MODEL} |\n| Layer | ${I18N_LAYER} |\n| Keys translated | ${TRANSLATED} |\n| Files changed | ${CHANGED_FILES} |\n\nTranslations pushed to this branch."
-          curl --fail --silent --show-error --request POST \
-            --header "PRIVATE-TOKEN: ${I18N_PUSH_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data "{\"body\": \"${BODY}\"}" \
-            "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}/notes" \
-            || echo "WARNING: failed to post MR comment."
-        fi
-      fi
-
   artifacts:
     paths:
       - .i18n-reports/translate-output.json
@@ -203,10 +215,9 @@
     # Optional
     I18N_CLI_VERSION: "latest"
     I18N_INSTALL_PEER_DEPS: ""
-    I18N_PUSH_TOKEN: ""       # project access token (api scope) for MR comments
 
   before_script:
-    - if command -v apk >/dev/null; then apk add --no-cache git curl jq; fi
+    - if command -v apk >/dev/null; then apk add --no-cache jq; fi
     - npm install -g --legacy-peer-deps "the-i18n-cli@${I18N_CLI_VERSION}" $I18N_INSTALL_PEER_DEPS
 
   script:
@@ -215,56 +226,63 @@
 
       mkdir -p .i18n-reports
 
-      # remove-orphans is a dry run by default — it only reports
+      # remove-orphans is a dry run by default — it only reports.
+      # --codequality-output feeds the MR Code Quality widget (needs the
+      # default-branch baseline rule, see header comment).
       the-i18n-cli remove-orphans \
         --layer "$I18N_LAYER" \
+        --codequality-output gl-codequality.json \
         > .i18n-reports/orphans.json
 
       ORPHAN_COUNT=$(jq '.summary.orphanCount // 0' .i18n-reports/orphans.json)
 
-      if [ "$ORPHAN_COUNT" -eq 0 ]; then
-        COMMENT="## i18n Cleanup ✅
-
-      No orphan keys found in layer \`${I18N_LAYER}\`. All translation keys are referenced in source code."
-      else
-        ORPHAN_LIST=$(jq -r '[.orphanKeys | to_entries[] | .value[] | "- `\(.)`"] | join("\n")' .i18n-reports/orphans.json)
-        COMMENT="## i18n Cleanup ⚠️
-
-      **${ORPHAN_COUNT} orphan key(s) found** in layer \`${I18N_LAYER}\` — keys in locale files with no source code references.
-
-      <details><summary>Click to expand</summary>
-
-      ${ORPHAN_LIST}
-
-      </details>
-
-      > ⚠️ Do not blindly delete all orphans. Some may be dynamically constructed. Review manually.
-      > Full report: [job artifacts](${CI_JOB_URL}/artifacts/browse/.i18n-reports/)"
-      fi
-
-      # Print summary to job log
       echo ""
       echo "============================================"
       echo "  i18n Cleanup Report — layer: ${I18N_LAYER}"
       echo "  Orphan keys found: ${ORPHAN_COUNT}"
       echo "============================================"
-
-      # Post MR comment (only in MR context; requires an API-capable token)
-      if [ -n "${CI_MERGE_REQUEST_IID:-}" ]; then
-        if [ -z "${I18N_PUSH_TOKEN:-}" ]; then
-          echo "WARNING: skipping MR comment — set I18N_PUSH_TOKEN (api scope) to enable it."
-        else
-          curl --fail --silent --show-error --request POST \
-            --header "PRIVATE-TOKEN: ${I18N_PUSH_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data "$(echo "$COMMENT" | jq -Rs '{body: .}')" \
-            "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}/notes" \
-            || echo "WARNING: failed to post MR comment."
-        fi
-      fi
+      echo "Findings appear in the MR Code Quality widget."
+      echo "Full report: ${CI_JOB_URL}/artifacts/browse/.i18n-reports/"
 
   artifacts:
     paths:
       - .i18n-reports/orphans.json
+      - gl-codequality.json
+    reports:
+      codequality: gl-codequality.json
+    expire_in: 7 days
+    when: always
+
+# ─── Check for used-but-undefined keys ──────────────────────────────────────
+.i18n-check:
+  extends: .i18n-base
+  stage: lint
+  # `check` exits non-zero when any key is used but defined nowhere.
+  # allow_failure keeps that informational (findings still reach the MR
+  # widget) — remove allow_failure on the extending job to make it a gate.
+  allow_failure: true
+  variables:
+    I18N_CLI_VERSION: "latest"
+    I18N_INSTALL_PEER_DEPS: ""
+
+  before_script:
+    - npm install -g --legacy-peer-deps "the-i18n-cli@${I18N_CLI_VERSION}" $I18N_INSTALL_PEER_DEPS
+
+  script:
+    - |
+      set -euo pipefail
+
+      mkdir -p .i18n-reports
+
+      the-i18n-cli check \
+        --codequality-output gl-codequality.json \
+        > .i18n-reports/check.json
+
+  artifacts:
+    paths:
+      - .i18n-reports/check.json
+      - gl-codequality.json
+    reports:
+      codequality: gl-codequality.json
     expire_in: 7 days
     when: always

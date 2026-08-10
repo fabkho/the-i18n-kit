@@ -9,7 +9,7 @@
 
 import { detectI18nConfig } from '../config/detector.js'
 import type { I18nConfig, LocaleDefinition } from '../config/types.js'
-import { writeReportFile } from '../io/json-writer.js'
+import { writeCodequalityFile, writeReportFile } from '../io/json-writer.js'
 import { readLocaleData } from '../io/locale-data.js'
 import { getLeafKeys } from '../io/key-operations.js'
 import {
@@ -25,6 +25,7 @@ import { getPatternSet } from '../scanner/patterns.js'
 import { resolveReferenceLocale } from './shared.js'
 import { resolveReportFilePath, validateReportPath } from './report.js'
 import { buildOrphanScanPlan, resolveOrphanIgnorePatterns } from './ops-orphans.js'
+import { undefinedKeysToCodeQuality } from './codequality.js'
 
 export interface KeyUsageLocation {
   /** Source file path, relative to the project dir. */
@@ -322,6 +323,8 @@ export async function checkUndefinedKeys(opts: {
   excludeDirs?: string[]
   projectDir?: string
   outputFile?: string
+  /** Also write the findings as a GitLab Code Quality JSON array to this path. */
+  codequalityOutput?: string
 } = {}): Promise<CheckUndefinedKeysResult | { reportFile: string; summary: CheckUndefinedKeysSummary }> {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
@@ -396,6 +399,13 @@ export async function checkUndefinedKeys(opts: {
     uncertainKeys,
     limitation: CHECK_LIMITATION,
     summary,
+  }
+
+  // Written even when clean: an empty array on the default branch is the
+  // baseline the MR widget diffs against.
+  if (opts.codequalityOutput) {
+    validateReportPath(dir, opts.codequalityOutput)
+    await writeCodequalityFile(opts.codequalityOutput, undefinedKeysToCodeQuality(undefinedKeys))
   }
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_undefined_keys')
