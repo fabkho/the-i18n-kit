@@ -191,6 +191,45 @@ describe('checkUndefinedKeys — scope-aware', () => {
     }
   })
 
+  it('multiline single-segment concat: the bare fallback downgrades matching static keys', async () => {
+    // `t(` and the 'menu.' + suffix prefix on separate lines: only the
+    // BARE_CONCAT_PREFIX fallback sees this usage. Its `menu.${_}` candidate
+    // must downgrade the statically used, nowhere-defined menu.ghost from a
+    // hard undefined finding to uncertain.
+    const dir = await mkdtemp(join(tmpdir(), 'i18n-check-concat-'))
+    try {
+      const write = async (rel: string, content: string): Promise<void> => {
+        const path = join(dir, rel)
+        await mkdir(dirname(path), { recursive: true })
+        await writeFile(path, content)
+      }
+      await write('i18n/locales/de-DE.json', JSON.stringify({ root: { used: 'a' } }))
+      await write('app-admin/i18n/locales/de-DE.json', '{}')
+      await write('app-shop/i18n/locales/de-DE.json', '{}')
+      await write('components/Menu.vue', [
+        'const menuLabel = t(',
+        `  'menu.' + suffix,`,
+        ')',
+        `{{ $t('menu.ghost') }}`,
+      ].join('\n'))
+      holder.config = createTempMultiAppConfig(dir)
+
+      const result = await checkUndefinedKeys({ projectDir: dir })
+      if ('reportFile' in result) throw new Error('Expected inline result')
+
+      expect(result.undefinedKeys).toEqual([])
+      expect(result.uncertainKeys).toContainEqual(
+        expect.objectContaining({
+          key: 'menu.ghost',
+          reason: expect.stringContaining('dynamic key pattern'),
+        }),
+      )
+    } finally {
+      holder.config = config
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('honors outputFile: writes the full report and returns only the summary', async () => {
     const reportPath = join(projectDir, 'undefined-report.json')
     const result = await checkUndefinedKeys({ projectDir, outputFile: reportPath })

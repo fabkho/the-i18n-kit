@@ -238,11 +238,12 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   /** Matches PHP double-quoted strings containing $var or {$var} interpolation with at least one dot */
   const BARE_PHP_DYNAMIC = /"((?:[^"\\]|\\.)*(?:\{\$|\$[a-zA-Z_])(?:[^"\\]|\\.)*)"/g
   /**
-   * Matches string concat prefixes ending with a dot: 'some.key.' + var
+   * Matches string concat prefixes ending with a dot: 'some.key.' + var —
+   * including single-segment prefixes like 'menu.' + var.
    * Catches multiline t() calls where the prefix is on a separate line from t(.
-   * Group 1: the prefix without trailing dot.
+   * Group 2: the prefix without trailing dot.
    */
-  const BARE_CONCAT_PREFIX = /['"](((?:[\w-]+\.)+[\w-]+)\.)['"]\s*\+/g
+  const BARE_CONCAT_PREFIX = /['"](([\w-]+(?:\.[\w-]+)*)\.)['"]\s*\+/g
 
   for (const relPath of relativePaths) {
     const filePath = join(rootDir, relPath)

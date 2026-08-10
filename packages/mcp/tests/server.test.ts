@@ -203,6 +203,40 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.limitation).toContain('line-based')
   })
 
+  it('find_undefined_keys reports an undefined key and an uncertain dynamic usage', async () => {
+    const dir = await makeProject()
+    try {
+      await mkdir(join(dir, 'components'), { recursive: true })
+      await writeFile(join(dir, 'components/Page.vue'), [
+        `{{ $t('actions.save') }}`,
+        `{{ $t('missing.key') }}`,
+        'const label = t(`dyn.${variant}`)',
+      ].join('\n'))
+
+      const { json } = await callTool('find_undefined_keys', { projectDir: dir })
+
+      expect(json?.undefinedKeys).toEqual([
+        expect.objectContaining({
+          key: 'missing.key',
+          searchedLayers: ['root'],
+          usages: [{ file: join('components', 'Page.vue'), line: 2 }],
+        }),
+      ])
+      expect(json?.uncertainKeys).toEqual([
+        expect.objectContaining({
+          key: '`dyn.${variant}`',
+          usages: [{ file: join('components', 'Page.vue'), line: 3 }],
+          reason: expect.stringContaining('dynamically built key'),
+        }),
+      ])
+      expect(json?.summary.undefinedCount).toBe(1)
+      expect(json?.summary.uncertainCount).toBe(1)
+      expect(json?.summary.searchedLayersByApp).toEqual({ default: ['root'] })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects invalid tool input via schema validation', async () => {
     const { result } = await callTool('write_translations', {
       layer: 'root',

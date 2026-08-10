@@ -23,7 +23,7 @@ import type { DynamicKeyUsage, KeyUsage, ScanResult, ScanUnit } from '../scanner
 import { getPatternSet } from '../scanner/patterns.js'
 
 import { resolveReferenceLocale } from './shared.js'
-import { resolveReportFilePath } from './report.js'
+import { resolveReportFilePath, validateReportPath } from './report.js'
 import { buildOrphanScanPlan, resolveOrphanIgnorePatterns } from './ops-orphans.js'
 
 export interface KeyUsageLocation {
@@ -399,6 +399,9 @@ export async function checkUndefinedKeys(opts: {
   }
 
   const reportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'find_undefined_keys')
+  if (reportPath) {
+    validateReportPath(dir, reportPath)
+  }
   if (reportPath) {
     await writeReportFile(reportPath, output as unknown as Record<string, unknown>, {
       tool: 'find_undefined_keys',
