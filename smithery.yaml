@@ -9,6 +9,7 @@ startCommand:
     properties:
       projectDir:
         type: string
+        pattern: "^/"
         description: Absolute path of the project the server manages (must be mounted into the container).
   commandFunction: |-
     (config) => ({
