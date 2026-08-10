@@ -1,5 +1,14 @@
 # Changelog
 
+## [6.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-6.1.0...the-i18n-mcp-6.2.0) (2026-08-10)
+
+
+### Features
+
+* **cli:** check — used-but-undefined key detection with CI exit gating ([#245](https://github.com/fabkho/the-i18n-kit/issues/245)) ([6c4b9bf](https://github.com/fabkho/the-i18n-kit/commit/6c4b9bffec124529b415bcbfa1be21af00f715bf))
+* **cli:** find_duplicate_keys — cross-layer key collisions with divergence detection ([#243](https://github.com/fabkho/the-i18n-kit/issues/243)) ([cf2343d](https://github.com/fabkho/the-i18n-kit/commit/cf2343dcc6cd17dcf2400cb234e542c464ab54d7))
+* **cli:** layer-scope-aware orphan scanning with misplaced-usage detection ([#244](https://github.com/fabkho/the-i18n-kit/issues/244)) ([04cc252](https://github.com/fabkho/the-i18n-kit/commit/04cc2521e323cf9b87e131b0fc39320182a731af))
+
 ## [6.1.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-6.0.0...the-i18n-mcp-6.1.0) (2026-08-09)
 
 
