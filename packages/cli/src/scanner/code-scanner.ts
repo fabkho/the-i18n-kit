@@ -186,10 +186,15 @@ function suggestIgnorePattern(expression: string): string | undefined {
 }
 
 function buildUnresolvedWarnings(dynamicKeys: DynamicKeyUsage[]): UnresolvedKeyWarning[] {
+  // Glob order varies between runs; dedupe keeps the first entry per pattern,
+  // so sort first to make the surviving representative the lexicographically
+  // smallest location — report output must be byte-deterministic (CI diffing).
+  const sorted = [...dynamicKeys].sort((a, b) =>
+    a.file.localeCompare(b.file) || a.line - b.line || a.expression.localeCompare(b.expression))
   const seen = new Set<string>()
   const seenPatterns = new Set<string>()
   const warnings: UnresolvedKeyWarning[] = []
-  for (const dk of dynamicKeys) {
+  for (const dk of sorted) {
     if (!dk.file || !dk.line) continue
     const pattern = suggestIgnorePattern(dk.expression)
     if (!pattern) continue

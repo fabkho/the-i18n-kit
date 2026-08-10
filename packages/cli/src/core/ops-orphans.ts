@@ -16,6 +16,8 @@ import type { OrphanScanPlan, OrphanScanResult } from '../scanner/code-scanner.j
 import { getPatternSet } from '../scanner/patterns.js'
 import { ToolError } from '../utils/errors.js'
 
+import { log } from '../utils/logger.js'
+
 import { findLayerOrThrow, resolveReferenceLocale } from './shared.js'
 import { validateReportPath, resolveReportFilePath } from './report.js'
 import { orphanKeysToCodeQuality, referenceLocaleAnchorPaths } from './codequality.js'
@@ -93,6 +95,21 @@ export function buildOrphanScanPlan(config: I18nConfig, projectDir: string): Orp
   return { units, scopeByLayer }
 }
 
+/**
+ * Report shape for a dynamic-key entry. Bare candidates are synthesized
+ * without a source location (file: '', line: 0) — relativizing '' would
+ * resolve against the process cwd and make reports cwd-dependent, so
+ * file/line are omitted entirely for them.
+ */
+function toDynamicKeyEntries(
+  dynamicKeys: OrphanScanResult['allDynamicKeys'],
+  projectDir: string,
+): Array<{ expression: string; file?: string; line?: number }> {
+  return dynamicKeys.map(dk => dk.file
+    ? { expression: dk.expression, file: toRelativePath(dk.file, projectDir), line: dk.line }
+    : { expression: dk.expression })
+}
+
 /** Relativize each layer's scan-scope dirs against the project dir for reporting. */
 function relativeScanScope(result: OrphanScanResult, projectDir: string): Record<string, string[]> {
   const scanScope: Record<string, string[]> = {}
@@ -120,6 +137,22 @@ async function runOrphanScan(
     resolveIgnorePatterns: layerName => resolveOrphanIgnorePatterns(config, layerName),
     patterns: getPatternSet(config.localeFileFormat),
   })
+}
+
+/**
+ * `orphanScan` keys are matched against detected layer names — an unknown key
+ * (e.g. keyed "lang" when the adapter names the layer "root") silently drops
+ * its ignorePatterns, so warn on stderr listing the valid names (#265).
+ */
+export function warnUnknownOrphanScanLayers(config: I18nConfig): void {
+  const orphanScan = config.projectConfig?.orphanScan
+  if (!orphanScan) return
+  const layerNames = config.localeDirs.map(d => d.layer)
+  const known = new Set(layerNames)
+  for (const key of Object.keys(orphanScan)) {
+    if (known.has(key)) continue
+    log.warn(`orphanScan config key "${key}" matches no detected layer — its ignorePatterns are not applied. Detected layers: ${layerNames.join(', ')}`)
+  }
 }
 
 export function resolveOrphanIgnorePatterns(
@@ -206,6 +239,7 @@ export async function findOrphanKeys(opts: {
   const { layer, locale, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
+  warnUnknownOrphanScanLayers(config)
 
   const { layersToCheck, keysByLayer, totalKeys, localeCode } = await resolveOrphanScanContext(config, {
     layer,
@@ -265,11 +299,7 @@ export async function findOrphanKeys(opts: {
       ? `${orphanResult.allDynamicKeys.length} dynamic key reference(s) found (template literals with interpolation). Some "orphan" keys may actually be used via dynamic keys. Review before removing. Note: string concatenation patterns (e.g. 'prefix.' + var) are not detected — use template literals for full coverage.`
       : undefined,
     dynamicKeys: orphanResult.allDynamicKeys.length > 0
-      ? orphanResult.allDynamicKeys.map(dk => ({
-          expression: dk.expression,
-          file: toRelativePath(dk.file, dir),
-          line: dk.line,
-        }))
+      ? toDynamicKeyEntries(orphanResult.allDynamicKeys, dir)
       : undefined,
     unresolvedKeyWarnings: orphanResult.unresolvedKeyWarnings.length > 0
       ? orphanResult.unresolvedKeyWarnings.map(w => ({
@@ -395,6 +425,7 @@ export async function removeOrphanKeys(opts: {
   const { layer, locale, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
+  warnUnknownOrphanScanLayers(config)
   const isDryRun = opts.dryRun ?? true
 
   const { keysByLayer, totalKeys, localeDef } = await resolveOrphanScanContext(config, {
@@ -439,11 +470,7 @@ export async function removeOrphanKeys(opts: {
   const misplacedUsages = misplacedCount > 0 ? orphanResult.misplacedUsages : undefined
   const misplacedUsageNote = misplacedCount > 0 ? MISPLACED_USAGE_NOTE : undefined
   const scanScope = relativeScanScope(orphanResult, dir)
-  const allDynamicKeys = orphanResult.allDynamicKeys.map(dk => ({
-    expression: dk.expression,
-    file: toRelativePath(dk.file, dir),
-    line: dk.line,
-  }))
+  const allDynamicKeys = toDynamicKeyEntries(orphanResult.allDynamicKeys, dir)
 
   if (orphanCount === 0) {
     const messageParts: string[] = ['No orphan keys found.']
