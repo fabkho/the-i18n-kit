@@ -97,6 +97,9 @@
                                  # [skip ci] leaves the MR head without a pipeline, which breaks the
                                  # Code Quality widget (comparer error). A re-run is loop-safe — it
                                  # finds nothing missing and pushes nothing.
+                                 # NOTE: pushes with the plain CI_JOB_TOKEN never trigger pipelines
+                                 # (GitLab rule), so the follow-up pipeline — and the widget on
+                                 # translated MRs — additionally requires I18N_PUSH_TOKEN.
 
   before_script:
     - if command -v apk >/dev/null; then apk add --no-cache git jq; fi
