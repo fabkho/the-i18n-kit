@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { isAbsolute, join, relative, sep } from 'node:path'
 import { glob } from 'tinyglobby'
 import { log } from '../utils/logger.js'
 import type { ScanPatternSet } from './patterns.js'
@@ -331,14 +331,62 @@ export function buildIgnorePatternRegexes(patterns: string[]): RegExp[] {
   })
 }
 
-export interface OrphanScanOptions {
+/** One scan root with a stable name (app or layer) for scope reporting. */
+export interface ScanUnit {
+  /** Unit name used in scope maps and misplaced-usage reports (app or layer name). */
+  name: string
+  /** Absolute directory scanned for this unit. */
+  dir: string
+}
+
+/**
+ * Scope-aware scan plan: which dirs to scan (each exactly once) and which
+ * units vouch for each layer's keys being "used".
+ */
+export interface OrphanScanPlan {
+  /**
+   * Scan units, deduplicated by directory. When a unit's dir nests inside
+   * another unit's dir, the nested subtree is excluded from the ancestor's
+   * scan so every file is attributed to exactly one unit (same total file
+   * work as one whole-project scan).
+   */
+  units: ScanUnit[]
+  /**
+   * Layer name → names of units whose usage evidence counts for that layer.
+   * Layers missing from the map are checked against ALL units (conservative
+   * global scope — never wrongly narrows).
+   */
+  scopeByLayer: Map<string, string[]>
+}
+
+/** A key referenced only from scan units outside its layer's consuming scope. */
+export interface MisplacedUsage {
+  key: string
+  /** Layer the key is defined in. */
+  layer: string
+  /** Out-of-scope scan units (apps or layers) where the key was found. */
+  usingApps: string[]
+}
+
+interface OrphanScanBaseOptions {
   keysByLayer: Map<string, { keys: string[]; localeDir: { layer: string } }>
-  /** Root directories to scan for source file usage. Scanned recursively. */
-  scanDirs: string[]
   excludeDirs?: string[]
   resolveIgnorePatterns: (layerName: string) => string[] | undefined
   patterns?: ScanPatternSet
 }
+
+/**
+ * Exactly one scan source is required:
+ * - `scanDirs` — explicit root directories, scanned recursively; manual
+ *   scope control. Every layer is checked against ONE combined usage set
+ *   (the pre-scope-aware global behavior) and no misplaced-usage
+ *   detection happens.
+ * - `scanPlan` — scope-aware plan from `buildOrphanScanPlan`.
+ */
+export type OrphanScanOptions = OrphanScanBaseOptions & (
+  | { scanDirs: string[]; scanPlan?: undefined }
+  | { scanDirs?: undefined; scanPlan: OrphanScanPlan }
+)
 
 export interface UnresolvedKeyWarning {
   /** The dynamic expression as detected (e.g., `` `notifications.subscriptions.${_}.message` ``) */
@@ -359,37 +407,105 @@ export interface OrphanScanResult {
   uncertainByLayer: Record<string, string[]>
   uncertainCount: number
   totalFilesScanned: number
+  /** Accumulated across layers — a key present in several layers counts once per layer. */
   dynamicMatchedCount: number
+  /** Accumulated across layers, like dynamicMatchedCount. */
   ignoredCount: number
   allDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }>
   dirsScanned: string[]
   unresolvedKeyWarnings: UnresolvedKeyWarning[]
+  /** Keys referenced only from units outside their layer's scope. Not counted as orphans. */
+  misplacedUsages: MisplacedUsage[]
+  /** Layer name → dirs whose scans vouched for that layer's keys being "used". */
+  scanScopeByLayer: Record<string, string[]>
+}
+
+/** Per-unit scan evidence, with lazily built dynamic-key regexes. */
+interface UnitEvidence {
+  unit: ScanUnit
+  result: ScanResult
+  /** Dynamic key expressions incl. bare candidates, in legacy accumulation order. */
+  dynamicRaw: DynamicKeyUsage[]
+  dynRegexes?: RegExp[]
+}
+
+/**
+ * Glob ignores for other units' dirs nested inside this unit's dir, so a
+ * scope-aware scan visits every file exactly once and attributes it to the
+ * innermost unit.
+ */
+function nestedUnitIgnores(unit: ScanUnit, units: ScanUnit[]): string[] {
+  const ignores: string[] = []
+  for (const other of units) {
+    if (other.dir === unit.dir) continue
+    const rel = relative(unit.dir, other.dir)
+    if (!rel || rel.startsWith('..') || isAbsolute(rel)) continue
+    const posixRel = rel.split(sep).join('/')
+    ignores.push(posixRel, `${posixRel}/**`)
+  }
+  return ignores
 }
 
 export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promise<OrphanScanResult> {
-  const { keysByLayer, scanDirs, excludeDirs, resolveIgnorePatterns, patterns } = options
+  const { keysByLayer, excludeDirs, resolveIgnorePatterns, patterns } = options
 
-  // Single recursive scan from each provided root dir.
-  // All layers share the combined results — no per-layer scan planning needed.
-  const combinedUniqueKeys = new Set<string>()
-  const combinedBareStrings = new Set<string>()
-  const allDynamicKeysRaw: Array<{ expression: string; file: string; line: number; callee: string }> = []
+  // Explicit scanDirs = manual scope control: one combined usage set shared
+  // by all layers, no misplaced-usage detection (pre-scope-aware behavior).
+  const globalScope = options.scanDirs !== undefined
+  const units: ScanUnit[] = options.scanDirs !== undefined
+    ? options.scanDirs.map(d => ({ name: d, dir: d }))
+    : options.scanPlan.units
+
+  // Scan each unit dir exactly once. In plan mode, nested unit dirs are
+  // excluded from ancestor scans; explicit scanDirs are scanned as given.
+  const evidences: UnitEvidence[] = []
+  const allDynamicKeysRaw: DynamicKeyUsage[] = []
   let totalFilesScanned = 0
 
-  for (const dir of scanDirs) {
-    const result = await scanSourceFiles(dir, excludeDirs ?? [], patterns)
+  for (const unit of units) {
+    const ignores = globalScope ? [] : nestedUnitIgnores(unit, units)
+    const result = await scanSourceFiles(unit.dir, [...(excludeDirs ?? []), ...ignores], patterns)
     totalFilesScanned += result.filesScanned
-    for (const key of result.uniqueKeys) combinedUniqueKeys.add(key)
-    for (const bare of result.bareStringCandidates) combinedBareStrings.add(bare)
-    allDynamicKeysRaw.push(...result.dynamicKeys)
-    for (const bd of result.bareDynamicCandidates) {
-      allDynamicKeysRaw.push({ expression: bd, file: '', line: 0, callee: '' })
-    }
+    const dynamicRaw: DynamicKeyUsage[] = [
+      ...result.dynamicKeys,
+      ...[...result.bareDynamicCandidates].map(bd => ({ expression: bd, file: '', line: 0, callee: '' })),
+    ]
+    allDynamicKeysRaw.push(...dynamicRaw)
+    evidences.push({ unit, result, dynamicRaw })
   }
 
-  const dynamicKeyRegexes = buildDynamicKeyRegexes(allDynamicKeysRaw)
+  // Unresolved-key warnings and the derived "uncertain" classification stay
+  // global (all units): a key overlapping ANY dynamic translation pattern is
+  // withheld from removal regardless of where that pattern lives.
   const unresolvedWarnings = buildUnresolvedWarnings(allDynamicKeysRaw)
   const uncertainRegexes = buildIgnorePatternRegexes(unresolvedWarnings.map(w => w.suggestedIgnorePattern))
+
+  const evidenceByName = new Map(evidences.map(e => [e.unit.name, e]))
+  const allUnitNames = units.map(u => u.name)
+
+  // Scope unions are memoized — sibling layers typically share a scope.
+  const scopeCache = new Map<string, { unique: Set<string>; bare: Set<string>; dynRegexes: RegExp[] }>()
+  const scopeEvidence = (names: string[]) => {
+    const cacheKey = names.join('\u0000')
+    let cached = scopeCache.get(cacheKey)
+    if (!cached) {
+      const unique = new Set<string>()
+      const bare = new Set<string>()
+      const dynamicRaw: DynamicKeyUsage[] = []
+      for (const name of names) {
+        const evidence = evidenceByName.get(name)
+        if (!evidence) continue
+        for (const key of evidence.result.uniqueKeys) unique.add(key)
+        for (const candidate of evidence.result.bareStringCandidates) bare.add(candidate)
+        dynamicRaw.push(...evidence.dynamicRaw)
+      }
+      cached = { unique, bare, dynRegexes: buildDynamicKeyRegexes(dynamicRaw) }
+      scopeCache.set(cacheKey, cached)
+    }
+    return cached
+  }
+  const unitDynRegexes = (evidence: UnitEvidence): RegExp[] =>
+    evidence.dynRegexes ??= buildDynamicKeyRegexes(evidence.dynamicRaw)
 
   const orphansByLayer: Record<string, string[]> = {}
   let orphanCount = 0
@@ -397,15 +513,27 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
   let uncertainCount = 0
   let dynamicMatchedCount = 0
   let ignoredCount = 0
+  const misplacedUsages: MisplacedUsage[] = []
+  const scanScopeByLayer: Record<string, string[]> = {}
 
   for (const [layerName, { keys }] of keysByLayer) {
+    const scopeNames = (options.scanDirs !== undefined
+      ? allUnitNames
+      : options.scanPlan.scopeByLayer.get(layerName) ?? allUnitNames)
+      .filter(name => evidenceByName.has(name))
+    scanScopeByLayer[layerName] = scopeNames.map(name => evidenceByName.get(name)!.unit.dir)
+
+    const scope = scopeEvidence(scopeNames)
+    const scopeNameSet = new Set(scopeNames)
+    const outOfScope = globalScope ? [] : evidences.filter(e => !scopeNameSet.has(e.unit.name))
+
     const ignorePatterns = resolveIgnorePatterns(layerName)
     const ignoreRegexes = ignorePatterns ? buildIgnorePatternRegexes(ignorePatterns) : []
 
     const orphans = keys.filter((k) => {
-      if (combinedUniqueKeys.has(k)) return false
-      if (combinedBareStrings.has(k)) return false
-      if (dynamicKeyRegexes.some(re => re.test(k))) {
+      if (scope.unique.has(k)) return false
+      if (scope.bare.has(k)) return false
+      if (scope.dynRegexes.some(re => re.test(k))) {
         dynamicMatchedCount++
         return false
       }
@@ -419,6 +547,18 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
     const certain: string[] = []
     const uncertain: string[] = []
     for (const k of orphans) {
+      // Not vouched for in scope — but referenced from non-consuming units?
+      // Then it's a misplaced usage, reported separately (not an orphan).
+      const usingApps = outOfScope
+        .filter(e =>
+          e.result.uniqueKeys.has(k)
+          || e.result.bareStringCandidates.has(k)
+          || unitDynRegexes(e).some(re => re.test(k)))
+        .map(e => e.unit.name)
+      if (usingApps.length > 0) {
+        misplacedUsages.push({ key: k, layer: layerName, usingApps })
+        continue
+      }
       if (uncertainRegexes.length > 0 && uncertainRegexes.some(re => re.test(k))) {
         uncertain.push(k)
       } else {
@@ -436,6 +576,15 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
     }
   }
 
+  misplacedUsages.sort((a, b) => a.layer.localeCompare(b.layer) || a.key.localeCompare(b.key))
+
+  // File glob ordering varies between runs — sort the diagnostic arrays so
+  // report output is byte-deterministic (CI artifact diffing relies on it).
+  const byLocation = (a: { file: string; line: number; expression: string }, b: { file: string; line: number; expression: string }) =>
+    a.file.localeCompare(b.file) || a.line - b.line || a.expression.localeCompare(b.expression)
+  allDynamicKeysRaw.sort(byLocation)
+  unresolvedWarnings.sort((a, b) => byLocation(a, b))
+
   return {
     orphansByLayer,
     orphanCount,
@@ -445,7 +594,9 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
     dynamicMatchedCount,
     ignoredCount,
     allDynamicKeys: allDynamicKeysRaw,
-    dirsScanned: scanDirs,
+    dirsScanned: units.map(u => u.dir),
     unresolvedKeyWarnings: unresolvedWarnings,
+    misplacedUsages,
+    scanScopeByLayer,
   }
 }

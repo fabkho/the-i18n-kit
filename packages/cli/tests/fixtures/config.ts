@@ -150,6 +150,33 @@ export function createMultiAppConfig(): I18nConfig {
 }
 
 /**
+ * In-memory multi-app config over a temp directory tree: `projectDir` is the
+ * root layer's dir and contains nested `app-admin/` and `app-shop/` app dirs.
+ * Used by the scope-aware orphan-scan tests, which create real source and
+ * locale files under these paths.
+ */
+export function createTempMultiAppConfig(projectDir: string): I18nConfig {
+  const adminDir = resolve(projectDir, 'app-admin')
+  const shopDir = resolve(projectDir, 'app-shop')
+  return {
+    rootDir: projectDir,
+    defaultLocale: 'de',
+    fallbackLocale: { default: ['en'] },
+    locales: [{ code: 'de', language: 'de-DE', file: 'de-DE.json' }],
+    localeDirs: [
+      { path: resolve(projectDir, 'i18n/locales'), layer: 'root', layerRootDir: projectDir },
+      { path: resolve(adminDir, 'i18n/locales'), layer: 'app-admin', layerRootDir: adminDir },
+      { path: resolve(shopDir, 'i18n/locales'), layer: 'app-shop', layerRootDir: shopDir },
+    ],
+    layerRootDirs: [projectDir, adminDir, shopDir],
+    apps: [
+      { name: 'app-admin', rootDir: adminDir, layers: ['app-admin', 'root'] },
+      { name: 'app-shop', rootDir: shopDir, layers: ['app-shop', 'root'] },
+    ],
+  }
+}
+
+/**
  * Degenerate fixture without app info (generic/Laravel-style config where
  * no app → layer consumption edges exist).
  */

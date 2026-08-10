@@ -3,17 +3,123 @@
  * referenced in source code, plus code-usage scanning.
  */
 
+import { isAbsolute, relative } from 'node:path'
+
 import { detectI18nConfig } from '../config/detector.js'
+import { buildLayerGraph } from '../config/layer-graph.js'
 import type { I18nConfig, LocaleDir } from '../config/types.js'
 import { writeReportFile } from '../io/json-writer.js'
 import { readLocaleData, mutateLocaleData } from '../io/locale-data.js'
 import { getLeafKeys, removeNestedValue } from '../io/key-operations.js'
 import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from '../scanner/code-scanner.js'
+import type { OrphanScanPlan, OrphanScanResult } from '../scanner/code-scanner.js'
 import { getPatternSet } from '../scanner/patterns.js'
 import { ToolError } from '../utils/errors.js'
 
 import { findLayerOrThrow, findLocaleImpl } from './shared.js'
 import { validateReportPath, resolveReportFilePath } from './report.js'
+
+const MISPLACED_USAGE_NOTE
+  = 'Keys referenced only from apps that do not consume their layer. '
+  + 'Either the key belongs in a broader (shared) layer, or the usage is a bug. '
+  + 'These keys are not counted as orphans and are never removed.'
+
+/** True when `child` equals `parent` or lies inside it. */
+function isWithin(child: string, parent: string): boolean {
+  const rel = relative(parent, child)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+/**
+ * Build the scope-aware scan plan for orphan detection from the layer graph.
+ *
+ * Units are the distinct app root dirs plus canonical layer root dirs (each
+ * scanned exactly once — nested unit dirs are carved out of ancestor scans).
+ * Layer L's scope is its own layer root dir plus the root dirs of all apps
+ * in `appsUsingLayer(L)`.
+ *
+ * Degenerate cases (no app info, or a layer consumed by no app) fall back to
+ * ALL units — the whole-project behavior of the pre-scope-aware scan. Code
+ * outside every unit (e.g. scripts/ in a monorepo scanned from its root) is
+ * claimed by a synthetic project-root unit that counts for every layer, so
+ * scoping never produces orphans the old global scan would not have.
+ */
+export function buildOrphanScanPlan(config: I18nConfig, projectDir: string): OrphanScanPlan {
+  const graph = buildLayerGraph(config)
+  const apps = config.apps ?? []
+
+  const nameByDir = new Map<string, string>()
+  const usedNames = new Set<string>()
+  const claim = (dir: string, name: string): void => {
+    if (nameByDir.has(dir)) return
+    let unique = name
+    let n = 2
+    while (usedNames.has(unique)) unique = `${name}#${n++}`
+    nameByDir.set(dir, unique)
+    usedNames.add(unique)
+  }
+
+  // Apps claim first so a dir shared by an app and its layer reports the app name.
+  for (const app of apps) claim(app.rootDir, app.name)
+  for (const layer of graph.canonicalLayers) claim(layer.layerRootDir, layer.layer)
+
+  let projectUnitName: string | undefined
+  if (![...nameByDir.keys()].some(unitDir => isWithin(projectDir, unitDir))) {
+    claim(projectDir, 'project-root')
+    projectUnitName = nameByDir.get(projectDir)
+  }
+
+  const units = [...nameByDir].map(([dir, name]) => ({ name, dir }))
+  const allNames = units.map(u => u.name)
+
+  const scopeByLayer = new Map<string, string[]>()
+  for (const layer of graph.canonicalLayers) {
+    const consumers = graph.appsUsingLayer(layer.layer)
+    if (apps.length === 0 || consumers.length === 0) {
+      scopeByLayer.set(layer.layer, allNames)
+      continue
+    }
+    const scope = new Set<string>()
+    if (projectUnitName) scope.add(projectUnitName)
+    scope.add(nameByDir.get(layer.layerRootDir)!)
+    for (const appName of consumers) {
+      const app = apps.find(a => a.name === appName)
+      if (app) scope.add(nameByDir.get(app.rootDir)!)
+    }
+    scopeByLayer.set(layer.layer, [...scope])
+  }
+
+  return { units, scopeByLayer }
+}
+
+/** Relativize each layer's scan-scope dirs against the project dir for reporting. */
+function relativeScanScope(result: OrphanScanResult, projectDir: string): Record<string, string[]> {
+  const scanScope: Record<string, string[]> = {}
+  for (const [layerName, dirs] of Object.entries(result.scanScopeByLayer)) {
+    scanScope[layerName] = dirs.map(d => toRelativePath(d, projectDir) || '.')
+  }
+  return scanScope
+}
+
+/**
+ * Shared scan entry for findOrphanKeys/removeOrphanKeys: explicit scanDirs
+ * keep the global combined-scan behavior; otherwise a scope-aware plan is
+ * built from the layer graph.
+ */
+async function runOrphanScan(
+  config: I18nConfig,
+  keysByLayer: Map<string, { keys: string[]; localeDir: LocaleDir }>,
+  opts: { scanDirs?: string[]; excludeDirs?: string[]; dir: string },
+): Promise<OrphanScanResult> {
+  return findOrphanKeysForConfig({
+    keysByLayer,
+    // an empty scanDirs array means "not provided" (matches excludeDirs)
+    ...(opts.scanDirs?.length ? { scanDirs: opts.scanDirs } : { scanPlan: buildOrphanScanPlan(config, opts.dir) }),
+    excludeDirs: opts.excludeDirs || undefined,
+    resolveIgnorePatterns: layerName => resolveOrphanIgnorePatterns(config, layerName),
+    patterns: getPatternSet(config.localeFileFormat),
+  })
+}
 
 export function resolveOrphanIgnorePatterns(
   config: I18nConfig,
@@ -90,6 +196,13 @@ async function resolveOrphanScanContext(
 export async function findOrphanKeys(opts: {
   layer?: string
   locale?: string
+  /**
+   * Explicit scan roots — manual scope control. When set, all layers are
+   * checked against one combined usage set from these dirs (no per-layer
+   * scoping, no misplaced-usage detection). When absent, a scope-aware plan
+   * from the layer graph is used: each layer is checked against the apps
+   * that consume it.
+   */
   scanDirs?: string[]
   excludeDirs?: string[]
   projectDir?: string
@@ -119,13 +232,7 @@ export async function findOrphanKeys(opts: {
     return emptyOutput
   }
 
-  const orphanResult = await findOrphanKeysForConfig({
-    keysByLayer,
-    scanDirs: scanDirs || [dir],
-    excludeDirs: excludeDirs || undefined,
-    resolveIgnorePatterns: (layerName) => resolveOrphanIgnorePatterns(config, layerName),
-    patterns: getPatternSet(config.localeFileFormat),
-  })
+  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir })
 
   const byLayer = orphanResult.orphansByLayer
   const allOrphanKeys: Array<{ key: string; layer: string }> = []
@@ -139,19 +246,24 @@ export async function findOrphanKeys(opts: {
     sortedByLayer[keyLayer].push(key)
   }
 
+  const misplacedCount = orphanResult.misplacedUsages.length
   const output: Record<string, unknown> = {
     orphanKeys: sortedByLayer,
     uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
+    misplacedUsages: misplacedCount > 0 ? orphanResult.misplacedUsages : undefined,
+    misplacedUsageNote: misplacedCount > 0 ? MISPLACED_USAGE_NOTE : undefined,
     summary: {
       totalKeys,
       orphanCount: orphanResult.orphanCount,
       uncertainCount: orphanResult.uncertainCount,
+      misplacedCount,
       dynamicMatchedCount: orphanResult.dynamicMatchedCount,
       ignoredCount: orphanResult.ignoredCount,
-      usedCount: totalKeys - orphanResult.orphanCount - orphanResult.uncertainCount,
+      usedCount: totalKeys - orphanResult.orphanCount - orphanResult.uncertainCount - misplacedCount,
       filesScanned: orphanResult.totalFilesScanned,
       layersChecked: layersToCheck.map(d => d.layer),
       dirsScanned: orphanResult.dirsScanned,
+      scanScope: relativeScanScope(orphanResult, dir),
       locale: localeCode,
     },
     dynamicKeyWarning: orphanResult.allDynamicKeys.length > 0
@@ -277,6 +389,7 @@ export async function scanCodeUsage(opts: {
 export async function removeOrphanKeys(opts: {
   layer?: string
   locale?: string
+  /** Explicit scan roots — manual scope control, same semantics as {@link findOrphanKeys}. */
   scanDirs?: string[]
   excludeDirs?: string[]
   dryRun?: boolean
@@ -309,18 +422,16 @@ export async function removeOrphanKeys(opts: {
     return emptyOutput
   }
 
-  const orphanResult = await findOrphanKeysForConfig({
-    keysByLayer,
-    scanDirs: scanDirs || [dir],
-    excludeDirs: excludeDirs || undefined,
-    resolveIgnorePatterns: (layerName) => resolveOrphanIgnorePatterns(config, layerName),
-    patterns: getPatternSet(config.localeFileFormat),
-  })
+  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir })
   const orphansByLayer = orphanResult.orphansByLayer
   const orphanCount = orphanResult.orphanCount
   const totalFilesScanned = orphanResult.totalFilesScanned
   const dynamicMatchedCount = orphanResult.dynamicMatchedCount
   const ignoredCount = orphanResult.ignoredCount
+  const misplacedCount = orphanResult.misplacedUsages.length
+  const misplacedUsages = misplacedCount > 0 ? orphanResult.misplacedUsages : undefined
+  const misplacedUsageNote = misplacedCount > 0 ? MISPLACED_USAGE_NOTE : undefined
+  const scanScope = relativeScanScope(orphanResult, dir)
   const allDynamicKeys = orphanResult.allDynamicKeys.map(dk => ({
     expression: dk.expression,
     file: toRelativePath(dk.file, dir),
@@ -332,11 +443,14 @@ export async function removeOrphanKeys(opts: {
     if (dynamicMatchedCount > 0) messageParts.push(`${dynamicMatchedCount} key(s) were excluded by dynamic pattern matching.`)
     if (ignoredCount > 0) messageParts.push(`${ignoredCount} key(s) were excluded by ignore patterns.`)
     if (orphanResult.uncertainCount > 0) messageParts.push(`${orphanResult.uncertainCount} uncertain key(s) were excluded because they overlap with dynamic translation patterns.`)
-    if (dynamicMatchedCount === 0 && ignoredCount === 0 && orphanResult.uncertainCount === 0) messageParts.push('All translation keys are referenced in code.')
+    if (misplacedCount > 0) messageParts.push(`${misplacedCount} key(s) are referenced only outside their layer's scope (see misplacedUsages).`)
+    if (dynamicMatchedCount === 0 && ignoredCount === 0 && orphanResult.uncertainCount === 0 && misplacedCount === 0) messageParts.push('All translation keys are referenced in code.')
     const zeroOutput: Record<string, unknown> = {
       orphanKeys: {},
       uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
-      summary: { totalKeys, orphanCount: 0, uncertainCount: orphanResult.uncertainCount, dynamicMatchedCount, ignoredCount, filesScanned: totalFilesScanned, message: messageParts.join(' ') },
+      misplacedUsages,
+      misplacedUsageNote,
+      summary: { totalKeys, orphanCount: 0, uncertainCount: orphanResult.uncertainCount, misplacedCount, dynamicMatchedCount, ignoredCount, filesScanned: totalFilesScanned, scanScope, message: messageParts.join(' ') },
     }
     const zeroReportPath = opts.outputFile ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (zeroReportPath) {
@@ -355,16 +469,20 @@ export async function removeOrphanKeys(opts: {
     const output: Record<string, unknown> = {
       orphanKeys: orphansByLayer,
       uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
+      misplacedUsages,
+      misplacedUsageNote,
       summary: {
         dryRun: true,
         totalKeys,
         orphanCount,
         uncertainCount: orphanResult.uncertainCount,
+        misplacedCount,
         dynamicMatchedCount,
         ignoredCount,
-        usedCount: totalKeys - orphanCount - orphanResult.uncertainCount,
+        usedCount: totalKeys - orphanCount - orphanResult.uncertainCount - misplacedCount,
         filesScanned: totalFilesScanned,
-        message: `Found ${orphanCount} orphan key(s) safe to remove.${orphanResult.uncertainCount > 0 ? ` ${orphanResult.uncertainCount} uncertain key(s) excluded (overlap with dynamic translation patterns).` : ''} ${dynamicMatchedCount > 0 ? `${dynamicMatchedCount} key(s) matched dynamic patterns and were excluded. ` : ''}${ignoredCount > 0 ? `${ignoredCount} key(s) matched ignore patterns and were excluded. ` : ''}Call again with dryRun: false to remove them.`,
+        scanScope,
+        message: `Found ${orphanCount} orphan key(s) safe to remove.${orphanResult.uncertainCount > 0 ? ` ${orphanResult.uncertainCount} uncertain key(s) excluded (overlap with dynamic translation patterns).` : ''}${misplacedCount > 0 ? ` ${misplacedCount} key(s) referenced only outside their layer's scope were excluded (see misplacedUsages).` : ''} ${dynamicMatchedCount > 0 ? `${dynamicMatchedCount} key(s) matched dynamic patterns and were excluded. ` : ''}${ignoredCount > 0 ? `${ignoredCount} key(s) matched ignore patterns and were excluded. ` : ''}Call again with dryRun: false to remove them.`,
       },
     }
     if (allDynamicKeys.length > 0) {
@@ -419,16 +537,20 @@ export async function removeOrphanKeys(opts: {
   const removalOutput: Record<string, unknown> = {
     removed: removedByLayer,
     uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
+    misplacedUsages,
+    misplacedUsageNote,
     summary: {
       dryRun: false,
       totalKeys,
       removedCount: orphanCount,
       uncertainCount: orphanResult.uncertainCount,
+      misplacedCount,
       dynamicMatchedCount,
       ignoredCount,
       remainingCount: totalKeys - orphanCount,
       filesWritten: totalFilesWritten,
       filesScanned: totalFilesScanned,
+      scanScope,
     },
   }
 
