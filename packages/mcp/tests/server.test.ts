@@ -147,6 +147,17 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.protectedLocales).toEqual([])
   })
 
+  it('discover without a projectDir argument defaults to I18N_PROJECT_DIR', async () => {
+    // Tools must honor the env default, not the test process cwd (issue #264).
+    const { result, json } = await callTool('discover', {})
+
+    expect(result.isError).toBeFalsy()
+    expect(json?.defaultLocale).toBe('de')
+    expect(json?.layers).toEqual([
+      expect.objectContaining({ layer: 'root' }),
+    ])
+  })
+
   it('discover surfaces protectedLocales resolved to canonical codes', async () => {
     // Refs may use any accepted form (here a file name and an unknown entry);
     // discover resolves them to canonical codes and drops unknown entries.

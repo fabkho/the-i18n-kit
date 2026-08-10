@@ -35,6 +35,9 @@ import {
 
 import type { TranslateFn, ProgressFn, ProjectConfig, LlmProvider } from 'the-i18n-cli'
 
+// Every tool, resource, and prompt handler must default projectDir to this —
+// falling through to core's own process.cwd() default would ignore
+// I18N_PROJECT_DIR (the documented env contract).
 const DEFAULT_PROJECT_DIR = process.env.I18N_PROJECT_DIR ?? process.cwd()
 
 // ─── Translation backend (resolved once at startup) ───────────────
@@ -169,7 +172,7 @@ function jsonContent(data: unknown) {
 const projectDirInput = () => z
   .string()
   .optional()
-  .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".')
+  .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".')
 
 const outputFileInput = (example: string) => z
   .string()
@@ -236,10 +239,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the project root. Defaults to server cwd.'),
+          .describe('Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd.'),
       }),
     },
-    async ({ projectDir }) => {
+    async ({ projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
         // detectConfig first: it warms the config cache listLocaleDirs reuses
         const config = await detectConfig(projectDir)
@@ -285,10 +288,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
       }),
     },
-    async ({ layer, locale, projectDir }) => {
+    async ({ layer, locale, projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
         const result = await listNamespaces({ layer, locale, projectDir })
         return jsonContent(result)
@@ -323,10 +326,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
       }),
     },
-    async ({ layer, locale, keys, compact, projectDir }) => {
+    async ({ layer, locale, keys, compact, projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
         const result = await getTranslations({ layer, locale, keys, compact, projectDir })
         return jsonContent(result)
@@ -372,10 +375,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
       }),
     },
-    async ({ layer, translations, mode, dryRun, projectDir }) => {
+    async ({ layer, translations, mode, dryRun, projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
         const result = await writeTranslations({ layer, translations, mode, dryRun, projectDir })
         return jsonContent(result)
@@ -409,14 +412,14 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
         outputFile: z
           .string()
           .optional()
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/missing-translations.json"'),
       }),
     },
-    async ({ layer, referenceLocale, targetLocales, projectDir, outputFile }) => {
+    async ({ layer, referenceLocale, targetLocales, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
       try {
         const result = await getMissingTranslations({ layer, referenceLocale, targetLocales, projectDir, outputFile })
         return jsonContent(result)
@@ -453,14 +456,14 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
         outputFile: z
           .string()
           .optional()
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/search-results.json"'),
       }),
     },
-    async ({ query, searchIn, layer, locale, projectDir, outputFile }) => {
+    async ({ query, searchIn, layer, locale, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
       try {
         const result = await searchTranslations({ query, searchIn, layer, locale, projectDir, outputFile })
         return jsonContent(result)
@@ -492,10 +495,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
       }),
     },
-    async ({ layer, keys, dryRun, projectDir }) => {
+    async ({ layer, keys, dryRun, projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
         const result = await removeTranslations({ layer, keys, dryRun, projectDir })
         return jsonContent(result)
@@ -530,10 +533,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
       }),
     },
-    async ({ layer, oldKey, newKey, dryRun, projectDir }) => {
+    async ({ layer, oldKey, newKey, dryRun, projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
         const result = await renameTranslationKey({ layer, oldKey, newKey, dryRun, projectDir })
         return jsonContent(result)
@@ -586,10 +589,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
       }),
     },
-    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, compact, projectDir }, ctx) => {
+    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, compact, projectDir = DEFAULT_PROJECT_DIR }, ctx) => {
       try {
         // Invariant: translateMissing invokes onProgressTotal during its
         // pre-scan, before the first progressFn call — progressTotal is
@@ -685,10 +688,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd.'),
       }),
     },
-    async ({ layer, key, sourceLocale, sourceValue, targetLocales, overwrite, dryRun, includePreview, projectDir }) => {
+    async ({ layer, key, sourceLocale, sourceValue, targetLocales, overwrite, dryRun, includePreview, projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
         const result = await translateKey({
           layer,
@@ -749,14 +752,14 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
         outputFile: z
           .string()
           .optional()
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/orphan-keys.json"'),
       }),
     },
-    async ({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile }) => {
+    async ({ layer, locale, scanDirs, excludeDirs, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
       try {
         const result = await findOrphanKeys({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile })
         return jsonContent(result)
@@ -796,7 +799,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         outputFile: outputFileInput('/tmp/undefined-keys.json'),
       }),
     },
-    async ({ locale, scanDirs, excludeDirs, projectDir, outputFile }) => {
+    async ({ locale, scanDirs, excludeDirs, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
       try {
         const result = await checkUndefinedKeys({ locale, scanDirs, excludeDirs, projectDir, outputFile })
         return jsonContent(result)
@@ -827,7 +830,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         outputFile: outputFileInput('/tmp/duplicate-keys.json'),
       }),
     },
-    async ({ locale, projectDir, outputFile }) => {
+    async ({ locale, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
       try {
         const result = await findDuplicateKeys({ locale, projectDir, outputFile })
         return jsonContent(result)
@@ -871,14 +874,14 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
         outputFile: z
           .string()
           .optional()
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/cleanup-unused.json"'),
       }),
     },
-    async ({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir, outputFile }) => {
+    async ({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
       try {
         const result = await removeOrphanKeys({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir, outputFile })
         return jsonContent(result)
@@ -912,10 +915,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         projectDir: z
           .string()
           .optional()
-          .describe('Absolute path to the project root. Defaults to server cwd. Example: "/home/user/my-app".'),
+          .describe('Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
       }),
     },
-    async ({ locales, layer, dryRun, projectDir }) => {
+    async ({ locales, layer, dryRun, projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
         const result = await scaffoldLocaleFiles({ locales, layer, dryRun, projectDir })
         return jsonContent(result)
@@ -993,7 +996,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
       argsSchema: z.object({
         layer: z.string().optional().describe('Target layer (e.g., "root", "app-admin"). If omitted, uses layerRules from project config.'),
         namespace: z.string().optional().describe('Key namespace for the feature (e.g., "admin.users", "common.actions")'),
-        projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
+        projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd.'),
       }),
     },
     async ({ layer, namespace, projectDir }) => {
@@ -1046,7 +1049,7 @@ Follow these steps:
       description: 'Add a new language to the project: update framework config, scaffold empty locale files, then translate all keys.',
       argsSchema: z.object({
         language: z.string().describe('Language to add (e.g., "Swedish", "sv", "sv-SE")'),
-        projectDir: z.string().optional().describe('Absolute path to the project root. Defaults to server cwd.'),
+        projectDir: z.string().optional().describe('Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd.'),
       }),
     },
     async ({ language, projectDir }) => {
