@@ -18,10 +18,16 @@ export {
   findOrphanKeys,
   scanCodeUsage,
   removeOrphanKeys,
+  findDuplicateKeys,
   scaffoldLocaleFiles,
   listNamespaces,
   findLocaleImpl,
   resolveProtectedLocales,
+} from './core/operations.js'
+export type {
+  DuplicateKeyCollision,
+  FindDuplicateKeysResult,
+  FindDuplicateKeysSummary,
 } from './core/operations.js'
 
 // Core types

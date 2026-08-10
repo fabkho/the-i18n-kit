@@ -24,6 +24,7 @@ export const commands = {
   }),
   'translate-key': () => import('./translate-key.js').then(m => m.default as CommandDef),
   'scan': () => import('./scan.js').then(m => m.default as CommandDef),
+  'find-duplicates': () => import('./find-duplicates.js').then(m => m.default as CommandDef),
   'remove-orphans': () => import('./remove-orphans.js').then(m => m.default as CommandDef),
   'scaffold': () => import('./scaffold.js').then(m => m.default as CommandDef),
 } as const

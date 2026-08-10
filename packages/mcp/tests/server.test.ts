@@ -92,6 +92,7 @@ describe('the-i18n-mcp server over in-memory transport', () => {
 
     expect(names).toEqual([
       'discover',
+      'find_duplicate_keys',
       'find_orphan_keys',
       'get_missing_translations',
       'get_translations',
@@ -175,6 +176,19 @@ describe('the-i18n-mcp server over in-memory transport', () => {
       expect.objectContaining({ locale: 'en', mode: 'agent', missing: 2, skipped: 2 }),
     ])
     expect(json?.results).toBeUndefined()
+  })
+
+  it('find_duplicate_keys returns a valid empty result for a single-layer project', async () => {
+    const { json } = await callTool('find_duplicate_keys', { projectDir })
+
+    // One app, one layer — no (shared, child) pairs exist to check.
+    expect(json?.collisions).toEqual([])
+    expect(json?.summary.totalCollisions).toBe(0)
+    expect(json?.summary.divergentCount).toBe(0)
+    expect(json?.summary.pairsChecked).toBe(0)
+    expect(json?.summary.locale).toBe('de')
+    expect(json?.summary.message).toBeDefined()
+    expect(json?.guidance).toBeDefined()
   })
 
   it('rejects invalid tool input via schema validation', async () => {
