@@ -90,12 +90,12 @@ function deriveLayerPairs(config: I18nConfig, graph: ReturnType<typeof buildLaye
 
   for (const app of config.apps ?? []) {
     const ordered = orderedCanonicalLayers(app.layers, graph, canonicalByName)
-    for (let i = 0; i < ordered.length; i++) {
-      for (let j = i + 1; j < ordered.length; j++) {
-        const id = [ordered[i].layer, ordered[j].layer].sort().join('\u0000')
+    for (const [i, child] of ordered.entries()) {
+      for (const shared of ordered.slice(i + 1)) {
+        const id = [child.layer, shared.layer].sort().join('\u0000')
         if (seen.has(id)) continue
         seen.add(id)
-        pairs.push({ shared: ordered[j], child: ordered[i] })
+        pairs.push({ shared, child })
       }
     }
   }

@@ -110,10 +110,10 @@ export function deriveLayerName(
 
   if (!posixRel.startsWith('..')) {
     const segments = posixRel.split('/')
-    let candidate = segments[segments.length - 1]
+    let candidate = segments.pop() ?? posixRel
 
     if (usedNames) {
-      for (let i = segments.length - 2; i >= 0; i--) {
+      for (let i = segments.length - 1; i >= 0; i--) {
         if (!usedNames.has(candidate)) break
         candidate = `${segments[i]}/${candidate}`
       }
@@ -123,10 +123,10 @@ export function deriveLayerName(
   }
 
   const parts = layerRootDir.replace(/\\/g, '/').split('/')
-  let candidate = parts[parts.length - 1]
+  let candidate = parts.pop() ?? layerRootDir
 
   if (usedNames) {
-    for (let i = parts.length - 2; i >= 0; i--) {
+    for (let i = parts.length - 1; i >= 0; i--) {
       if (!usedNames.has(candidate)) break
       candidate = `${parts[i]}/${candidate}`
     }

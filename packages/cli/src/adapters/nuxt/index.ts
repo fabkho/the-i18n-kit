@@ -50,12 +50,14 @@ export class NuxtAdapter implements FrameworkAdapter {
       )
     }
 
-    if (appDirs.length === 1) {
-      const config = await loadSingleApp(appDirs[0], projectDir)
-      if (appDirs[0] !== projectDir) {
+    const [soleAppDir] = appDirs
+    if (appDirs.length === 1 && soleAppDir !== undefined) {
+      const config = await loadSingleApp(soleAppDir, projectDir)
+      if (soleAppDir !== projectDir) {
         config.rootDir = projectDir
-        if (config.apps.length > 0) {
-          config.apps[0].rootDir = projectDir
+        const rootApp = config.apps[0]
+        if (rootApp) {
+          rootApp.rootDir = projectDir
         }
       }
       log.info(`Detected ${config.locales.length} locales, ${config.localeDirs.length} locale directories`)
