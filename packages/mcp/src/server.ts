@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
-
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server'
+import type { CacheHint } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
 const require = createRequire(import.meta.url)
@@ -176,6 +176,9 @@ const outputFileInput = (example: string) => z
   .optional()
   .describe(`Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "${example}"`)
 
+// SEP-2549 cache hints for the cacheable 2026-07-28 results.
+const STATIC_SURFACE_CACHE: CacheHint = { ttlMs: 3_600_000, cacheScope: 'private' }
+
 export interface CreateServerOptions {
   /**
    * Test-only seam: inject a TranslateFn directly, bypassing environment
@@ -196,10 +199,26 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     ? { mode: 'provider', translateFn: options.translateFn }
     : await resolveTranslationBackend()
 
-  const server = new McpServer({
-    name: 'the-i18n-mcp',
-    version,
-  })
+  const server = new McpServer(
+    {
+      name: 'the-i18n-mcp',
+      version,
+    },
+    {
+      // 2026-07-28 responses only — legacy-era responses never carry cache
+      // fields. Everything is 'private': locale data is project-local.
+      cacheHints: {
+        // Tool/prompt registrations and the discover advertisement are fixed
+        // for the process lifetime.
+        'tools/list': STATIC_SURFACE_CACHE,
+        'prompts/list': STATIC_SURFACE_CACHE,
+        'server/discover': STATIC_SURFACE_CACHE,
+        // Resources carry no cache hints: the write tools mutate locale
+        // files and clients have no guaranteed invalidation channel, so any
+        // TTL would let an agent read stale data right after its own write.
+      },
+    },
+  )
 
   // ─── Tool: discover ────────────────────────────────────────────
 
@@ -213,12 +232,12 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         + 'counts and top-level key namespaces, and the active translation mode ("provider" when the '
         + 'server has an env-configured LLM provider, "agent" otherwise). Call this first to '
         + 'understand the project before reading or writing translations.',
-      inputSchema: {
+      inputSchema: z.object({
         projectDir: z
           .string()
           .optional()
           .describe('Absolute path to the project root. Defaults to server cwd.'),
-      },
+      }),
     },
     async ({ projectDir }) => {
       try {
@@ -254,7 +273,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         'List the translation key tree grouped by namespace prefix. '
         + 'Returns a hierarchical view of all keys with counts per namespace node. '
         + 'Use this to explore available keys without guessing path prefixes.',
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .optional()
@@ -267,7 +286,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to the project root. Defaults to server cwd. Example: "/home/user/my-app".'),
-      },
+      }),
     },
     async ({ layer, locale, projectDir }) => {
       try {
@@ -287,7 +306,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
       title: 'Get Translations',
       description:
         'Get translation values for given key paths from a specific locale and layer. Use "*" as locale to read from all locales.',
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .describe('Layer name from discover (e.g., "root", "app-admin"). Call discover to discover available layers.'),
@@ -305,7 +324,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
-      },
+      }),
     },
     async ({ layer, locale, keys, compact, projectDir }) => {
       try {
@@ -329,7 +348,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         + 'Mode "add" only creates new keys, skipping existing ones. '
         + 'Mode "update" only modifies existing keys, skipping missing ones. '
         + 'Keys are inserted in alphabetical order. Use dryRun to preview without writing.',
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .describe('Layer name (e.g., "root", "app-admin"). Discover layers via the discover tool.'),
@@ -354,7 +373,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
-      },
+      }),
     },
     async ({ layer, translations, mode, dryRun, projectDir }) => {
       try {
@@ -374,7 +393,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
       title: 'Get Missing Translations',
       description:
         'Find translation keys that exist in the reference locale but are missing in other locales. Scans a specific layer or all layers.',
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .optional()
@@ -395,7 +414,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/missing-translations.json"'),
-      },
+      }),
     },
     async ({ layer, referenceLocale, targetLocales, projectDir, outputFile }) => {
       try {
@@ -415,7 +434,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
       title: 'Search Translations',
       description:
         'Search translation files by key path or value. Simple case-insensitive substring match — not fuzzy or regex. Useful for finding existing translations before adding duplicates.',
-      inputSchema: {
+      inputSchema: z.object({
         query: z
           .string()
           .describe('Substring to search for. Matched against translation keys and/or string values. Case-insensitive. Example: "save" matches key "common.actions.save" or value "Save changes".'),
@@ -439,7 +458,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/search-results.json"'),
-      },
+      }),
     },
     async ({ query, searchIn, layer, locale, projectDir, outputFile }) => {
       try {
@@ -459,7 +478,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
       title: 'Remove Translations',
       description:
         'Remove one or more translation keys from ALL locale files in the specified layer. Use dryRun to preview changes before applying them.',
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .describe('Layer name from discover (e.g., "root", "app-admin"). The key will be removed from ALL locale files in this layer.'),
@@ -474,7 +493,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
-      },
+      }),
     },
     async ({ layer, keys, dryRun, projectDir }) => {
       try {
@@ -494,7 +513,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
       title: 'Rename Translation Key',
       description:
         'Rename/move a translation key across ALL locale files in a layer. Preserves the value in every locale. Use dryRun to preview changes before applying them.',
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .describe('Layer name from discover (e.g., "root", "app-admin"). The key will be renamed in ALL locale files in this layer.'),
@@ -512,7 +531,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
-      },
+      }),
     },
     async ({ layer, oldKey, newKey, dryRun, projectDir }) => {
       try {
@@ -536,7 +555,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         title: 'Translate Missing Translations',
         readOnlyHint: false,
       },
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .describe('Layer name from discover to translate (e.g., "root", "app-admin"). Call discover to discover available layers.'),
@@ -568,20 +587,20 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd. Example: "/home/user/my-app".'),
-      },
+      }),
     },
-    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, compact, projectDir }, extra) => {
+    async ({ layer, referenceLocale, targetLocales, keys, batchSize, dryRun, compact, projectDir }, ctx) => {
       try {
         // Invariant: translateMissing invokes onProgressTotal during its
         // pre-scan, before the first progressFn call — progressTotal is
         // always set by the time a notification is sent.
-        const progressToken = extra._meta?.progressToken
+        const progressToken = ctx.mcpReq._meta?.progressToken
         let progressCurrent = 0
         let progressTotal: number | undefined
         const progressFn: ProgressFn = async (message: string) => {
           if (progressToken === undefined) return
           progressCurrent++
-          await extra.sendNotification({
+          await ctx.mcpReq.notify({
             method: 'notifications/progress',
             params: {
               progressToken,
@@ -633,7 +652,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         title: 'Translate Single Key',
         readOnlyHint: false,
       },
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .describe('Layer name from discover to update (e.g., "root", "app-admin").'),
@@ -667,7 +686,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
-      },
+      }),
     },
     async ({ layer, key, sourceLocale, sourceValue, targetLocales, overwrite, dryRun, includePreview, projectDir }) => {
       try {
@@ -710,7 +729,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         + 'Also detects dynamic key patterns and uncertain matches. '
         + 'Scope-aware: each layer is checked only against code of the apps that consume it (summary.scanScope shows each layer\'s effective scope); '
         + 'keys referenced only from non-consuming apps are reported separately as misplacedUsages, not orphans.',
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .optional()
@@ -735,7 +754,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/orphan-keys.json"'),
-      },
+      }),
     },
     async ({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile }) => {
       try {
@@ -760,7 +779,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         + 'a key defined only in a layer the using app does not consume is still undefined for that app. '
         + 'Known limitation: extraction is line-based and static — dynamically built keys (template literals, '
         + 'concatenation) cannot be verified and are reported as uncertainKeys, never as hard findings.',
-      inputSchema: {
+      inputSchema: z.object({
         locale: z
           .string()
           .optional()
@@ -775,7 +794,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .describe('Directory names to skip when scanning source files. Example: ["storybook", "__tests__", "node_modules"].'),
         projectDir: projectDirInput(),
         outputFile: outputFileInput('/tmp/undefined-keys.json'),
-      },
+      }),
     },
     async ({ locale, scanDirs, excludeDirs, projectDir, outputFile }) => {
       try {
@@ -799,14 +818,14 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         + 'value shadows the shared one — collisions with divergent values are the dangerous case, '
         + 'because the shared value silently never shows. Compares one reference locale and reports '
         + 'each collision with both values and a divergent flag. Fix by deleting one side, never by moving.',
-      inputSchema: {
+      inputSchema: z.object({
         locale: z
           .string()
           .optional()
           .describe('Locale code to compare values in (e.g., "de", "en-US"). Defaults to the project default locale.'),
         projectDir: projectDirInput(),
         outputFile: outputFileInput('/tmp/duplicate-keys.json'),
-      },
+      }),
     },
     async ({ locale, projectDir, outputFile }) => {
       try {
@@ -828,7 +847,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         'Find orphan keys (not referenced in source code) and remove them from all locale files. Always does a dry run first. '
         + 'Scope-aware like find_orphan_keys: each layer is checked against its consuming apps (summary.scanScope), and keys referenced only from '
         + 'non-consuming apps are reported as misplacedUsages and never removed.',
-      inputSchema: {
+      inputSchema: z.object({
         layer: z
           .string()
           .optional()
@@ -857,7 +876,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/cleanup-unused.json"'),
-      },
+      }),
     },
     async ({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir, outputFile }) => {
       try {
@@ -877,7 +896,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
       title: 'Scaffold Locale',
       description:
         'Create empty locale files for new languages. Copies the key structure from the default locale with all values set to empty strings. Supports both JSON (Nuxt) and PHP (Laravel) formats. Does NOT modify framework config — the agent must add the locale to the framework config before calling this tool.',
-      inputSchema: {
+      inputSchema: z.object({
         locales: z
           .array(z.string())
           .optional()
@@ -894,7 +913,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to the project root. Defaults to server cwd. Example: "/home/user/my-app".'),
-      },
+      }),
     },
     async ({ locales, layer, dryRun, projectDir }) => {
       try {
@@ -971,11 +990,11 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     {
       title: 'Add Feature Translations',
       description: 'Guided workflow for adding i18n translations when building a new feature.',
-      argsSchema: {
+      argsSchema: z.object({
         layer: z.string().optional().describe('Target layer (e.g., "root", "app-admin"). If omitted, uses layerRules from project config.'),
         namespace: z.string().optional().describe('Key namespace for the feature (e.g., "admin.users", "common.actions")'),
         projectDir: z.string().optional().describe('Absolute path to the Nuxt project root. Defaults to server cwd.'),
-      },
+      }),
     },
     async ({ layer, namespace, projectDir }) => {
       const dir = projectDir ?? DEFAULT_PROJECT_DIR
@@ -1025,10 +1044,10 @@ Follow these steps:
     {
       title: 'Add Language',
       description: 'Add a new language to the project: update framework config, scaffold empty locale files, then translate all keys.',
-      argsSchema: {
+      argsSchema: z.object({
         language: z.string().describe('Language to add (e.g., "Swedish", "sv", "sv-SE")'),
         projectDir: z.string().optional().describe('Absolute path to the project root. Defaults to server cwd.'),
-      },
+      }),
     },
     async ({ language, projectDir }) => {
       const dir = projectDir ?? DEFAULT_PROJECT_DIR
