@@ -2,17 +2,23 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { join } from 'node:path'
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
+import { createMcpHandler, InMemoryTransport } from '@modelcontextprotocol/server'
+import type { McpHttpHandler, McpServer } from '@modelcontextprotocol/server'
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { clearConfigCache } from 'the-i18n-cli'
 import type { TranslateFn } from 'the-i18n-cli'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
 /**
  * Transport-level tests: a linked client/server pair over the SDK's in-memory
  * transport, against a real temp project resolved by the CLI's generic
  * adapter. Covers both translation modes: agent (no backend configured) and
  * provider (a TranslateFn injected through the test-only createServer seam).
+ *
+ * Dual-era coverage drives createMcpHandler in-process through its fetch
+ * function (the SDK's documented no-socket seam for 2026-07-28 behavior);
+ * InMemoryTransport pairs connect 2025-era instances only. The production
+ * stdio entry (serveStdio) pins the era per connection from the same
+ * createServer factory exercised here.
  */
 
 let projectDir: string
@@ -368,5 +374,86 @@ describe('partial provider env config', () => {
 
     expect(json?.summary.mode).toBe('agent')
     expect(json?.fallbackContexts?.en).toBeDefined()
+  })
+})
+
+describe('dual-era serving through one factory', () => {
+  // ttlMs/cacheScope are wire-level fields hidden from the public result
+  // types but kept on the runtime objects — readable via this cast only.
+  type CacheStamped = { ttlMs?: number, cacheScope?: string }
+
+  let handler: McpHttpHandler
+  let modernClient: Client
+
+  const inProcessTransport = () =>
+    new StreamableHTTPClientTransport(new URL('http://in-process.test/mcp'), {
+      fetch: (url, init) => handler.fetch(new Request(url, init)),
+    })
+
+  beforeAll(async () => {
+    const { createServer } = await import('../src/server.js')
+    handler = createMcpHandler(() => createServer())
+    modernClient = new Client(
+      { name: 'modern-client', version: '0.0.0' },
+      { versionNegotiation: { mode: 'auto' } },
+    )
+    await modernClient.connect(inProcessTransport())
+  })
+
+  afterAll(async () => {
+    await modernClient.close()
+    await handler.close()
+  })
+
+  it('negotiates the modern era via server/discover and serves tool calls', async () => {
+    expect(modernClient.getProtocolEra()).toBe('modern')
+
+    const { tools } = await modernClient.listTools()
+    expect(tools.map(t => t.name)).toContain('discover')
+
+    const { json } = await callToolOn(modernClient, 'discover', { projectDir })
+    expect(json?.defaultLocale).toBe('de')
+    expect(json?.translationMode).toBe('agent')
+  })
+
+  it('advertises server identity and capabilities on server/discover', () => {
+    expect(modernClient.getServerVersion()).toMatchObject({ name: 'the-i18n-mcp' })
+
+    const discover = modernClient.getDiscoverResult()
+    expect(discover?.supportedVersions).toContain('2026-07-28')
+    expect(discover?.capabilities?.tools).toBeDefined()
+    expect(discover?.capabilities?.resources).toBeDefined()
+    expect(discover?.capabilities?.prompts).toBeDefined()
+  })
+
+  it('stamps the configured cache hints on modern-era cacheable results', async () => {
+    const discover = modernClient.getDiscoverResult() as CacheStamped | undefined
+    expect(discover?.ttlMs).toBe(3_600_000)
+    expect(discover?.cacheScope).toBe('private')
+
+    const toolList = await modernClient.listTools() as CacheStamped
+    expect(toolList.ttlMs).toBe(3_600_000)
+    expect(toolList.cacheScope).toBe('private')
+
+    const resourceRead = await modernClient.readResource({ uri: 'i18n:///root/de' }) as CacheStamped
+    expect(resourceRead.ttlMs).toBe(15_000)
+    expect(resourceRead.cacheScope).toBe('private')
+  })
+
+  it('serves a legacy-only client from the same entry point', async () => {
+    const legacyClient = new Client({ name: 'legacy-client', version: '0.0.0' })
+    await legacyClient.connect(inProcessTransport())
+    try {
+      expect(legacyClient.getProtocolEra()).toBe('legacy')
+
+      const toolList = await legacyClient.listTools()
+      expect(toolList.tools.map(t => t.name)).toContain('discover')
+      expect((toolList as CacheStamped).ttlMs).toBeUndefined()
+
+      const { json } = await callToolOn(legacyClient, 'discover', { projectDir })
+      expect(json?.defaultLocale).toBe('de')
+    } finally {
+      await legacyClient.close()
+    }
   })
 })
