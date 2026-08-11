@@ -29,6 +29,16 @@ export interface ScanPatternSet {
    * substituting declared constants there could wrongly narrow a pattern.
    */
   resolveLocalConsts?: boolean
+  /**
+   * Language family for the context-free bare-candidate collectors (#288).
+   * 'js' (default) runs the template-literal and `+`-concat shapes; 'php'
+   * runs the double-quoted `{$var}` interpolation shape instead. Ungated,
+   * the PHP shape matches Vue template attributes (`v-if="$slots.header"`),
+   * producing `${_}.header`-class candidates that suppress every key ending
+   * in those segments. Language-neutral shapes (dotted literals,
+   * trailing-dot prefixes) always run.
+   */
+  bareShapes?: 'js' | 'php'
 }
 
 // ─── Vue / Nuxt Patterns ────────────────────────────────────────
@@ -66,6 +76,7 @@ export const VUE_NUXT_PATTERNS: ScanPatternSet = {
   requiresDotForCallee: (callee: string) => callee === 't',
   promoteStaticDynamicMatches: true,
   resolveLocalConsts: true,
+  bareShapes: 'js',
 }
 
 // ─── Laravel / PHP Patterns ─────────────────────────────────────
@@ -105,6 +116,7 @@ export const LARAVEL_PATTERNS: ScanPatternSet = {
   staticKeyPatterns: [LARAVEL_STATIC_KEY],
   dynamicKeyPatterns: [LARAVEL_DYNAMIC_KEY],
   concatKeyPatterns: [LARAVEL_CONCAT_KEY],
+  bareShapes: 'php',
 }
 
 // ─── Resolution ─────────────────────────────────────────────────
