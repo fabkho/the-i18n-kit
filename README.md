@@ -21,7 +21,7 @@ The-i18n-kit gives you and your agent purpose-built tools for exactly these oper
 
 ## How It Works
 
-The-i18n-kit auto-detects your project structure (Nuxt, Laravel, or any generic setup), then gives you two interfaces:
+The-i18n-kit auto-detects your project structure (Nuxt, Laravel, Vue, React/Next.js, or any generic setup), then gives you two interfaces:
 
 **A CLI** for direct use in the terminal:
 ```bash
@@ -316,15 +316,21 @@ Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *
 
 ## Supported Frameworks
 
-| Framework | Locale Format | Auto-Detection |
-|-----------|--------------|----------------|
-| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` |
-| **Laravel** (9+) | PHP arrays | `artisan`, `composer.json`, `lang/` |
-| **Generic** | JSON or PHP | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` |
+| Framework | Locale Format | Auto-Detection | Locale Directories Probed |
+|-----------|--------------|----------------|---------------------------|
+| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` | `i18n/locales/` per app and per layer; honours each layer's `langDir` (default `locales`) |
+| **Laravel** (9+) | PHP arrays or JSON | `artisan`, `composer.json`, `lang/` | `lang/` or `resources/lang/` — PHP subdirectories (`lang/en/*.php`) or flat JSON (`lang/en.json`) |
+| **Vue** (SPA, v3) | JSON | `vue` in dependencies without Nuxt; `vue-i18n` raises confidence | `src/locales`, `locales`, `src/i18n/locales`, `i18n/locales`, `src/plugins/i18n/locales`, `src/i18n` — or a `localeDir`/`messages` path read out of `src/i18n/index.{ts,js}`, `src/plugins/i18n.{ts,js}`, `src/i18n.{ts,js}`, `i18n.{ts,js}` |
+| **React / Next.js** | JSON | `next`, or `react` + `react-dom`, without Vue/Nuxt; `next-intl`, `next-translate`, `next-i18next`, `react-i18next` or `react-intl` raises confidence | `messages`, `public/locales`, `locales`, `src/i18n`, `src/locales`, `i18n` — namespaced (`messages/en/common.json`) or flat (`locales/en.json`). A `next.config.{ts,js,mjs}` using `createNextIntlPlugin` or `next-translate` pins the directory directly |
+| **Generic** | JSON or PHP | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` | Exactly the paths listed in `localeDirs` |
+
+Detection is confidence-scored, not order-based: the highest-scoring adapter wins. A `.i18n-mcp.json` carrying both `localeDirs` and `defaultLocale` scores highest, so an explicit config always beats framework inference. Set `"framework": "vue"` (or any adapter name) in that file to force one adapter and skip scoring entirely.
+
+The Vue and React/Next adapters resolve a single locale directory and take the alphabetically first discovered locale as the default. If that is not your reference locale, pin it with `localeDirs` + `defaultLocale` so the generic adapter takes over.
 
 ## Using with Any Framework (Generic Adapter)
 
-For projects that aren't Nuxt or Laravel, create a `.i18n-mcp.json` at your project root:
+For projects that aren't covered by a framework adapter, create a `.i18n-mcp.json` at your project root:
 
 ```json
 {

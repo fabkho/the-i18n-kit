@@ -6,7 +6,7 @@
 
 MCP server for managing i18n translation files — gives your AI agent full control over your app's translations without dumping entire locale files into context.
 
-13 purpose-built tools that let the agent work surgically — touching only the keys it needs. Auto-detects Nuxt, Laravel, or any project with JSON/PHP locale files.
+13 purpose-built tools that let the agent work surgically — touching only the keys it needs. Auto-detects Nuxt, Laravel, Vue, React/Next.js, or any project with JSON/PHP locale files.
 
 Part of [the-i18n-kit](https://github.com/fabkho/the-i18n-kit) monorepo. For CLI usage, see [the-i18n-cli](https://www.npmjs.com/package/the-i18n-cli).
 
@@ -89,11 +89,17 @@ Then just ask your agent:
 
 ## Supported Frameworks
 
-| Framework | Locale Format | Auto-Detection |
-|-----------|--------------|----------------|
-| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` |
-| **Laravel** (9+) | PHP arrays | `artisan`, `composer.json`, `lang/` |
-| **Generic** | JSON or PHP | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` |
+| Framework | Locale Format | Auto-Detection | Locale Directories Probed |
+|-----------|--------------|----------------|---------------------------|
+| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` | `i18n/locales/` per app and per layer; honours each layer's `langDir` (default `locales`) |
+| **Laravel** (9+) | PHP arrays or JSON | `artisan`, `composer.json`, `lang/` | `lang/` or `resources/lang/` — PHP subdirectories (`lang/en/*.php`) or flat JSON (`lang/en.json`) |
+| **Vue** (SPA, v3) | JSON | `vue` in dependencies without Nuxt; `vue-i18n` raises confidence | `src/locales`, `locales`, `src/i18n/locales`, `i18n/locales`, `src/plugins/i18n/locales`, `src/i18n` — or a `localeDir`/`messages` path read out of `src/i18n/index.{ts,js}`, `src/plugins/i18n.{ts,js}`, `src/i18n.{ts,js}`, `i18n.{ts,js}` |
+| **React / Next.js** | JSON | `next`, or `react` + `react-dom`, without Vue/Nuxt; `next-intl`, `next-translate`, `next-i18next`, `react-i18next` or `react-intl` raises confidence | `messages`, `public/locales`, `locales`, `src/i18n`, `src/locales`, `i18n` — namespaced (`messages/en/common.json`) or flat (`locales/en.json`). A `next.config.{ts,js,mjs}` using `createNextIntlPlugin` or `next-translate` pins the directory directly |
+| **Generic** | JSON or PHP | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` | Exactly the paths listed in `localeDirs` |
+
+Detection is confidence-scored: the highest-scoring adapter wins, and a `.i18n-mcp.json` carrying both `localeDirs` and `defaultLocale` outscores framework inference. Set `"framework": "vue"` (or any adapter name) to force one adapter.
+
+The Vue and React/Next adapters resolve a single locale directory and take the alphabetically first discovered locale as the default. To pin a different reference locale, use `localeDirs` + `defaultLocale`.
 
 ## Tools
 
