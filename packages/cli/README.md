@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/the-i18n-cli?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-cli)
 [![License](https://img.shields.io/npm/l/the-i18n-cli?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
 
-CLI and core library for managing i18n translation files — supports Nuxt, Laravel, and any project with JSON or PHP locale files.
+CLI and core library for managing i18n translation files — supports Nuxt, Laravel, Vue, React/Next.js, and any project with JSON or PHP locale files.
 
 Read, write, search, rename, and remove translation keys across all locales and layers from your terminal. Auto-detects your framework, discovers monorepo structures, and handles the file I/O.
 
@@ -135,13 +135,17 @@ Locales listed in `protectedLocales` (see Project Config) are excluded from defa
 
 ## Supported Frameworks
 
-| Framework | Locale Format | Auto-Detection |
-|-----------|--------------|----------------|
-| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` |
-| **Laravel** (9+) | PHP arrays | `artisan`, `composer.json`, `lang/` |
-| **Generic** | JSON or PHP | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` |
+| Framework | Locale Format | Auto-Detection | Locale Directories Probed |
+|-----------|--------------|----------------|---------------------------|
+| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` | `i18n/locales/` per app and per layer; honours each layer's `langDir` (default `locales`) |
+| **Laravel** (9+) | PHP arrays or JSON | `artisan`, `composer.json`, `lang/` | `lang/` or `resources/lang/` — PHP subdirectories (`lang/en/*.php`) or flat JSON (`lang/en.json`) |
+| **Vue** (SPA, v3) | JSON | `vue` in dependencies without Nuxt; `vue-i18n` raises confidence | `src/locales`, `locales`, `src/i18n/locales`, `i18n/locales`, `src/plugins/i18n/locales`, `src/i18n` — or a `localeDir`/`messages` path read out of `src/i18n/index.{ts,js}`, `src/plugins/i18n.{ts,js}`, `src/i18n.{ts,js}`, `i18n.{ts,js}` |
+| **React / Next.js** | JSON | `next`, or `react` + `react-dom`, without Vue/Nuxt; `next-intl`, `next-translate`, `next-i18next`, `react-i18next` or `react-intl` raises confidence | `messages`, `public/locales`, `locales`, `src/i18n`, `src/locales`, `i18n` — namespaced (`messages/en/common.json`) or flat (`locales/en.json`). A `next.config.{ts,js,mjs}` using `createNextIntlPlugin` or `next-translate` pins the directory directly |
+| **Generic** | JSON or PHP | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` | Exactly the paths listed in `localeDirs` |
 
-For projects that aren't Nuxt or Laravel, add a `.i18n-mcp.json`:
+Detection is confidence-scored: the highest-scoring adapter wins, and a `.i18n-mcp.json` carrying both `localeDirs` and `defaultLocale` outscores framework inference. Set `"framework": "vue"` (or any adapter name) to force one adapter.
+
+The Vue and React/Next adapters resolve a single locale directory and take the alphabetically first discovered locale as the default. To pin a different reference locale, use `localeDirs` + `defaultLocale`:
 
 ```json
 {
