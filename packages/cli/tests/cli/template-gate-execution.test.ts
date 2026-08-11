@@ -22,11 +22,23 @@ const binPath = resolve(import.meta.dirname, '../../dist/bin.js')
 
 interface Run { stdout: string, stderr: string, code: number }
 
-async function runScript(script: string, cwd: string, env: Record<string, string>, binDir: string): Promise<Run> {
+/**
+ * GitLab job scripts run under busybox sh in the default alpine image, so they
+ * are exercised with `sh` — running them under bash would hide bash-isms the
+ * runner would reject. The action's steps declare `shell: bash` and use bash
+ * arrays, so those are exercised with bash.
+ */
+async function runScript(
+  script: string,
+  cwd: string,
+  env: Record<string, string>,
+  binDir: string,
+  shell: 'sh' | 'bash' = 'sh',
+): Promise<Run> {
   const scriptPath = join(cwd, '.job.sh')
   await writeFile(scriptPath, script)
   try {
-    const { stdout, stderr } = await execFileAsync('bash', [scriptPath], {
+    const { stdout, stderr } = await execFileAsync(shell, [scriptPath], {
       cwd,
       env: { ...process.env, ...env, PATH: `${binDir}:${process.env.PATH ?? ''}` },
     })
@@ -118,6 +130,69 @@ describe('gitlab-ci.yml job scripts, executed', () => {
       await rm(brokenDir, { recursive: true, force: true })
     })
   })
+
+  /**
+   * The translate job needs a real provider, so its CLI call is stubbed. Its
+   * STATUS branching is the part under test, and I18N_DRY_RUN keeps the run
+   * short of the git and push stages that follow it.
+   */
+  describe('.i18n-translate STATUS branching', () => {
+    async function runTranslate(stubResult: string, stubExit: number): Promise<Run> {
+      const dir = await mkdtemp(join(tmpdir(), 'i18n-tpl-translate-'))
+      const stubBin = join(dir, '.bin')
+      await mkdir(stubBin, { recursive: true })
+      const shim = join(stubBin, 'the-i18n-cli')
+      await writeFile(shim, `#!/bin/sh\ncat <<'JSON'\n${stubResult}\nJSON\nexit ${stubExit}\n`)
+      await chmod(shim, 0o755)
+
+      const run = await runScript(await jobScript('.i18n-translate'), dir, {
+        I18N_PROVIDER: 'openai',
+        I18N_MODEL: 'stub-model',
+        I18N_API_KEY: 'stub',
+        I18N_LAYER: '',
+        I18N_LOCALES: '',
+        I18N_SOURCE_LOCALE: '',
+        I18N_KEYS: '',
+        I18N_BATCH_SIZE: '50',
+        I18N_DRY_RUN: 'true',
+      }, stubBin)
+
+      await rm(dir, { recursive: true, force: true })
+      return run
+    }
+
+    it('exits 0 on a successful run', async () => {
+      const run = await runTranslate(JSON.stringify({ summary: { totalTranslated: 3, totalFailed: 0 } }), 0)
+
+      expect(run.code).toBe(0)
+      expect(run.stdout).toContain('Translated: 3, failed: 0')
+    })
+
+    it('exits 1 and explains the failure when the run itself failed', async () => {
+      const run = await runTranslate(JSON.stringify({ error: { code: 'CONFIG_ERROR', message: 'nope' } }), 1)
+
+      expect(run.code).toBe(1)
+      expect(run.stdout).toContain('translate failed (exit 1)')
+    })
+
+    it('exits 2 and names the gate, distinctly from a failure', async () => {
+      const run = await runTranslate(JSON.stringify({
+        summary: { totalTranslated: 5, totalFailed: 0 },
+        gatesTripped: [{ name: 'fail-on-missing', observed: 12, threshold: 0 }],
+      }), 2)
+
+      expect(run.code).toBe(2)
+      expect(run.stdout).toContain('GATE: fail-on-missing tripped')
+      expect(run.stdout).not.toContain('translate failed')
+    })
+
+    it('trusts the exit code over the counts when they disagree', async () => {
+      const failLooking = JSON.stringify({ summary: { totalTranslated: 0, totalFailed: 9 } })
+
+      expect((await runTranslate(failLooking, 0)).code).toBe(0)
+    })
+  })
+
 })
 
 /**
@@ -165,7 +240,7 @@ describe('action.yml translate step, executed against a stub CLI', () => {
       I18N_PROVIDER: 'openai',
       I18N_API_KEY: 'stub',
       GITHUB_OUTPUT: outputFile,
-    }, binDir)
+    }, binDir, 'bash')
 
     return { ...run, outputs: await readFile(outputFile, 'utf-8') }
   }
@@ -228,21 +303,38 @@ describe('gitlab-ci.yml gate configuration', () => {
   })
 
   it('never decides an outcome from a parsed count', async () => {
-    const raw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
-    const doc = parse(raw) as Record<string, { script?: string[] }>
+    // Both shipped templates, so the regression cannot come back through
+    // whichever one is not under active edit.
+    const gitlabRaw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
+    const gitlabDoc = parse(gitlabRaw) as Record<string, { script?: string[] }>
 
-    for (const [name, job] of Object.entries(doc)) {
-      if (!job?.script) continue
-      const lines = job.script.join('\n').split('\n')
-      for (const line of lines) {
+    const actionRaw = await readFile(join(repoRoot, 'action.yml'), 'utf-8')
+    const actionDoc = parse(actionRaw) as { runs: { steps: Array<{ name?: string, id?: string, run?: string }> } }
+
+    const scripts: Array<[string, string]> = [
+      ...Object.entries(gitlabDoc)
+        .filter(([, job]) => job?.script)
+        .map(([name, job]) => [`gitlab-ci.yml ${name}`, job.script!.join('\n')] as [string, string]),
+      ...actionDoc.runs.steps
+        .filter(step => step.run)
+        .map(step => [`action.yml ${step.id ?? step.name ?? 'step'}`, step.run!] as [string, string]),
+    ]
+
+    // Both templates must be represented, or a rename could silently empty this.
+    expect(scripts.some(([name]) => name.startsWith('gitlab-ci.yml'))).toBe(true)
+    expect(scripts.some(([name]) => name.startsWith('action.yml'))).toBe(true)
+
+    for (const [name, script] of scripts) {
+      for (const line of script.split('\n')) {
         // A jq result may be echoed or assigned, but must never be the
         // subject of a test that exits.
-        if (/\bexit\b/.test(line) && /\$\(jq|\bjq\b/.test(line)) {
+        if (/\bexit\b/.test(line) && /\bjq\b/.test(line)) {
           throw new Error(`${name}: exit decided from a jq expression: ${line.trim()}`)
         }
       }
       // Counts parsed for display must not feed a numeric comparison guarding an exit.
-      expect(job.script.join('\n')).not.toMatch(/if \[ "\$(ORPHAN_COUNT|TRANSLATED|FAILED)"/)
+      expect(script).not.toMatch(/if \[ "\$(ORPHAN_COUNT|TRANSLATED|FAILED)"/)
+      expect(script).not.toMatch(/if \[ "\$\{?(count|failed)\}?" -(gt|eq|lt) 0 \].*\n?\s*(exit|echo "::error)/)
     }
   })
 })

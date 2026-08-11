@@ -155,8 +155,13 @@ runs:
         # Counts are read for the step outputs and the log only — never to
         # decide pass/fail. Tolerant, so a malformed result cannot mask $status.
         # Dry runs report their counts as totalWouldTranslate.
-        count=$(echo "$output" | jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)' 2>/dev/null || echo 0)
-        failed=$(echo "$output" | jq -r '.summary.totalFailed // 0' 2>/dev/null || echo 0)
+        # head -n1: a single result yields a single line today, but a multi-document
+        # stdout would make these multiline and turn the -gt below into a hard
+        # bash error under set -e, defeating the tolerance this fallback exists for.
+        count=$(echo "$output" | jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)' 2>/dev/null | head -n1 || echo 0)
+        failed=$(echo "$output" | jq -r '.summary.totalFailed // 0' 2>/dev/null | head -n1 || echo 0)
+        count=${count:-0}
+        failed=${failed:-0}
         echo "translated_count=$count" >> "$GITHUB_OUTPUT"
         echo "failed_count=$failed" >> "$GITHUB_OUTPUT"
 

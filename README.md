@@ -308,7 +308,7 @@ Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *
 | `I18N_PROVIDER` | ✅ | — | `openai`, `anthropic`, or `google` |
 | `I18N_MODEL` | ✅ | — | Model name |
 | `I18N_API_KEY` | ✅ | — | API key for the provider |
-| `I18N_LAYER` | — | all layers | Layer to translate. Leave empty to translate every locale-backed layer in one run |
+| `I18N_LAYER` | — | all layers | Layer to translate. Leave empty to translate every locale-backed layer in one run — on a layered project `I18N_LOCALE_PATHS` must then cover every layer's directory, or those translations are written but never committed |
 | `I18N_LOCALES` | — | all except source | Comma-separated target locales |
 | `I18N_SOURCE_LOCALE` | — | from `.i18n-mcp.json` | Reference locale |
 | `I18N_KEYS` | — | all missing | Comma-separated keys |
