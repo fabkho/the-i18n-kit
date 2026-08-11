@@ -9,7 +9,9 @@ export default createCommand({
     ref: { type: 'string', description: 'Reference locale (default: project default)' },
     targets: { type: 'string', description: 'Comma-separated target locales (default: all except ref)' },
     outputFile: { type: 'string', description: 'Write full output to this file path and return only a summary (useful for large outputs)' },
+    failOnMissing: { type: 'boolean', description: 'Exit 2 when any key is missing (CI gate)', default: false },
   },
+  gates: [{ flag: 'failOnMissing', counter: 'totalMissingKeys', threshold: 0 }],
   async run(args) {
     return getMissingTranslations({
       layer: args.layer,

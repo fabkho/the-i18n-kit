@@ -182,6 +182,25 @@ Auto-translate missing keys and find orphans in CI — no manual work. Runs on e
 
 Provider-agnostic. Bring your own API key for OpenAI, Anthropic, or Google.
 
+### Gating on findings
+
+Turn findings into exit codes with opt-in gates, so a pipeline blocks a merge without parsing JSON:
+
+```bash
+the-i18n-cli missing --fail-on-missing          # exit 2 when any key is missing
+the-i18n-cli remove-orphans --fail-on-orphans   # exit 2 when any orphan is found
+```
+
+| Code | Meaning |
+|------|---------|
+| `0` | The run succeeded and no gate tripped |
+| `1` | The run itself failed — bad API key, unreadable project, a translate run that translated nothing |
+| `2` | The run succeeded but a gate tripped |
+
+The split between `1` and `2` is what lets a job distinguish a missing API key from a project that simply has untranslated keys. Gates compose on one invocation, a failed run outranks a tripped gate, and a tripped gate is named in the result's `gatesTripped` array with its observed value and threshold. Commands invoked without a gate flag keep exactly the exit codes they had before.
+
+See the [CLI exit-code reference](./packages/cli/README.md#exit-codes-and-ci-gates) for the full table.
+
 ### GitHub Actions
 
 ```yaml

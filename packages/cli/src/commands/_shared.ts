@@ -20,6 +20,13 @@ export function createCommand(opts: {
    * isTotalFailure check.
    */
   failWhen?: (result: unknown) => boolean
+  /**
+   * Opt-in CI gates this command accepts. The factory reads the requesting
+   * flag off args and evaluates every gate uniformly, so no command grows
+   * bespoke exit logic. Declaring a gate does not add its flag — pair each
+   * spec with an entry in `args`.
+   */
+  gates?: GateSpec[]
   run: (args: any) => Promise<unknown>
 }): CommandDef {
   return defineCommand({
@@ -28,16 +35,137 @@ export function createCommand(opts: {
     async run({ args }) {
       try {
         const result = await opts.run(args)
-        outputResult(result, args)
-        if (isTotalFailure(result) || opts.failWhen?.(result)) {
-          process.exitCode = 1
-        }
+        const runFailed = isTotalFailure(result) || (opts.failWhen?.(result) ?? false)
+        const decision = resolveExitCode(result, requestedGates(opts.gates ?? [], args), runFailed)
+        outputResult(withGateReport(result, decision.tripped), args)
+        // Assign only on a non-zero decision: a clean run must leave the exit
+        // code exactly as it found it, as it did before gates existed.
+        if (decision.code !== EXIT_SUCCESS) process.exitCode = decision.code
       } catch (error) {
         emitErrorResult(error, args)
-        process.exitCode = 1
+        process.exitCode = EXIT_RUN_FAILED
       }
     },
   }) as any
+}
+
+/** The run succeeded and no gate tripped. */
+export const EXIT_SUCCESS = 0
+/** The run itself failed — a bad API key, an unreadable project, a total translate failure. */
+export const EXIT_RUN_FAILED = 1
+/** The run succeeded but a requested gate tripped — findings exist, the tool worked. */
+export const EXIT_GATE_TRIPPED = 2
+
+/**
+ * A CI gate a command accepts. `flag` is the arg that requests it; `counter`
+ * is the field of `result.summary` carrying the observed value. Omitting
+ * `threshold` takes it from the flag's own value, so a boolean flag pairs
+ * with `threshold: 0` and a numeric one (`--fail-under 90`) omits it.
+ */
+export interface GateSpec {
+  flag: string
+  counter: string
+  /** 'above' trips when observed > threshold (default); 'below' when observed < threshold. */
+  direction?: 'above' | 'below'
+  threshold?: number
+}
+
+/** A gate the caller asked for, with its threshold already resolved. */
+export interface RequestedGate {
+  name: string
+  counter: string
+  direction: 'above' | 'below'
+  threshold: number
+}
+
+/** A gate that tripped, as reported in the result. */
+export interface TrippedGate extends RequestedGate {
+  observed: number
+}
+
+export interface ExitDecision {
+  code: typeof EXIT_SUCCESS | typeof EXIT_RUN_FAILED | typeof EXIT_GATE_TRIPPED
+  tripped: TrippedGate[]
+}
+
+/**
+ * Pure decision from an operation result plus the gates the caller requested
+ * to an exit code. A failed run outranks a tripped gate — exit 1 wins over
+ * exit 2 — and gates are not even consulted in that case, because counters
+ * from a run that fell over say nothing about the project.
+ */
+export function resolveExitCode(
+  result: unknown,
+  gates: RequestedGate[],
+  runFailed = false,
+): ExitDecision {
+  if (runFailed) return { code: EXIT_RUN_FAILED, tripped: [] }
+
+  const tripped: TrippedGate[] = []
+  for (const gate of gates) {
+    const observed = observedValue(result, gate.counter)
+    if (observed === undefined || !trips(gate, observed)) continue
+    tripped.push({ ...gate, observed })
+  }
+
+  return {
+    code: tripped.length > 0 ? EXIT_GATE_TRIPPED : EXIT_SUCCESS,
+    tripped,
+  }
+}
+
+/**
+ * Read a gate's counter off result.summary. Works on inline results and on
+ * the { reportFile, summary } shape alike, since both carry the summary.
+ * A missing or non-numeric counter yields undefined and never trips a gate.
+ */
+function observedValue(result: unknown, counter: string): number | undefined {
+  if (result === null || typeof result !== 'object') return undefined
+  const summary = (result as Record<string, unknown>).summary
+  if (summary === null || typeof summary !== 'object') return undefined
+  const value = (summary as Record<string, unknown>)[counter]
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function trips(gate: RequestedGate, observed: number): boolean {
+  return gate.direction === 'below' ? observed < gate.threshold : observed > gate.threshold
+}
+
+/** Filter the declared gates down to the ones this invocation asked for. */
+function requestedGates(specs: GateSpec[], args: Record<string, unknown>): RequestedGate[] {
+  const requested: RequestedGate[] = []
+  for (const spec of specs) {
+    const raw = args[spec.flag]
+    if (raw === undefined || raw === null || raw === false || raw === '') continue
+    const threshold = spec.threshold ?? Number(raw)
+    if (!Number.isFinite(threshold)) continue
+    requested.push({
+      name: kebabCase(spec.flag),
+      counter: spec.counter,
+      direction: spec.direction ?? 'above',
+      threshold,
+    })
+  }
+  return requested
+}
+
+/**
+ * Name a tripped gate by the flag that requested it, so the JSON says
+ * "fail-on-missing" — what the user typed — rather than "failOnMissing".
+ */
+function kebabCase(flag: string): string {
+  return flag.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)
+}
+
+/**
+ * Attach the gate report without disturbing the rest of the result: consumers
+ * parsing today's shape keep working, and a run where nothing tripped is
+ * byte-for-byte what it was before gates existed.
+ */
+function withGateReport(result: unknown, tripped: TrippedGate[]): unknown {
+  if (tripped.length === 0) return result
+  if (result === null || typeof result !== 'object' || Array.isArray(result)) return result
+  return { ...(result as Record<string, unknown>), gatesTripped: tripped }
 }
 
 /**

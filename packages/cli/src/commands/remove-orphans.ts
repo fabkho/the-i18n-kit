@@ -10,7 +10,9 @@ export default createCommand({
     dryRun: { type: 'boolean', description: 'Preview without removing (default: true)', default: true },
     outputFile: { type: 'string', description: 'Write full output to this file path and return only a summary (useful for large outputs)' },
     codequalityOutput: { type: 'string', description: 'Also write the orphan findings as a GitLab Code Quality (CodeClimate) JSON report to this file path' },
+    failOnOrphans: { type: 'boolean', description: 'Exit 2 when any orphan key is found (CI gate)', default: false },
   },
+  gates: [{ flag: 'failOnOrphans', counter: 'orphanCount', threshold: 0 }],
   async run(args) {
     return removeOrphanKeys({
       layer: args.layer,
