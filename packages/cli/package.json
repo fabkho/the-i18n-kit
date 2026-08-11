@@ -1,7 +1,7 @@
 {
   "name": "the-i18n-cli",
   "version": "4.2.0",
-  "description": "Find missing translations, remove dead keys, rename across all locales at once — for Nuxt, Laravel, or any project with JSON/PHP locale files",
+  "description": "Find missing translations, remove dead keys, rename across all locales at once — for Nuxt, Laravel, Vue, React/Next.js, or any project with JSON/PHP locale files",
   "keywords": [
     "i18n",
     "internationalization",
@@ -13,6 +13,8 @@
     "nuxt",
     "laravel",
     "vue",
+    "react",
+    "nextjs",
     "developer-tools"
   ],
   "author": "Fabian Kirchhoff",
