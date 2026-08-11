@@ -416,4 +416,30 @@ describe('Laravel scanSourceFiles', () => {
       expect(result.dynamicMatchedCount).toBe(2)
     })
   })
+
+  // #288 — shape gating must not regress PHP collection, and the JS-only
+  // shapes (backtick templates, `+`-concat) must not run on PHP files where
+  // they can only misfire (shell-exec backticks, `+`-adjacent decimals).
+  describe('bare-shape language gating (#288)', () => {
+    it('PHP interpolated strings still produce their candidate', async () => {
+      await writeFile(join(tmpDir, 'Resource.php'), [
+        '<?php',
+        '$title = "api.{$var}.title";',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir, undefined, LARAVEL_PATTERNS)
+      expect(result.bareDynamicCandidates.has('`api.${_}.title`')).toBe(true)
+    })
+
+    it('JS-only shapes do not run on PHP files', async () => {
+      await writeFile(join(tmpDir, 'Shell.php'), [
+        '<?php',
+        '$path = `${CACHE_DIR}.tmp`;',
+        '$total = $count + ".5";',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir, undefined, LARAVEL_PATTERNS)
+      expect(result.bareDynamicCandidates.size).toBe(0)
+    })
+  })
 })

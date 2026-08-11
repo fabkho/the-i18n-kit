@@ -915,6 +915,67 @@ describe('scanSourceFiles', () => {
       expect(result.uncertainByLayer.root ?? []).toEqual([])
     })
   })
+
+  // #288 — the PHP interpolation shape must not run on Vue/JS files: Vue
+  // template attributes like v-if="$slots.header" are double-quoted strings
+  // containing $identifier.segment and compiled to `${_}.header`-class
+  // candidates suppressing every key ending in those segments.
+  describe('bare-shape language gating (#288)', () => {
+    it('Vue $slots/$attrs template attributes produce zero bare dynamic candidates', async () => {
+      await writeFile(join(tmpDir, 'Table.vue'), [
+        '<template>',
+        '  <thead v-if="$slots.header">',
+        '    <slot name="header" />',
+        '  </thead>',
+        '  <input @change="$attrs.change" />',
+        '  <div v-if="$slots.actions && !$slots.empty">',
+        '    <slot name="default" />',
+        '  </div>',
+        '</template>',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir)
+      expect(result.bareDynamicCandidates.size).toBe(0)
+    })
+
+    it('gating does not disturb genuine JS shapes in the same file', async () => {
+      await writeFile(join(tmpDir, 'Mixed.vue'), [
+        '<template>',
+        '  <div v-if="$slots.header" />',
+        '</template>',
+        '<script setup>',
+        'const key = `pages.${section}.title`',
+        "const plural = base.translationPath + '.labelPlural'",
+        '</script>',
+      ].join('\n'))
+
+      const result = await scanSourceFiles(tmpDir)
+      expect(result.bareDynamicCandidates).toEqual(new Set([
+        '`pages.${_}.title`',
+        '`${_}.labelPlural`',
+      ]))
+    })
+
+    it('ground truth: $slots junk must not dynamic-match unrelated keys ending in .header', async () => {
+      await writeFile(join(tmpDir, 'Card.vue'), [
+        '<template>',
+        '  <div v-if="$slots.header"><slot name="header" /></div>',
+        '</template>',
+      ].join('\n'))
+
+      const result = await findOrphanKeysForConfig({
+        keysByLayer: new Map([['root', {
+          keys: ['pages.dashboard.header', 'components.table.empty'],
+          localeDir: { layer: 'root' },
+        }]]),
+        resolveIgnorePatterns: () => undefined,
+        scanDirs: [tmpDir],
+      })
+
+      expect(result.orphansByLayer.root ?? []).toEqual(['components.table.empty', 'pages.dashboard.header'])
+      expect(result.dynamicMatchedCount).toBe(0)
+    })
+  })
 })
 
 describe('toRelativePath', () => {

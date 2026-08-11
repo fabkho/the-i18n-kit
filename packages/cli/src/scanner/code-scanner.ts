@@ -394,12 +394,14 @@ function collectBarePhpCandidates(content: string, bareDynamics: Set<string>): v
   }
 }
 
-function collectBareConcatCandidates(content: string, bareDynamics: Set<string>): void {
+function collectBarePrefixCandidates(content: string, bareDynamics: Set<string>): void {
   BARE_PREFIX_LITERAL.lastIndex = 0
   for (const match of content.matchAll(BARE_PREFIX_LITERAL)) {
     bareDynamics.add(`\`${match[2]}\${_}\``)
   }
+}
 
+function collectBareSuffixConcatCandidates(content: string, bareDynamics: Set<string>): void {
   BARE_SUFFIX_CONCAT.lastIndex = 0
   for (const match of content.matchAll(BARE_SUFFIX_CONCAT)) {
     const suffix = match[3]
@@ -413,17 +415,29 @@ function collectBareConcatCandidates(content: string, bareDynamics: Set<string>)
  * Collects context-free key evidence from one file's content: exact dotted
  * strings into `bareStrings`, interpolated/concatenated shapes into
  * `bareDynamics` (normalized to `${_}` slots for buildDynamicKeyRegexes).
+ *
+ * Interpolation shapes are gated by `bareShapes` (#288): the PHP shape on
+ * Vue/JS files matches template attributes like `v-if="$slots.header"`
+ * (junk `${_}.header` families); conversely PHP key construction uses `.`
+ * concat and `{$var}` interpolation only, so the backtick-template and
+ * `+`-concat shapes have nothing legitimate to find there and can only
+ * misfire (shell-exec backticks, `+`-adjacent decimals). Dotted literals
+ * and trailing-dot prefixes are language-neutral and always run.
  */
-function collectBareCandidates(content: string, constTable: Map<string, string>, bareStrings: Set<string>, bareDynamics: Set<string>): void {
+function collectBareCandidates(content: string, constTable: Map<string, string>, bareStrings: Set<string>, bareDynamics: Set<string>, bareShapes: 'js' | 'php' = 'js'): void {
   BARE_DOTTED_STRING.lastIndex = 0
   for (const match of content.matchAll(BARE_DOTTED_STRING)) {
     const candidate = match[2]
     if (candidate) bareStrings.add(candidate)
   }
+  collectBarePrefixCandidates(content, bareDynamics)
 
+  if (bareShapes === 'php') {
+    collectBarePhpCandidates(content, bareDynamics)
+    return
+  }
   collectBareTemplateCandidates(content, constTable, bareStrings, bareDynamics)
-  collectBarePhpCandidates(content, bareDynamics)
-  collectBareConcatCandidates(content, bareDynamics)
+  collectBareSuffixConcatCandidates(content, bareDynamics)
 }
 
 // ─── Scanning ───────────────────────────────────────────────────
@@ -465,7 +479,7 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     allUsages.push(...usages)
     allDynamicKeys.push(...dynamicKeys)
 
-    collectBareCandidates(content, constTable, bareStringCandidates, bareDynamicCandidates)
+    collectBareCandidates(content, constTable, bareStringCandidates, bareDynamicCandidates, pat.bareShapes)
 
     filesScanned++
   }
