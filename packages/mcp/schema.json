@@ -168,6 +168,11 @@
       "type": "string",
       "enum": ["json", "php-array"],
       "description": "Override the auto-detected locale file format. Useful when both formats exist or auto-detection picks wrong."
+    },
+    "providerBaseUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Base URL for the LLM provider — gateways, self-hosted model servers and corporate proxies that speak the provider's own protocol. Overrides the endpoint only, not the request shape or auth header. Overridden by the I18N_BASE_URL environment variable and by --baseUrl. Not supported by the \"google\" provider, which rejects it rather than ignoring it."
     }
   }
 }

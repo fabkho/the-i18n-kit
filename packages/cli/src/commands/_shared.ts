@@ -3,6 +3,10 @@ import type { CommandDef } from 'citty'
 import { log } from '../utils/logger.js'
 import { toErrorMessage } from '../utils/errors.js'
 import { writeResult } from '../utils/stdout-guard.js'
+import { createTranslateFn, resolveProviderBaseUrl, BASE_URL_ENV } from '../llm/providers.js'
+import type { LlmProvider } from '../llm/providers.js'
+import type { TranslateFn } from '../core/types.js'
+import { loadProjectConfig } from '../config/project-config.js'
 
 /** Factory for commands that call an operation and output its result. */
 export function createCommand(opts: {
@@ -116,6 +120,64 @@ function errorCode(error: unknown): string {
     if (error.name === 'ConfigError') return 'CONFIG_ERROR'
   }
   return 'UNKNOWN_ERROR'
+}
+
+/** Provider selection flags shared by the translate commands. */
+export const providerArgs = {
+  provider: { type: 'string' as const, description: 'LLM provider: "openai", "anthropic", or "google". Required for automatic translation.', valueHint: 'openai|anthropic|google' },
+  model: { type: 'string' as const, description: 'Model name (required when --provider is set)' },
+  apiKey: { type: 'string' as const, description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env).' },
+  baseUrl: { type: 'string' as const, description: `Provider base URL for gateways, self-hosted models and proxies speaking the provider's protocol. Falls back to ${BASE_URL_ENV}, then providerBaseUrl in .i18n-mcp.json. Not supported by "google".` },
+}
+
+/**
+ * Build a TranslateFn from the provider flags, or undefined when no provider
+ * was given (agent mode). The base URL resolves flag > env > project config;
+ * the config file is only read when neither of the first two is set, so a
+ * fully-flagged invocation never depends on config discovery.
+ */
+export async function resolveProviderTranslateFn(args: {
+  provider?: string
+  model?: string
+  apiKey?: string
+  baseUrl?: string
+  projectDir?: string
+}): Promise<TranslateFn | undefined> {
+  if (!args.provider) return undefined
+  if (!args.model) {
+    throw new Error('--model is required when --provider is set')
+  }
+
+  let baseUrl = resolveProviderBaseUrl({ flag: args.baseUrl, env: process.env[BASE_URL_ENV] })
+  if (!baseUrl) {
+    const projectConfig = await loadProjectConfig(args.projectDir ?? process.cwd())
+    baseUrl = resolveProviderBaseUrl({ config: projectConfig?.providerBaseUrl })
+  }
+  if (baseUrl) log.debug(`Provider base URL: ${redactBaseUrl(baseUrl)}`)
+
+  return createTranslateFn({
+    provider: args.provider as LlmProvider,
+    model: args.model,
+    apiKey: args.apiKey,
+    baseUrl,
+  })
+}
+
+/**
+ * Strip anything secret-shaped from a base URL before it reaches a log.
+ * Gateways are routinely addressed as https://user:pass@host or with the key
+ * in a query parameter, so keep only origin and path.
+ */
+export function redactBaseUrl(raw: string): string {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return '<unparseable base URL>'
+  }
+  const credentials = url.username || url.password ? '<redacted>@' : ''
+  const query = url.search || url.hash ? ' (query redacted)' : ''
+  return `${url.protocol}//${credentials}${url.host}${url.pathname}${query}`
 }
 
 /** Split a comma-separated string into a trimmed array, or return undefined */

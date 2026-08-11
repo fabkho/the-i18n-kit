@@ -31,6 +31,9 @@ import {
   resolveProtectedLocales,
   toErrorMessage,
   createTranslateFn,
+  resolveProviderBaseUrl,
+  loadProjectConfig,
+  BASE_URL_ENV,
 } from 'the-i18n-cli'
 
 import type { TranslateFn, ProgressFn, ProjectConfig, LlmProvider } from 'the-i18n-cli'
@@ -96,11 +99,27 @@ async function resolveTranslationBackend(): Promise<TranslationBackend> {
   }
 
   try {
-    const translateFn = await createTranslateFn({ provider, model })
+    const translateFn = await createTranslateFn({ provider, model, baseUrl: await resolveStartupBaseUrl() })
     return { mode: 'provider', provider, model, translateFn }
   } catch (error) {
     warn(`Provider setup failed: ${toErrorMessage(error)}. Running in agent mode.`)
     return { mode: 'agent' }
+  }
+}
+
+/**
+ * Base URL for the startup-resolved backend: I18N_BASE_URL, else the project
+ * config's providerBaseUrl. A missing or unreadable config is not fatal here
+ * — the server still starts, just without an endpoint override.
+ */
+async function resolveStartupBaseUrl(): Promise<string | undefined> {
+  const fromEnv = resolveProviderBaseUrl({ env: process.env[BASE_URL_ENV] })
+  if (fromEnv) return fromEnv
+  try {
+    const projectConfig = await loadProjectConfig(DEFAULT_PROJECT_DIR)
+    return resolveProviderBaseUrl({ config: projectConfig?.providerBaseUrl })
+  } catch {
+    return undefined
   }
 }
 

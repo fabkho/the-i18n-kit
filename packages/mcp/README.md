@@ -232,6 +232,7 @@ Set environment variables on the server process and the server calls the LLM pro
 | `I18N_PROVIDER` | `openai`, `anthropic`, or `google` |
 | `I18N_MODEL` | Model name (e.g. `gemini-2.5-flash`, `gpt-4o-mini`) |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | API key matching the provider |
+| `I18N_BASE_URL` | Optional provider base URL — protocol-compatible gateways, self-hosted models, proxies. Falls back to `providerBaseUrl` in `.i18n-mcp.json`. Not supported by `google` |
 
 Partial configuration logs a warning to stderr and falls back to agent mode — a misconfigured server never surprises callers per-request.
 

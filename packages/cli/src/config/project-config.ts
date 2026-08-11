@@ -44,6 +44,7 @@ const projectConfigSchema = z.object({
   protectedLocales: z.array(nonEmptyString).optional(),
   reportOutput: z.union([z.literal(true), nonEmptyString]).optional(),
   localeFileFormat: z.enum(['json', 'php-array']).optional(),
+  providerBaseUrl: nonEmptyString.optional(),
   // Deprecated with the removal of MCP sampling: accepted so existing config
   // files keep validating (the schema is strict), warned about, and ignored.
   samplingPreferences: z.unknown().optional(),
