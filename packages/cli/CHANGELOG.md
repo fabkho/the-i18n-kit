@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.3.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.2.0...the-i18n-cli-4.3.0) (2026-08-11)
+
+
+### Features
+
+* **cli:** provider baseUrl via flag, env and project config ([#282](https://github.com/fabkho/the-i18n-kit/issues/282)) ([af5cc9a](https://github.com/fabkho/the-i18n-kit/commit/af5cc9a9d0f9299e630f1ca0b379d2e8576fb672))
+* **cli:** resolveExitCode + --fail-on-missing / --fail-on-orphans CI gates ([#297](https://github.com/fabkho/the-i18n-kit/issues/297)) ([5324b59](https://github.com/fabkho/the-i18n-kit/commit/5324b59cd1f7c1791ef548506054e78d4d8942cb)), closes [#248](https://github.com/fabkho/the-i18n-kit/issues/248)
+
 ## [4.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.1.1...the-i18n-cli-4.2.0) (2026-08-11)
 
 
