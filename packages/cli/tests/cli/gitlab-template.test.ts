@@ -51,4 +51,30 @@ describe('gitlab-ci.yml template', () => {
     }
     expect(translateScript).not.toContain('MISSING I18N_LAYER')
   })
+
+  it('triggers a follow-up MR pipeline after the push, guarded by MR context and an api token', async () => {
+    const { doc } = await loadTemplate()
+    const translateScript = doc['.i18n-translate'].script.join('\n')
+
+    // The trigger call itself: MR-pipelines endpoint, authenticated with the
+    // push token.
+    expect(translateScript).toContain(
+      '"$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/pipelines"',
+    )
+    expect(translateScript).toContain('PRIVATE-TOKEN: $I18N_PUSH_TOKEN')
+    expect(translateScript).toMatch(/curl\s+--fail-with-body/)
+
+    // Guards: only in merge-request pipelines AND only with a token set.
+    expect(translateScript).toContain('[ -n "${CI_MERGE_REQUEST_IID:-}" ]')
+    expect(translateScript).toContain('[ -n "${I18N_PUSH_TOKEN:-}" ]')
+
+    // A failed trigger must warn, not fail the job (the push already
+    // succeeded) — the curl is followed by an `|| echo "WARN...` fallback.
+    expect(translateScript).toMatch(/\|\| echo "WARN: could not trigger/)
+
+    // Without a token there is an explicit notice about the missing head
+    // pipeline and how to heal the widget.
+    expect(translateScript).toContain('the new head sha has no pipeline')
+    expect(translateScript).toContain('Run pipeline')
+  })
 })

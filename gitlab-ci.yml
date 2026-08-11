@@ -69,9 +69,29 @@
 #   a) Project setting: Settings → CI/CD → Job token permissions →
 #      "Allow Git push requests to the repository" (GitLab ≥ 17.2).
 #      Then the default CI_JOB_TOKEN push just works.
-#   b) A project access token with `write_repository` scope in the
+#   b) A project access token with `write_repository` scope (plus `api` to
+#      enable the widget-healing pipeline trigger, see next section) in the
 #      I18N_PUSH_TOKEN CI variable — the push alternative when (a) is not
 #      available.
+#
+# ── Report widgets on translated MRs (head/base pipeline requirements) ───────
+# GitLab renders the Code Quality MR widget only when BOTH sides satisfy its
+# comparer (GitLab Rails, MergeRequest#compare_codequality_reports — the guard
+# is `diff_head_pipeline.complete_and_has_self_or_descendant_reports?`):
+#   head: an MR pipeline at the CURRENT head sha whose jobs (or child
+#         pipelines) produced the codequality report.
+#   base: ANY ci-source pipeline — any status, api-triggered included — with
+#         the report at the MR's base sha.
+# Pushes made with CI tokens (job token or access token) NEVER trigger
+# pipelines — a GitLab rule. So the translate job's auto-commit advances the
+# MR head to a sha without a pipeline: the comparer errors (or, with external
+# commit-status integrations, latches onto a job-less `external` pipeline that
+# can never carry reports) and the widget disappears for that MR.
+# Heal: when I18N_PUSH_TOKEN has the `api` scope, the translate job POSTs
+# /projects/:id/merge_requests/:iid/pipelines after a successful push,
+# creating an MR pipeline at the new head that regenerates the reports.
+# Loop-safe: that pipeline's translate finds nothing missing and pushes
+# nothing. Without an api-scope token, use the MR's "Run pipeline" button.
 
 # ─── Base image used by all jobs ─────────────────────────────────────────────
 .i18n-base:
@@ -96,7 +116,9 @@
     I18N_INSTALL_PEER_DEPS: ""  # extra npm packages to install globally alongside the CLI
 
     # Optional — push behaviour
-    I18N_PUSH_TOKEN: ""       # project access token (write_repository) — push alternative to the job token. See header comment.
+    I18N_PUSH_TOKEN: ""       # project access token (write_repository, optionally + api) — push alternative
+                              # to the job token. The api scope additionally lets the job trigger the
+                              # widget-healing follow-up MR pipeline after pushing. See header comment.
     I18N_LOCALE_PATHS: "i18n/locales/"  # space-separated globs for locale directories. With empty I18N_LAYER on a
                                         # layered project this MUST cover every layer's dir (e.g. "i18n/locales/
                                         # app-*/i18n/locales/") or their translations are written but never committed.
@@ -105,9 +127,10 @@
                                  # [skip ci] leaves the MR head without a pipeline, which breaks the
                                  # Code Quality widget (comparer error). A re-run is loop-safe — it
                                  # finds nothing missing and pushes nothing.
-                                 # NOTE: pushes with the plain CI_JOB_TOKEN never trigger pipelines
-                                 # (GitLab rule), so the follow-up pipeline — and the widget on
-                                 # translated MRs — additionally requires I18N_PUSH_TOKEN.
+                                 # NOTE: CI-token pushes never trigger pipelines (GitLab rule), so
+                                 # the follow-up pipeline — and the widget on translated MRs —
+                                 # additionally requires an api-scoped I18N_PUSH_TOKEN, which the
+                                 # job uses to create the MR pipeline itself after pushing.
 
   before_script:
     - if command -v apk >/dev/null; then apk add --no-cache git jq; fi
@@ -214,6 +237,22 @@
       fi
 
       echo "Pushed ${CHANGED_FILES} locale file(s) to ${CI_COMMIT_REF_NAME}"
+
+      # The push moved the MR head to a sha that has no pipeline (CI-token
+      # pushes never trigger one — GitLab rule). Create a follow-up MR
+      # pipeline so the report widgets pick up the new head; see the
+      # "Report widgets on translated MRs" section in the header.
+      if [ -n "${CI_MERGE_REQUEST_IID:-}" ]; then
+        if [ -n "${I18N_PUSH_TOKEN:-}" ]; then
+          echo "Triggering a follow-up MR pipeline at the new head..."
+          curl --fail-with-body -s -X POST -H "PRIVATE-TOKEN: $I18N_PUSH_TOKEN" \
+            "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/pipelines" \
+            || echo "WARN: could not trigger a follow-up MR pipeline (does I18N_PUSH_TOKEN have the api scope?). Report widgets will not reflect this MR until a pipeline runs on the new head (MR page -> Run pipeline)."
+        else
+          echo "NOTICE: the new head sha has no pipeline, so GitLab's report comparers error out and this MR shows no Code Quality widget."
+          echo "Fix: give I18N_PUSH_TOKEN the api scope (the job then auto-triggers a follow-up MR pipeline), or press 'Run pipeline' on the MR."
+        fi
+      fi
 
   artifacts:
     paths:
