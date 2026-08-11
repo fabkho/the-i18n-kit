@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.1.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.0.1...the-i18n-mcp-7.1.0) (2026-08-11)
+
+
+### Features
+
+* **cli:** provider baseUrl via flag, env and project config ([#282](https://github.com/fabkho/the-i18n-kit/issues/282)) ([af5cc9a](https://github.com/fabkho/the-i18n-kit/commit/af5cc9a9d0f9299e630f1ca0b379d2e8576fb672))
+
 ## [7.0.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.0.0...the-i18n-mcp-7.0.1) (2026-08-10)
 
 
