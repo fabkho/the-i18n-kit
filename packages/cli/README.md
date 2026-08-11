@@ -61,6 +61,41 @@ Run `the-i18n-cli <command> --help` for per-command options.
 | `--dryRun` | Preview changes without writing |
 | `--output-file <path>` | `missing` / `remove-orphans` / `check`: write the full report to a file, return only a summary |
 
+### Exit Codes and CI Gates
+
+| Code | Meaning |
+|------|---------|
+| `0` | The run succeeded and no gate tripped |
+| `1` | The run itself failed — bad API key, unreadable project, a translate run that translated nothing |
+| `2` | The run succeeded but a gate tripped: findings exist and the tool worked |
+
+Separating `1` from `2` lets a pipeline tell a broken setup apart from a project that simply has untranslated keys.
+
+Gates are opt-in flags, so every invocation without one keeps the exit code it has today:
+
+| Flag | Command | Trips when |
+|------|---------|-----------|
+| `--fail-on-missing` | `missing` | Any key is missing in a target locale |
+| `--fail-on-orphans` | `remove-orphans` | Any orphan key is found (dry-run still applies) |
+
+```bash
+the-i18n-cli missing --fail-on-missing          # exit 2 blocks the merge
+the-i18n-cli remove-orphans --fail-on-orphans   # dry-run, but non-zero on findings
+```
+
+Gates compose on one invocation, and a failed run outranks a tripped gate — exit `1` wins over exit `2`. When a gate trips, the JSON result gains a `gatesTripped` array naming it and reporting the observed value against the threshold; nothing else in the result changes, so existing consumers keep working:
+
+```json
+{
+  "summary": { "totalMissingKeys": 12 },
+  "gatesTripped": [
+    { "name": "fail-on-missing", "counter": "totalMissingKeys", "direction": "above", "threshold": 0, "observed": 12 }
+  ]
+}
+```
+
+`check` is the exception: it gates unconditionally with exit `1`, because a key that renders raw in production is a defect rather than a threshold.
+
 ## Translation Modes
 
 `translate` and `translate-key` run in one of two modes — every result reports which one ran (`mode: "provider" | "agent" | "dry-run"`).
