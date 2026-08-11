@@ -1,5 +1,19 @@
 # Changelog
 
+## [4.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.1.1...the-i18n-cli-4.2.0) (2026-08-11)
+
+
+### Features
+
+* **ci:** trigger a follow-up MR pipeline after the translate auto-commit push ([#293](https://github.com/fabkho/the-i18n-kit/issues/293)) ([38f4e0b](https://github.com/fabkho/the-i18n-kit/commit/38f4e0b2bd837424d7c95099de3d7c3661ee39e2)), closes [#283](https://github.com/fabkho/the-i18n-kit/issues/283)
+* **cli:** make translate --layer optional — all-layers mode with aggregated totals ([#292](https://github.com/fabkho/the-i18n-kit/issues/292)) ([0126561](https://github.com/fabkho/the-i18n-kit/commit/012656152dbf4a09252234059832150d57b44810)), closes [#290](https://github.com/fabkho/the-i18n-kit/issues/290)
+
+
+### Bug Fixes
+
+* **cli:** gate bare-candidate shapes by pattern-set language ([#291](https://github.com/fabkho/the-i18n-kit/issues/291)) ([e71d55d](https://github.com/fabkho/the-i18n-kit/commit/e71d55d495ecbe8a2a4429920f66b78b9ed30e02)), closes [#288](https://github.com/fabkho/the-i18n-kit/issues/288)
+* **cli:** suppress variable-prefix dynamic keys in orphan scan ([#285](https://github.com/fabkho/the-i18n-kit/issues/285)) ([af54732](https://github.com/fabkho/the-i18n-kit/commit/af54732129ebc3dcf1d30cdf72b43e1dc9905fd6))
+
 ## [4.1.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.1.0...the-i18n-cli-4.1.1) (2026-08-10)
 
 
