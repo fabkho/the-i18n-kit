@@ -72,11 +72,14 @@ the-i18n-cli translate --layer root --provider google --model gemini-2.5-flash
 the-i18n-cli translate --layer root --targets de-DE,fr-FR --batchSize 25 --provider openai --model gpt-4o-mini
 ```
 
-For an OpenAI-compatible gateway, a local model or a proxy, add `--baseUrl` — or set `I18N_BASE_URL`, or `providerBaseUrl` in `.i18n-mcp.json`, in that order of precedence:
+To reach an endpoint that speaks the same protocol — a gateway, a self-hosted model server, a proxy — add `--baseUrl`, or set `I18N_BASE_URL`, or `providerBaseUrl` in `.i18n-mcp.json`, in that order of precedence:
 
 ```bash
-the-i18n-cli translate --layer root --provider openai --model llama3 --baseUrl http://localhost:11434/v1
+the-i18n-cli translate --layer root --provider openai --model llama3 \
+  --baseUrl http://localhost:11434/v1 --apiKey unused
 ```
+
+An API key is still required even when the endpoint ignores it — pass any placeholder for a local server. This overrides the endpoint only, so providers that also change the request shape or auth header (Azure OpenAI among them) are not reachable this way.
 
 `google` has no endpoint override, so a base URL with it is rejected as a configuration error rather than silently ignored.
 
