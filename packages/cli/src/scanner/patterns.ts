@@ -22,6 +22,13 @@ export interface ScanPatternSet {
    * Enables backtick literals like `t(\`foo.bar\`)` to be recognized as static.
    */
   promoteStaticDynamicMatches?: boolean
+  /**
+   * When true, `${identifier}` interpolations are resolved against same-file
+   * `const`/`let` string-literal declarations before classification (#284).
+   * JS/TS-only: PHP's `${var}` interpolation reads runtime variables, so
+   * substituting declared constants there could wrongly narrow a pattern.
+   */
+  resolveLocalConsts?: boolean
 }
 
 // ─── Vue / Nuxt Patterns ────────────────────────────────────────
@@ -58,6 +65,7 @@ export const VUE_NUXT_PATTERNS: ScanPatternSet = {
   concatKeyPatterns: [VUE_CONCAT_KEY],
   requiresDotForCallee: (callee: string) => callee === 't',
   promoteStaticDynamicMatches: true,
+  resolveLocalConsts: true,
 }
 
 // ─── Laravel / PHP Patterns ─────────────────────────────────────
