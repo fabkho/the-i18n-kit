@@ -8,7 +8,7 @@ export default createCommand({
   name: 'translate',
   description: 'Find missing translations and translate them via LLM. Requires --provider and --model for auto-translation.',
   args: {
-    layer: { type: 'string', description: 'Layer name', required: true },
+    layer: { type: 'string', description: 'Layer name (default: all locale-backed layers, aggregated)' },
     ref: { type: 'string', description: 'Reference locale (default: project default)' },
     targets: { type: 'string', description: 'Comma-separated target locales (default: all except ref)' },
     keys: { type: 'string', description: 'Comma-separated keys to translate (default: all missing)' },

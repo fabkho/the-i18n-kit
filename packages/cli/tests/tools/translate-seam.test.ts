@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { mkdtemp, rm, mkdir, writeFile, readFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type { TranslateFn } from '../../src/core/types.js'
+import { parseBatch, fakeTranslator } from '../fixtures/translate-harness.js'
 import { translateMissing, translateKey } from '../../src/core/operations.js'
 import { clearConfigCache } from '../../src/config/detector.js'
 import { TranslateProviderError } from '../../src/llm/providers.js'
@@ -48,23 +49,6 @@ afterEach(async () => {
   await rm(projectDir, { recursive: true, force: true })
   clearConfigCache()
 })
-
-/** Extract the batch (compact single-line JSON) from the user message. */
-function parseBatch(userMessage: string): Record<string, string> {
-  const line = userMessage.split('\n').find(l => l.trimStart().startsWith('{"'))
-  if (!line) throw new Error(`No batch JSON found in user message:\n${userMessage}`)
-  return JSON.parse(line.slice(line.indexOf('{'), line.lastIndexOf('}') + 1)) as Record<string, string>
-}
-
-/** A well-behaved fake backend: translates every requested key. */
-function fakeTranslator(transform: (key: string, value: string) => string, wrap?: (json: string) => string): TranslateFn {
-  return async ({ userMessage }) => {
-    const batch = parseBatch(userMessage)
-    const out = Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, transform(k, v)]))
-    const json = JSON.stringify(out)
-    return { text: wrap ? wrap(json) : json, model: 'fake-model' }
-  }
-}
 
 async function readLocale(code: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(join(localesDir, `${code}.json`), 'utf-8')) as Record<string, unknown>
@@ -566,6 +550,124 @@ describe('translateMissing through the translate seam', () => {
       expect(explicitRun.translated).toEqual(['fr'])
       expect(explicitRun.skipped).toEqual([])
       expect((await readLocale('fr')).greeting).toBe('[t] Hallo {name}')
+    })
+  })
+
+  describe('all-layers mode (layer omitted)', () => {
+    let shopLocalesDir: string
+
+    const shopDeContent = {
+      shop: { checkout: 'Zur Kasse', cart: 'Warenkorb' },
+    }
+
+    beforeEach(async () => {
+      shopLocalesDir = join(projectDir, 'app-shop', 'i18n', 'locales')
+      await mkdir(shopLocalesDir, { recursive: true })
+      await writeFile(join(projectDir, '.i18n-mcp.json'), JSON.stringify({
+        localeDirs: [
+          { path: 'i18n/locales', layer: 'root' },
+          { path: 'app-shop/i18n/locales', layer: 'app-shop' },
+        ],
+        defaultLocale: 'de',
+        locales: ['de', 'en', 'fr'],
+      }, null, 2))
+      await writeFile(join(shopLocalesDir, 'de.json'), JSON.stringify(shopDeContent, null, 2))
+      await writeFile(join(shopLocalesDir, 'en.json'), '{}\n')
+      await writeFile(join(shopLocalesDir, 'fr.json'), '{}\n')
+      clearConfigCache()
+    })
+
+    async function readShopLocale(code: string): Promise<Record<string, unknown>> {
+      return JSON.parse(await readFile(join(shopLocalesDir, `${code}.json`), 'utf-8')) as Record<string, unknown>
+    }
+
+    /** The `missing = translated + wouldTranslate + failed + skipped` invariant. */
+    function expectLocaleInvariant(r: {
+      missing: number
+      translated: string[]
+      wouldTranslate?: string[]
+      failed: unknown[]
+      skipped: unknown[]
+    }): void {
+      expect(r.missing).toBe(
+        r.translated.length + (r.wouldTranslate?.length ?? 0) + r.failed.length + r.skipped.length,
+      )
+    }
+
+    it('translates every layer, writes per-layer files, and aggregates totals with a byLayer breakdown', async () => {
+      const result = await translateMissing({
+        projectDir,
+        translateFn: fakeTranslator((_k, v) => `[t] ${v}`),
+      })
+
+      // Cross-layer totals under the existing field names: root has 4 keys,
+      // app-shop has 2, each translated into en + fr.
+      expect(result.summary.totalTranslated).toBe(12)
+      expect(result.summary.totalFailed).toBe(0)
+      expect(result.summary.totalSkipped).toBe(0)
+      expect(result.summary.mode).toBe('provider')
+      expect(result.summary.dryRun).toBe(false)
+      expect(result.summary.layers).toEqual(['root', 'app-shop'])
+      expect(result.summary.byLayer).toEqual([
+        { layer: 'root', totalTranslated: 8, totalFailed: 0, totalSkipped: 0, totalWouldTranslate: 0 },
+        { layer: 'app-shop', totalTranslated: 4, totalFailed: 0, totalSkipped: 0, totalWouldTranslate: 0 },
+      ])
+
+      // Per-layer sections reuse the single-layer result shape.
+      const rootSection = result.layers.root as { results: Record<string, any>, summary: Record<string, unknown> }
+      const shopSection = result.layers['app-shop'] as { results: Record<string, any>, summary: Record<string, unknown> }
+      expect(rootSection.summary).toMatchObject({ layer: 'root', mode: 'provider', totalTranslated: 8 })
+      expect(shopSection.summary).toMatchObject({ layer: 'app-shop', mode: 'provider', totalTranslated: 4 })
+      for (const section of [rootSection, shopSection]) {
+        for (const localeResult of Object.values(section.results)) {
+          expectLocaleInvariant(localeResult)
+        }
+      }
+
+      // Both physical dirs were filled.
+      expect((await readLocale('en')).greeting).toBe('[t] Hallo {name}')
+      expect(await readShopLocale('en')).toMatchObject({
+        shop: { checkout: '[t] Zur Kasse', cart: '[t] Warenkorb' },
+      })
+      expect((await readShopLocale('fr') as any).shop.cart).toBe('[t] Warenkorb')
+    })
+
+    it('aggregates totalWouldTranslate across layers in dry-run mode without writing', async () => {
+      const result = await translateMissing({ projectDir, dryRun: true })
+
+      expect(result.summary.mode).toBe('dry-run')
+      expect(result.summary.totalWouldTranslate).toBe(12)
+      expect(result.summary.totalTranslated).toBe(0)
+      expect(result.summary.byLayer).toEqual([
+        { layer: 'root', totalTranslated: 0, totalFailed: 0, totalSkipped: 0, totalWouldTranslate: 8 },
+        { layer: 'app-shop', totalTranslated: 0, totalFailed: 0, totalSkipped: 0, totalWouldTranslate: 4 },
+      ])
+      for (const section of Object.values(result.layers as Record<string, { results: Record<string, any> }>)) {
+        for (const localeResult of Object.values(section.results)) {
+          expectLocaleInvariant(localeResult)
+        }
+      }
+      expect(await readLocale('en')).toEqual({})
+      expect(await readShopLocale('en')).toEqual({})
+    })
+
+    it('keeps the single-layer result byte-compatible when --layer is passed', async () => {
+      const result = await translateMissing({
+        projectDir,
+        layer: 'root',
+        translateFn: fakeTranslator((_k, v) => `[t] ${v}`),
+      })
+
+      // Exactly the pre-all-layers shape: no layers section, no byLayer,
+      // no extra summary fields.
+      expect(Object.keys(result).sort()).toEqual(['results', 'summary'])
+      expect(Object.keys(result.summary).sort()).toEqual([
+        'dryRun', 'layer', 'mode', 'referenceLocale', 'targetLocales',
+        'totalFailed', 'totalSkipped', 'totalTranslated',
+      ])
+      expect(result.summary.layer).toBe('root')
+      expect(result.summary.totalTranslated).toBe(8)
+      expect(await readShopLocale('en')).toEqual({})
     })
   })
 

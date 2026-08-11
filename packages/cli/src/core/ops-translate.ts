@@ -5,6 +5,7 @@
  */
 
 import { detectI18nConfig } from '../config/detector.js'
+import { buildLayerGraph } from '../config/layer-graph.js'
 import type { I18nConfig, LocaleDefinition, ProjectConfig } from '../config/types.js'
 import type { LocaleFileFormat } from '../adapters/types.js'
 import { readLocaleData, mutateLocaleData } from '../io/locale-data.js'
@@ -20,6 +21,7 @@ import { TranslateProviderError } from '../llm/providers.js'
 import type {
   TranslateFn,
   ProgressFn,
+  TranslateLayerTotals,
   TranslateMode,
   TranslateFailReason,
   TranslateSkipReason,
@@ -441,9 +443,12 @@ function buildFallbackContext(
  *
  * When translateFn is provided, uses it to translate via LLM.
  * When translateFn is absent, returns fallback contexts for the agent.
+ *
+ * When `layer` is omitted, every canonical locale-backed layer is translated
+ * in one run and the results are aggregated (see translateMissingAllLayers).
  */
 export async function translateMissing(opts: {
-  layer: string
+  layer?: string
   referenceLocale?: string
   targetLocales?: string[]
   locales?: string[]
@@ -457,7 +462,8 @@ export async function translateMissing(opts: {
   /** Called once after the pre-scan with the computed total number of progress steps. */
   onProgressTotal?: (total: number) => void
 }): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
-  const { layer } = opts
+  if (opts.layer === undefined) return translateMissingAllLayers(opts)
+  const layer = opts.layer
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? false
@@ -795,6 +801,113 @@ export async function translateMissing(opts: {
     output.fallbackContexts = fallbackContexts
   }
   return output
+}
+
+/**
+ * All-layers mode: run the single-layer translate pipeline once per canonical
+ * locale-backed layer and aggregate into one result. The existing summary
+ * fields (`totalTranslated`, `totalFailed`, `totalSkipped`,
+ * `totalWouldTranslate`) become cross-layer totals — jq consumers of the
+ * single-layer summary keep working unchanged. `summary.byLayer` and the
+ * per-layer `layers` sections (each in the single-layer result shape) are
+ * additive.
+ */
+async function translateMissingAllLayers(
+  opts: Omit<Parameters<typeof translateMissing>[0], 'layer'>,
+): Promise<Record<string, unknown>> {
+  const config = await detectI18nConfig(opts.projectDir ?? process.cwd())
+  const layerNames = collectTranslatableLayers(config)
+  if (layerNames.length === 0) {
+    throw new ToolError('No locale-backed layers detected. Use list_locale_dirs to inspect the configuration.', 'LAYER_NOT_FOUND')
+  }
+  const { layers, byLayer } = await runLayerTranslations(layerNames, opts)
+  return { layers, summary: buildAllLayersSummary(layers, byLayer, opts) }
+}
+
+/**
+ * Layers eligible for an all-layers run: each physical locale dir exactly
+ * once. Aliases are excluded via canonicalLayers, and same-path canonical
+ * entries (possible in hand-written generic configs) collapse to the first —
+ * an aliased app layer must never cause a second translate/write of its
+ * owner's files.
+ */
+function collectTranslatableLayers(config: I18nConfig): string[] {
+  const seenPaths = new Set<string>()
+  const layerNames: string[] = []
+  for (const localeDir of buildLayerGraph(config).canonicalLayers) {
+    if (seenPaths.has(localeDir.path)) continue
+    seenPaths.add(localeDir.path)
+    layerNames.push(localeDir.layer)
+  }
+  return layerNames
+}
+
+async function runLayerTranslations(
+  layerNames: string[],
+  opts: Omit<Parameters<typeof translateMissing>[0], 'layer'>,
+): Promise<{ layers: Record<string, Record<string, unknown>>, byLayer: TranslateLayerTotals[] }> {
+  const layers: Record<string, Record<string, unknown>> = {}
+  const byLayer: TranslateLayerTotals[] = []
+  for (const layerName of layerNames) {
+    let layerResult: Record<string, unknown>
+    try {
+      layerResult = await translateMissing({ ...opts, layer: layerName })
+    } catch (error) {
+      // A layer without reference-locale data has nothing to drive
+      // translation — skip it so one sparse layer cannot fail the run for
+      // its siblings. Explicit single-layer calls still throw.
+      if (error instanceof ToolError && error.code === 'NO_LOCALE_FILE') {
+        log.warn(`Skipping layer "${layerName}": ${error.message}`)
+        continue
+      }
+      throw error
+    }
+    layers[layerName] = layerResult
+    byLayer.push(layerTotals(layerName, layerResult))
+  }
+  return { layers, byLayer }
+}
+
+function layerTotals(layerName: string, layerResult: Record<string, unknown>): TranslateLayerTotals {
+  const layerSummary = layerResult.summary as {
+    totalTranslated: number
+    totalFailed: number
+    totalSkipped: number
+    totalWouldTranslate?: number
+  }
+  return {
+    layer: layerName,
+    totalTranslated: layerSummary.totalTranslated,
+    totalFailed: layerSummary.totalFailed,
+    totalSkipped: layerSummary.totalSkipped,
+    totalWouldTranslate: layerSummary.totalWouldTranslate ?? 0,
+  }
+}
+
+function buildAllLayersSummary(
+  layers: Record<string, Record<string, unknown>>,
+  byLayer: TranslateLayerTotals[],
+  opts: Omit<Parameters<typeof translateMissing>[0], 'layer'>,
+): Record<string, unknown> {
+  const isDryRun = opts.dryRun ?? false
+  const total = (pick: (l: TranslateLayerTotals) => number): number =>
+    byLayer.reduce((sum, l) => sum + pick(l), 0)
+  // Locales are project-global, so mode, reference locale, and target set are
+  // identical across layers — hoist them from the first translated layer.
+  const first = Object.values(layers)[0]?.summary as Record<string, unknown> | undefined
+  const summary: Record<string, unknown> = {
+    mode: isDryRun ? 'dry-run' : opts.translateFn ? 'provider' : 'agent',
+    totalTranslated: total(l => l.totalTranslated),
+    totalFailed: total(l => l.totalFailed),
+    totalSkipped: total(l => l.totalSkipped),
+    ...(isDryRun ? { totalWouldTranslate: total(l => l.totalWouldTranslate) } : {}),
+    layers: byLayer.map(l => l.layer),
+    byLayer,
+    dryRun: isDryRun,
+  }
+  if (first?.referenceLocale !== undefined) summary.referenceLocale = first.referenceLocale
+  if (first?.targetLocales !== undefined) summary.targetLocales = first.targetLocales
+  return summary
 }
 
 /**
