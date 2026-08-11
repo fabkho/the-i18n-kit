@@ -17,21 +17,26 @@
 #       I18N_PROVIDER: google
 #       I18N_MODEL: gemini-2.5-flash
 #       I18N_API_KEY: $GEMINI_API_KEY
-#       I18N_LAYER: common
+#       # I18N_LAYER is optional. Leave it EMPTY (the default) to translate
+#       # every locale-backed layer in one run — the recommended setup for
+#       # layered projects (Nuxt layers, app-* dirs): one job, one
+#       # auto-commit, no per-layer push races. Set it to pin a single layer.
+#       I18N_LOCALE_PATHS: "i18n/locales/ app-*/i18n/locales/"
 #     rules:
 #       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 #         changes:
 #           - i18n/locales/en.json
+#           - app-*/i18n/locales/en.json
 #
 #   i18n-cleanup:
 #     extends: .i18n-cleanup
-#     variables:
-#       I18N_LAYER: root
 #     rules:
 #       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 #         changes:
 #           - components/**/*.vue
 #           - i18n/locales/*.json
+#           - app-*/components/**/*
+#           - app-*/i18n/locales/*.json
 #       # Default-branch baseline — REQUIRED for the MR widget, see below.
 #       - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 #
@@ -79,6 +84,7 @@
   allow_failure: true
   variables:
     # Optional — translation
+    I18N_LAYER: ""            # layer to translate (empty = all locale-backed layers, aggregated)
     I18N_LOCALES: ""          # comma-separated target locales (default: all except source)
     I18N_SOURCE_LOCALE: ""    # reference locale (default: from .i18n-mcp.json)
     I18N_KEYS: ""             # comma-separated keys (default: all missing)
@@ -91,7 +97,9 @@
 
     # Optional — push behaviour
     I18N_PUSH_TOKEN: ""       # project access token (write_repository) — push alternative to the job token. See header comment.
-    I18N_LOCALE_PATHS: "i18n/locales/"  # space-separated globs for locale directories (e.g. "i18n/locales/ app-*/i18n/locales/")
+    I18N_LOCALE_PATHS: "i18n/locales/"  # space-separated globs for locale directories. With empty I18N_LAYER on a
+                                        # layered project this MUST cover every layer's dir (e.g. "i18n/locales/
+                                        # app-*/i18n/locales/") or their translations are written but never committed.
     I18N_COMMIT_MESSAGE: ""   # custom commit message (overrides the default entirely)
     I18N_AUTOCOMMIT_SKIP_CI: ""  # set "true" to append [skip ci] to the auto-commit. Off by default:
                                  # [skip ci] leaves the MR head without a pipeline, which breaks the
@@ -122,7 +130,6 @@
       [ -z "${I18N_PROVIDER:-}" ] && MISSING="$MISSING I18N_PROVIDER"
       [ -z "${I18N_MODEL:-}" ]    && MISSING="$MISSING I18N_MODEL"
       [ -z "${I18N_API_KEY:-}" ]  && MISSING="$MISSING I18N_API_KEY"
-      [ -z "${I18N_LAYER:-}" ]    && MISSING="$MISSING I18N_LAYER"
       if [ -n "$MISSING" ]; then
         echo "ERROR: missing required variables:$MISSING"
         exit 1
@@ -140,8 +147,9 @@
           ;;
       esac
 
-      args="--provider $I18N_PROVIDER --model $I18N_MODEL --layer $I18N_LAYER --batch-size $I18N_BATCH_SIZE"
+      args="--provider $I18N_PROVIDER --model $I18N_MODEL --batch-size $I18N_BATCH_SIZE"
 
+      [ -n "$I18N_LAYER" ]         && args="$args --layer $I18N_LAYER"
       [ -n "$I18N_LOCALES" ]       && args="$args --targets $I18N_LOCALES"
       [ -n "$I18N_SOURCE_LOCALE" ] && args="$args --ref $I18N_SOURCE_LOCALE"
       [ -n "$I18N_KEYS" ]          && args="$args --keys $I18N_KEYS"
@@ -181,7 +189,7 @@
       if [ -n "${I18N_COMMIT_MESSAGE:-}" ]; then
         COMMIT_MSG="$I18N_COMMIT_MESSAGE"
       else
-        COMMIT_MSG="i18n: auto-translate missing keys ($I18N_LAYER) via $I18N_PROVIDER"
+        COMMIT_MSG="i18n: auto-translate missing keys (${I18N_LAYER:-all layers}) via $I18N_PROVIDER"
         if [ "${I18N_AUTOCOMMIT_SKIP_CI:-}" = "true" ]; then
           COMMIT_MSG="$COMMIT_MSG [skip ci]"
         fi
@@ -219,10 +227,8 @@
   stage: lint
   allow_failure: true
   variables:
-    # Required
-    I18N_LAYER: ""            # e.g. root, common
-
     # Optional
+    I18N_LAYER: ""            # layer to scan (empty = all layers), e.g. root, common
     I18N_CLI_VERSION: "latest"
     I18N_INSTALL_PEER_DEPS: ""
 
@@ -239,16 +245,16 @@
       # remove-orphans is a dry run by default — it only reports.
       # --codequality-output feeds the MR Code Quality widget (needs the
       # default-branch baseline rule, see header comment).
-      the-i18n-cli remove-orphans \
-        --layer "$I18N_LAYER" \
-        --codequality-output gl-codequality.json \
-        > .i18n-reports/orphans.json
+      args="--codequality-output gl-codequality.json"
+      [ -n "$I18N_LAYER" ] && args="$args --layer $I18N_LAYER"
+
+      the-i18n-cli remove-orphans $args > .i18n-reports/orphans.json
 
       ORPHAN_COUNT=$(jq '.summary.orphanCount // 0' .i18n-reports/orphans.json)
 
       echo ""
       echo "============================================"
-      echo "  i18n Cleanup Report — layer: ${I18N_LAYER}"
+      echo "  i18n Cleanup Report — layer: ${I18N_LAYER:-all}"
       echo "  Orphan keys found: ${ORPHAN_COUNT}"
       echo "============================================"
       echo "Findings appear in the MR Code Quality widget."

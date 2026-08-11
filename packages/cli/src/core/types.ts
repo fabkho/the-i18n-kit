@@ -261,6 +261,20 @@ export interface TranslateMissingResult {
   }
 }
 
+/**
+ * Per-layer totals in the all-layers translate summary (`summary.byLayer`).
+ * Field names mirror the cross-layer summary totals so consumers parse both
+ * with the same accessors. `totalWouldTranslate` is always present (0 outside
+ * dry runs).
+ */
+export interface TranslateLayerTotals {
+  layer: string
+  totalTranslated: number
+  totalFailed: number
+  totalSkipped: number
+  totalWouldTranslate: number
+}
+
 // ─── translate_key ───────────────────────────────────────────────
 
 export interface TranslateKeyLocaleIssue {
