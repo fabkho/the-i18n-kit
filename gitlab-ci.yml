@@ -46,6 +46,30 @@
 #       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 #       - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 #
+# ── Exit codes and gates ─────────────────────────────────────────────────────
+# Every job decides pass/fail from the CLI's exit code, never by parsing counts
+# out of the JSON result. Reading result fields to decide an outcome is what
+# coupled earlier versions of this template to undocumented output shapes.
+#
+#   0  the run succeeded and no gate tripped
+#   1  the run itself failed — bad API key, unreadable project, nothing translated
+#   2  the run succeeded but a requested gate tripped (findings exist)
+#
+# .i18n-cleanup gates on orphans when you opt in, and distinguishes the two:
+#
+#   i18n-cleanup:
+#     extends: .i18n-cleanup
+#     variables:
+#       I18N_FAIL_ON_ORPHANS: "true"   # adds --fail-on-orphans → exit 2 on findings
+#     allow_failure: false             # make orphans block the merge
+#
+# By default the job allows exit 2 only (a yellow warning), so orphans are
+# informational while a genuinely broken scan still fails the job red. Setting
+# `allow_failure: false` turns findings into a hard gate.
+#
+# .i18n-check has no opt-in flag: it always exits 1 on findings, because a key
+# that renders raw in production is a defect rather than a threshold.
+#
 # ── Code Quality widget (MR findings) ────────────────────────────────────────
 # .i18n-cleanup and .i18n-check emit `gl-codequality.json` declared as
 # artifacts:reports:codequality. GitLab's MR widget shows the DIFF between the
@@ -179,17 +203,36 @@
       [ "$I18N_DRY_RUN" = "true" ] && args="$args --dry-run"
 
       mkdir -p .i18n-reports
-      the-i18n-cli translate $args | tee .i18n-reports/translate-output.json
+      # The CLI owns the pass/fail decision and reports it as an exit code:
+      # 0 success, 1 the run itself failed, 2 a requested gate tripped. Deciding
+      # that from parsed counts is what coupled this template to output field
+      # names and broke it — the counts below are for the log only.
+      # Redirect rather than pipe: PIPESTATUS is bash-only and these jobs run
+      # on busybox sh in the default alpine image.
+      set +e
+      the-i18n-cli translate $args > .i18n-reports/translate-output.json
+      STATUS=$?
+      set -e
+      cat .i18n-reports/translate-output.json
 
       # Tolerant parse: older CLI versions (< 1.5.4) mixed logs into stdout.
       # Dry runs report their counts as totalWouldTranslate.
       TRANSLATED=$(jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)' .i18n-reports/translate-output.json 2>/dev/null || echo "?")
       FAILED=$(jq -r '.summary.totalFailed // 0' .i18n-reports/translate-output.json 2>/dev/null || echo "?")
       echo "Translated: $TRANSLATED, failed: $FAILED"
-      if [ "$FAILED" != "?" ] && [ "$FAILED" -gt 0 ] && [ "$TRANSLATED" = "0" ]; then
-        echo "ERROR: all $FAILED keys failed to translate — check provider, model, and API key."
-        exit 1
-      fi
+
+      case "$STATUS" in
+        0) ;;
+        2)
+          GATES=$(jq -rc '[.gatesTripped[]?.name] | join(", ")' .i18n-reports/translate-output.json 2>/dev/null || echo "unknown")
+          echo "GATE: ${GATES} tripped. The run itself succeeded — this is a findings gate, not a failure."
+          exit 2
+          ;;
+        *)
+          echo "ERROR: translate failed (exit ${STATUS}) — check provider, model, and API key."
+          exit "$STATUS"
+          ;;
+      esac
 
       if [ "$I18N_DRY_RUN" = "true" ]; then
         echo "Dry run complete. No files written."
@@ -264,10 +307,16 @@
 .i18n-cleanup:
   extends: .i18n-base
   stage: lint
-  allow_failure: true
+  # Exit 2 (orphans found, only when I18N_FAIL_ON_ORPHANS=true) is a warning;
+  # any other non-zero is a real failure and fails the job red. Set
+  # `allow_failure: false` on the extending job to make orphans block the merge.
+  allow_failure:
+    exit_codes:
+      - 2
   variables:
     # Optional
     I18N_LAYER: ""            # layer to scan (empty = all layers), e.g. root, common
+    I18N_FAIL_ON_ORPHANS: "false"  # "true" → exit 2 when orphans are found
     I18N_CLI_VERSION: "latest"
     I18N_INSTALL_PEER_DEPS: ""
 
@@ -286,10 +335,23 @@
       # default-branch baseline rule, see header comment).
       args="--codequality-output gl-codequality.json"
       [ -n "$I18N_LAYER" ] && args="$args --layer $I18N_LAYER"
+      [ "$I18N_FAIL_ON_ORPHANS" = "true" ] && args="$args --fail-on-orphans"
 
+      # Exit code, not a parsed count, decides the job outcome: 2 means orphans
+      # were found and the gate was requested, anything else non-zero means the
+      # scan itself failed. The count below is for the summary banner only.
+      set +e
       the-i18n-cli remove-orphans $args > .i18n-reports/orphans.json
+      STATUS=$?
+      set -e
 
-      ORPHAN_COUNT=$(jq '.summary.orphanCount // 0' .i18n-reports/orphans.json)
+      if [ "$STATUS" != "0" ] && [ "$STATUS" != "2" ]; then
+        echo "ERROR: orphan scan failed (exit ${STATUS})."
+        cat .i18n-reports/orphans.json
+        exit "$STATUS"
+      fi
+
+      ORPHAN_COUNT=$(jq '.summary.orphanCount // 0' .i18n-reports/orphans.json 2>/dev/null || echo "?")
 
       echo ""
       echo "============================================"
@@ -298,6 +360,10 @@
       echo "============================================"
       echo "Findings appear in the MR Code Quality widget."
       echo "Full report: ${CI_JOB_URL}/artifacts/browse/.i18n-reports/"
+
+      # Propagate the gate: 2 surfaces as a warning via allow_failure.exit_codes
+      # above, or as a hard failure if the extending job sets allow_failure:false.
+      exit "$STATUS"
 
   artifacts:
     paths:
@@ -312,8 +378,11 @@
 .i18n-check:
   extends: .i18n-base
   stage: lint
-  # `check` exits non-zero when any key is used but defined nowhere.
-  # allow_failure keeps that informational (findings still reach the MR
+  # `check` gates unconditionally on exit 1 — a key that renders raw in
+  # production is a defect, not a threshold, so it has no opt-in flag and no
+  # exit 2. That means findings and a crashed scan both surface as 1 here, so
+  # this job cannot use allow_failure.exit_codes the way .i18n-cleanup does.
+  # allow_failure keeps findings informational (they still reach the MR
   # widget) — remove allow_failure on the extending job to make it a gate.
   allow_failure: true
   variables:
