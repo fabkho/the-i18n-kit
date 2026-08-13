@@ -95,6 +95,28 @@ Add to your MCP host (VS Code, Cursor, Claude Desktop, Zed):
 
 ---
 
+## Dead Key Detection
+
+`remove-orphans` finds translation keys no source file references. The hard part is not finding unused keys — it is not deleting keys that only *look* unused, and the scan is built around that.
+
+**Dynamic references are detected, not ignored.** A key reachable through `` t(`a.b.${type}.title`) ``, a concatenated prefix, or an ambiguous `$te()` probe is classified as **used** and never removed. Keys owned by a shared layer but referenced from an app that doesn't consume it are reported as `misplacedUsages` and never removed either. Only keys with no evidence of use anywhere in a consuming app are offered for deletion — and `remove-orphans` is dry-run by default.
+
+Every report separates the buckets, so a cleanup is reviewable rather than a leap of faith:
+
+| Bucket | Removed? |
+|---|---|
+| `orphanKeys` — no evidence of use | yes, on an explicit non-dry run |
+| `dynamic-matched` — a dynamic pattern could produce it | no |
+| `uncertainKeys` — evidence is ambiguous | no |
+| `misplacedUsages` — used only from a non-consuming app | no |
+| `ignored` — matched `orphanScan.ignorePatterns` | no |
+
+On a real 8,000-key monorepo about 12% of keys land in the protective buckets. That is the scan being conservative on purpose.
+
+→ [How the scanner works, what it can and cannot see](./packages/cli/README.md#how-orphan-detection-works)
+
+---
+
 ## Translation Modes
 
 The translate operations (`translate` / `translate-key` in the CLI, `translate_missing` / `translate_key` in the MCP server) run in one of two modes. Every result reports which mode ran (`mode: "provider" | "agent" | "dry-run"`).
