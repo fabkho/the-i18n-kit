@@ -149,6 +149,45 @@ export interface UpdateTranslationsResult {
   skippedKeys?: string[]
 }
 
+// ─── init ────────────────────────────────────────────────────────
+
+/**
+ * The config `init` emits. Only fields the matched adapter cannot derive:
+ * writing a copy of what the framework already states creates a second source
+ * of truth that drifts silently (#305). The generic path is the exception —
+ * without localeDirs and defaultLocale nothing resolves at all.
+ */
+export interface GeneratedProjectConfig {
+  $schema: string
+  context: string
+  glossary: Record<string, string>
+  translationPrompt: string
+  localeNotes: Record<string, string>
+  localeDirs?: string[]
+  defaultLocale?: string
+  locales?: string[]
+}
+
+export interface InitProjectConfigResult {
+  config: GeneratedProjectConfig
+  detected: {
+    adapter: string
+    label: string
+    /** Detection score. 0 when nothing matched and generic was assumed. */
+    confidence: number
+    /** False only for the generic adapter, which needs locale config written out. */
+    derivesLocaleConfig: boolean
+    /** Other adapters that also scored, best first. */
+    runnersUp?: Array<{ name: string; confidence: number }>
+    /** Present when init could not find anything to point the config at. */
+    note?: string
+  }
+  /** Path relative to the project dir. */
+  configPath: string
+  written: boolean
+  overwritten: boolean
+}
+
 // ─── get_missing_translations ────────────────────────────────────
 
 export interface MissingTranslationsResult {

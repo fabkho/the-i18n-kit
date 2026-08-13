@@ -43,6 +43,7 @@ export {
   renameTranslationKey,
   scaffoldLocaleFiles,
 } from './ops-write.js'
+export { initProjectConfig } from './ops-init.js'
 
 export {
   findOrphanKeys,

@@ -6,7 +6,7 @@ import type { ProjectConfig } from './types.js'
 import { ConfigError, toErrorMessage } from '../utils/errors.js'
 import { log } from '../utils/logger.js'
 
-const CONFIG_FILENAME = '.i18n-mcp.json'
+export const CONFIG_FILENAME = '.i18n-mcp.json'
 
 // ─── Zod schema ─────────────────────────────────────────────────
 
@@ -49,6 +49,27 @@ const projectConfigSchema = z.object({
   // files keep validating (the schema is strict), warned about, and ignored.
   samplingPreferences: z.unknown().optional(),
 }).strict()
+
+/**
+ * Validate a candidate project config against the published schema, returning
+ * the formatted issue list rather than throwing. `init` uses this to refuse to
+ * emit a config the tool would then reject; loadProjectConfig turns the same
+ * failure into a ConfigError.
+ */
+export function validateProjectConfig(
+  value: unknown,
+): { ok: true; data: ProjectConfig } | { ok: false; error: string } {
+  const result = projectConfigSchema.safeParse(value)
+  if (result.success) return { ok: true, data: result.data as ProjectConfig }
+
+  const error = result.error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join('.') : '(root)'
+      return `  ${path}: ${issue.message}`
+    })
+    .join('\n')
+  return { ok: false, error }
+}
 
 // ─── Config file discovery ──────────────────────────────────────
 
@@ -107,16 +128,10 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
     )
   }
 
-  const result = projectConfigSchema.safeParse(parsed)
+  const result = validateProjectConfig(parsed)
 
-  if (!result.success) {
-    const messages = result.error.issues
-      .map(issue => {
-        const path = issue.path.length > 0 ? issue.path.join('.') : '(root)'
-        return `  ${path}: ${issue.message}`
-      })
-      .join('\n')
-    throw new ConfigError(`Invalid ${CONFIG_FILENAME}:\n${messages}`)
+  if (!result.ok) {
+    throw new ConfigError(`Invalid ${CONFIG_FILENAME}:\n${result.error}`)
   }
 
   log.debug(`Project config loaded successfully from ${configPath}`)
