@@ -172,6 +172,8 @@ Locales listed in `protectedLocales` (see Project Config) are excluded from defa
 | Multiline calls | prefix on a different line than `t(` | caught by bare-string fallbacks (heuristic) |
 | Multi-app scoping | key in a shared layer | usage counts only from apps that consume the layer; cross-app usages are reported as `misplacedUsages`, never removed |
 
+**The scan never removes a key it is unsure about.** Dynamic references are detected, not ignored: a key that *could* be produced by a template pattern, a concatenated prefix or an ambiguous probe is classified as used and left alone. Deletion is reserved for keys with no evidence of use anywhere in a consuming app. On a real 8,000-key project roughly 12% of keys land in the protective buckets — that is the scan working, not failing.
+
 **Classification buckets** — only `orphanKeys` is ever removed; everything else is protective:
 
 - `orphanKeys` — no evidence of use in any consuming app: safe to remove
@@ -186,7 +188,16 @@ Locales listed in `protectedLocales` (see Project Config) are excluded from defa
 - Keys composed at runtime from data (API responses, database values, enums built dynamically)
 - Keys referenced only outside the scanned source (backend responses, external configs, docs)
 
-**Recommended code style for exact scanning:** prefer full literal keys, or literal key maps (`const KEYS = { draft: 'x.status.draft', ... } as const`) over string-building — every key stays greppable and the scanner needs no heuristics. Vue projects can enforce this with `@intlify/eslint-plugin-vue-i18n`'s `no-dynamic-keys` rule.
+**Recommended code style — anchor dynamic keys, don't avoid them.** Dynamic keys are tracked and are often the right design; what matters is that the *namespace* stays literal at the call site:
+
+```ts
+t(`${prefix}.title`)                          // widens to any key ending .title
+t(`components.integrations.${type}.title`)    // widens to one segment under a known namespace
+```
+
+Both are counted as used, but the first suppresses every `.title` key in the project — on a large catalog that can be hundreds of keys the scan can no longer audit. Keeping a literal leading segment costs nothing and keeps the report meaningful. Literal key maps (`const KEYS = { draft: 'x.status.draft' } as const`) are the fully-static alternative where the set is closed.
+
+Prefixes assembled in another scope defeat this even when they are literal — a `computed` returning `'a.b.' + x` reaches the call site as an opaque variable. Inline the namespace instead of the whole key.
 
 `remove-orphans` is dry-run by default; run removals as a reviewed MR and treat the report's `uncertainKeys`/`dynamicKeys` sections as the audit trail.
 
