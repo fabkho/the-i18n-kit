@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.1.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.1.0...the-i18n-mcp-7.1.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **cli:** report unresolved and ambiguous locale refs instead of dropping them ([#302](https://github.com/fabkho/the-i18n-kit/issues/302)) ([a257a5f](https://github.com/fabkho/the-i18n-kit/commit/a257a5f9237805f4003efff0a1f84d1868e06a18))
+
 ## [7.1.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.0.1...the-i18n-mcp-7.1.0) (2026-08-11)
 
 
