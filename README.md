@@ -66,6 +66,7 @@ Agent changes wording for an existing key
 ```bash
 npm install -g the-i18n-cli
 
+the-i18n-cli init                      # create .i18n-mcp.json from framework detection
 the-i18n-cli missing                   # find missing translations
 the-i18n-cli search --query "save"     # search keys and values
 the-i18n-cli remove-orphans            # find unused translation keys (dry-run by default)

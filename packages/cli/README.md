@@ -22,6 +22,7 @@ npx the-i18n-cli --help
 ## Quick Start
 
 ```bash
+the-i18n-cli init                            # Create .i18n-mcp.json from framework detection
 the-i18n-cli missing                         # Find missing translations
 the-i18n-cli search --query "save"           # Search keys and values
 the-i18n-cli write --layer root --translations '{"common.btn.ok": {"en": "OK", "de": "OK"}}'
@@ -35,6 +36,7 @@ the-i18n-cli check                           # Find used-but-undefined keys (non
 
 | Command | Description |
 |---------|-------------|
+| `init` | Create a schema-valid `.i18n-mcp.json` from framework detection. Non-interactive; refuses to overwrite without `--force` |
 | `get` | Read translation values for specific keys |
 | `write` | Write translation keys (`add` / `update` / `upsert` mode, default: `upsert`) |
 | `add` | Add new translation keys (skips keys that already exist) |
@@ -95,6 +97,30 @@ Gates compose on one invocation, and a failed run outranks a tripped gate — ex
 ```
 
 `check` is the exception: it gates unconditionally with exit `1`, because a key that renders raw in production is a defect rather than a threshold.
+
+## Getting Started on a New Project
+
+```bash
+the-i18n-cli init            # writes .i18n-mcp.json
+the-i18n-cli init --dry-run  # report what it would write, touch nothing
+the-i18n-cli init --force    # overwrite an existing config
+```
+
+`init` detects the framework and writes **only what that framework cannot tell the tool itself**. On a Nuxt, Laravel, Vue or React project the locales, layers and default locale are resolved from the framework config on every run, so `init` deliberately does not copy them into `.i18n-mcp.json` — a generated copy is a second source of truth that drifts silently the day the framework config changes. What you get is the authoring context no adapter can derive:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/fabkho/the-i18n-kit/main/packages/mcp/schema.json",
+  "context": "",
+  "glossary": {},
+  "translationPrompt": "",
+  "localeNotes": {}
+}
+```
+
+A project with no recognised framework is the exception: the generic adapter cannot resolve anything without `localeDirs` and `defaultLocale`, so `init` probes the common locale directory layouts and writes what it finds. The reference locale is guessed as the **fullest** locale file rather than the alphabetically first, since a source locale is the one everything else is translated from.
+
+The result reports which adapter matched and with what confidence, so you can tell why Nuxt was chosen over generic. `init` is non-interactive, so it runs unattended in a devcontainer or CI bootstrap, and it refuses to overwrite an existing config unless you pass `--force`. Even then it preserves any `localeDirs`, `defaultLocale` and `locales` already in the file — `--force` refreshes the scaffolding, it does not discard your locale wiring.
 
 ## Referring to Locales
 

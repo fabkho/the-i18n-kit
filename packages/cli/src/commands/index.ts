@@ -1,6 +1,7 @@
 import type { CommandDef } from 'citty'
 
 export const commands = {
+  'init': () => import('./init.js').then(m => m.default as CommandDef),
   'detect': () => import('./detect.js').then(m => m.default as CommandDef),
   'list-dirs': () => import('./list-dirs.js').then(m => m.default as CommandDef),
   'get': () => import('./get.js').then(m => m.default as CommandDef),

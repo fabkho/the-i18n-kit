@@ -12,23 +12,32 @@ export function resetRegistry(): void {
   adapters.length = 0
 }
 
-export async function detectFramework(
+export interface FrameworkMatch {
+  adapter: FrameworkAdapter
+  /** Detection score. 0 when the adapter was forced by hint rather than detected. */
+  confidence: number
+  /** Every adapter that scored above zero, best first — context for `init`. */
+  runnersUp: Array<{ name: string; confidence: number }>
+}
+
+/**
+ * Detect the framework and report how confidently. `detectFramework` returns
+ * only the winner; `init` needs the score to tell a user why Nuxt was chosen
+ * over generic, and a bare directory needs to be distinguishable from a
+ * confident match rather than surfacing as a thrown error.
+ */
+export async function detectFrameworkMatch(
   projectDir: string,
   hint?: string,
-): Promise<FrameworkAdapter> {
+): Promise<FrameworkMatch | undefined> {
   if (adapters.length === 0) {
     throw new ConfigError('No framework adapters registered.')
   }
 
   if (hint) {
     const match = adapters.find(a => a.name === hint)
-    if (!match) {
-      throw new ConfigError(
-        `Framework hint "${hint}" does not match any registered adapter. `
-        + `Available: ${adapters.map(a => a.name).join(', ')}`,
-      )
-    }
-    return match
+    if (!match) return undefined
+    return { adapter: match, confidence: 0, runnersUp: [] }
   }
 
   const scores = await Promise.all(
@@ -43,14 +52,32 @@ export async function detectFramework(
     }),
   )
 
-  const best = scores.reduce((a, b) => (b.confidence > a.confidence ? b : a))
+  const ranked = scores.filter(s => s.confidence > 0).sort((a, b) => b.confidence - a.confidence)
+  const [best] = ranked
+  if (!best) return undefined
 
-  if (best.confidence === 0) {
+  return {
+    adapter: best.adapter,
+    confidence: best.confidence,
+    runnersUp: ranked.slice(1).map(s => ({ name: s.adapter.name, confidence: s.confidence })),
+  }
+}
+
+export async function detectFramework(
+  projectDir: string,
+  hint?: string,
+): Promise<FrameworkAdapter> {
+  const match = await detectFrameworkMatch(projectDir, hint)
+  if (match) return match.adapter
+
+  if (hint) {
     throw new ConfigError(
-      `No framework detected for ${projectDir}. `
-      + `Registered adapters: ${adapters.map(a => a.name).join(', ')}`,
+      `Framework hint "${hint}" does not match any registered adapter. `
+      + `Available: ${adapters.map(a => a.name).join(', ')}`,
     )
   }
-
-  return best.adapter
+  throw new ConfigError(
+    `No framework detected for ${projectDir}. `
+    + `Registered adapters: ${adapters.map(a => a.name).join(', ')}`,
+  )
 }
