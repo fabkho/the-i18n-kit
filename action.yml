@@ -142,19 +142,42 @@ runs:
           args+=(--dry-run)
         fi
 
+        # The CLI owns the pass/fail decision and reports it as an exit code:
+        # 0 success, 1 the run itself failed, 2 a requested gate tripped. Parsing
+        # counts to decide that here would re-couple this action to output field
+        # names, which is the defect class that broke downstream pipelines.
+        set +e
         output=$(the-i18n-cli translate "${args[@]}")
+        status=$?
+        set -e
         echo "$output"
 
-        # Dry runs report their counts as totalWouldTranslate
-        count=$(echo "$output" | jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)')
-        failed=$(echo "$output" | jq -r '.summary.totalFailed // 0')
+        # Counts are read for the step outputs and the log only — never to
+        # decide pass/fail. Tolerant, so a malformed result cannot mask $status.
+        # Dry runs report their counts as totalWouldTranslate.
+        # head -n1: a single result yields a single line today, but a multi-document
+        # stdout would make these multiline and turn the -gt below into a hard
+        # bash error under set -e, defeating the tolerance this fallback exists for.
+        count=$(echo "$output" | jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)' 2>/dev/null | head -n1 || echo 0)
+        failed=$(echo "$output" | jq -r '.summary.totalFailed // 0' 2>/dev/null | head -n1 || echo 0)
+        count=${count:-0}
+        failed=${failed:-0}
         echo "translated_count=$count" >> "$GITHUB_OUTPUT"
         echo "failed_count=$failed" >> "$GITHUB_OUTPUT"
 
-        if [ "$failed" -gt 0 ] && [ "$count" -eq 0 ]; then
-          echo "::error::All $failed keys failed to translate — check provider, model, and API key."
-          exit 1
-        fi
+        case "$status" in
+          0) ;;
+          2)
+            gates=$(echo "$output" | jq -rc '[.gatesTripped[]?.name] | join(", ")' 2>/dev/null || echo "unknown")
+            echo "::error::CI gate tripped: ${gates}. The run itself succeeded — this is a findings gate, not a failure."
+            exit 2
+            ;;
+          *)
+            echo "::error::translate failed (exit ${status}) — check provider, model, and API key."
+            exit "$status"
+            ;;
+        esac
+
         if [ "$failed" -gt 0 ]; then
           echo "::warning::$failed keys failed to translate ($count succeeded)."
         fi

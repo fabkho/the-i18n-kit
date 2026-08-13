@@ -276,6 +276,8 @@ i18n-cleanup:
   extends: .i18n-cleanup
   variables:
     I18N_LAYER: root
+    I18N_FAIL_ON_ORPHANS: "true"   # optional: exit 2 when orphans are found
+  # allow_failure: false           # optional: make orphans block the merge
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
@@ -291,7 +293,11 @@ i18n-check:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
-Translations are pushed to the MR branch. Orphan and undefined-key findings are emitted as a `gl-codequality.json` Code Quality artifact and surface in the MR's Code Quality widget. The widget diffs the MR report against the latest default-branch report — without a default-branch rule (no `changes:` filter) the widget stays blank. Artifacts (`.i18n-reports/`, `gl-codequality.json`) are retained for 7 days. The translate job fails when every key failed to translate; `.i18n-check` fails on findings but has `allow_failure: true` by default (remove it to make it a gate).
+Translations are pushed to the MR branch. Orphan and undefined-key findings are emitted as a `gl-codequality.json` Code Quality artifact and surface in the MR's Code Quality widget. The widget diffs the MR report against the latest default-branch report — without a default-branch rule (no `changes:` filter) the widget stays blank. Artifacts (`.i18n-reports/`, `gl-codequality.json`) are retained for 7 days.
+
+Every job decides its outcome from the CLI's exit code rather than by parsing counts out of the JSON result — reading result fields to decide pass/fail is what coupled earlier versions of these templates to undocumented output shapes. `0` is success, `1` means the run itself failed, `2` means a requested gate tripped.
+
+`.i18n-cleanup` allows exit `2` only, so orphans surface as a yellow warning while a genuinely broken scan still fails the job red. Set `I18N_FAIL_ON_ORPHANS: "true"` to request the gate and `allow_failure: false` to make orphans block the merge. `.i18n-check` has no opt-in flag — it always exits `1` on findings, because a key that renders raw in production is a defect rather than a threshold, and it carries `allow_failure: true` by default (remove it to make it a gate).
 
 Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *"Allow Git push requests to the repository"* (job token) or a project access token with `write_repository` scope in `I18N_PUSH_TOKEN`.
 
@@ -302,7 +308,7 @@ Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *
 | `I18N_PROVIDER` | ✅ | — | `openai`, `anthropic`, or `google` |
 | `I18N_MODEL` | ✅ | — | Model name |
 | `I18N_API_KEY` | ✅ | — | API key for the provider |
-| `I18N_LAYER` | ✅ | — | Layer name |
+| `I18N_LAYER` | — | all layers | Layer to translate. Leave empty to translate every locale-backed layer in one run — on a layered project `I18N_LOCALE_PATHS` must then cover every layer's directory, or those translations are written but never committed |
 | `I18N_LOCALES` | — | all except source | Comma-separated target locales |
 | `I18N_SOURCE_LOCALE` | — | from `.i18n-mcp.json` | Reference locale |
 | `I18N_KEYS` | — | all missing | Comma-separated keys |
@@ -318,7 +324,8 @@ Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `I18N_LAYER` | ✅ | — | Layer name |
+| `I18N_LAYER` | — | all layers | Layer to scan. Leave empty to scan every layer |
+| `I18N_FAIL_ON_ORPHANS` | — | `false` | `"true"` adds `--fail-on-orphans`, so the job exits `2` when orphans are found |
 | `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
 | `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
 
