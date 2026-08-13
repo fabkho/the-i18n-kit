@@ -1,6 +1,11 @@
 # Changelog
 
-## [4.3.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.3.0...the-i18n-cli-4.3.1) (2026-08-13)
+## [4.4.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.3.0...the-i18n-cli-4.4.0) (2026-08-13)
+
+
+### Features
+
+* **cli:** init — generate a schema-valid .i18n-mcp.json from detection ([#306](https://github.com/fabkho/the-i18n-kit/issues/306)) ([ac92dbd](https://github.com/fabkho/the-i18n-kit/commit/ac92dbdce1ff429c995383324f38ae138fa12392))
 
 
 ### Bug Fixes
