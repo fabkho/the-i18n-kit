@@ -185,6 +185,32 @@ async function applyTranslations(
   return result
 }
 
+/** The optional diagnostics every mutation result carries. */
+interface MutationDiagnostics {
+  warnings?: string[]
+  placeholderValidation?: PlaceholderValidationResult
+  unresolvedLocales?: UnresolvedLocaleRef[]
+  ambiguousLocales?: LocaleRefAmbiguity[]
+}
+
+/**
+ * Copy the diagnostics off a MutationResult onto a public result, omitting the
+ * empty ones so a clean run keeps its minimal shape. Centralised so the
+ * write/add/update branches cannot drift apart on which of them they remember
+ * to surface — they already had, before unresolvedLocales existed.
+ */
+function attachDiagnostics<T extends MutationDiagnostics>(
+  result: T,
+  mutation: MutationResult,
+  opts: { warnings?: boolean } = {},
+): T {
+  if (opts.warnings !== false && mutation.warnings.length > 0) result.warnings = mutation.warnings
+  if (mutation.placeholderValidation) result.placeholderValidation = mutation.placeholderValidation
+  if (mutation.unresolvedLocales) result.unresolvedLocales = mutation.unresolvedLocales
+  if (mutation.ambiguousLocales) result.ambiguousLocales = mutation.ambiguousLocales
+  return result
+}
+
 /**
  * Write translation keys to the specified layer with mode control.
  *
@@ -206,9 +232,8 @@ export async function writeTranslations(opts: {
   const mode = opts.mode ?? 'upsert'
   const isDryRun = opts.dryRun ?? false
 
-  const { applied, skipped, warnings, filesWritten, preview, placeholderValidation, unresolvedLocales, ambiguousLocales } = await applyTranslations(
-    config, layer, translations, mode, findLocaleImpl, isDryRun,
-  )
+  const mutation = await applyTranslations(config, layer, translations, mode, findLocaleImpl, isDryRun)
+  const { applied, skipped, filesWritten, preview } = mutation
 
   if (isDryRun) {
     const result: WriteTranslationsResult = {
@@ -222,23 +247,14 @@ export async function writeTranslations(opts: {
       },
     }
     if (skipped.length > 0) { result.skippedKeys = skipped }
-    if (warnings.length > 0) { result.warnings = warnings }
-    if (placeholderValidation) { result.placeholderValidation = placeholderValidation }
-    if (unresolvedLocales) { result.unresolvedLocales = unresolvedLocales }
-    if (ambiguousLocales) { result.ambiguousLocales = ambiguousLocales }
-    return result
+    return attachDiagnostics(result, mutation)
   }
 
-  const result: WriteTranslationsResult = {
+  return attachDiagnostics({
     written: applied,
     skipped,
     filesWritten,
-  }
-  if (warnings.length > 0) { result.warnings = warnings }
-  if (placeholderValidation) { result.placeholderValidation = placeholderValidation }
-  if (unresolvedLocales) { result.unresolvedLocales = unresolvedLocales }
-  if (ambiguousLocales) { result.ambiguousLocales = ambiguousLocales }
-  return result
+  } as WriteTranslationsResult, mutation)
 }
 
 /**
@@ -257,9 +273,8 @@ export async function addTranslations(opts: {
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? false
 
-  const { applied, skipped, warnings, filesWritten, preview, placeholderValidation, unresolvedLocales, ambiguousLocales } = await applyTranslations(
-    config, layer, translations, 'add', findLocaleImpl, isDryRun,
-  )
+  const mutation = await applyTranslations(config, layer, translations, 'add', findLocaleImpl, isDryRun)
+  const { applied, skipped, filesWritten, preview } = mutation
 
   if (isDryRun) {
     const result: AddTranslationsResult = {
@@ -275,32 +290,14 @@ export async function addTranslations(opts: {
     if (skipped.length > 0) {
       result.skippedKeys = skipped
     }
-    if (warnings.length > 0) {
-      result.warnings = warnings
-    }
-    if (placeholderValidation) {
-      result.placeholderValidation = placeholderValidation
-    }
-    if (unresolvedLocales) { result.unresolvedLocales = unresolvedLocales }
-    if (ambiguousLocales) { result.ambiguousLocales = ambiguousLocales }
-    return result
+    return attachDiagnostics(result, mutation)
   }
 
-  const summary: AddTranslationsResult = {
+  return attachDiagnostics({
     added: applied,
     skipped,
     filesWritten,
-  }
-  if (warnings.length > 0) {
-    summary.warnings = warnings
-  }
-  if (placeholderValidation) {
-    summary.placeholderValidation = placeholderValidation
-  }
-  if (unresolvedLocales) { summary.unresolvedLocales = unresolvedLocales }
-  if (ambiguousLocales) { summary.ambiguousLocales = ambiguousLocales }
-
-  return summary
+  } as AddTranslationsResult, mutation)
 }
 
 /**
@@ -319,9 +316,8 @@ export async function updateTranslations(opts: {
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? false
 
-  const { applied, skipped, filesWritten, preview, placeholderValidation, unresolvedLocales, ambiguousLocales } = await applyTranslations(
-    config, layer, translations, 'update', findLocaleImpl, isDryRun,
-  )
+  const mutation = await applyTranslations(config, layer, translations, 'update', findLocaleImpl, isDryRun)
+  const { applied, skipped, filesWritten, preview } = mutation
 
   if (isDryRun) {
     const result: UpdateTranslationsResult = {
@@ -337,23 +333,16 @@ export async function updateTranslations(opts: {
     if (skipped.length > 0) {
       result.skippedKeys = skipped
     }
-    if (placeholderValidation) {
-      result.placeholderValidation = placeholderValidation
-    }
-    if (unresolvedLocales) { result.unresolvedLocales = unresolvedLocales }
-    if (ambiguousLocales) { result.ambiguousLocales = ambiguousLocales }
-    return result
+    // warnings: false — updateTranslations has never surfaced them, and this
+    // deprecated wrapper is not the place to change its contract.
+    return attachDiagnostics(result, mutation, { warnings: false })
   }
 
-  const result: UpdateTranslationsResult = {
+  return attachDiagnostics({
     updated: applied,
     skipped,
     filesWritten,
-  }
-  if (placeholderValidation) {
-    result.placeholderValidation = placeholderValidation
-  }
-  return result
+  } as UpdateTranslationsResult, mutation, { warnings: false })
 }
 
 /**
