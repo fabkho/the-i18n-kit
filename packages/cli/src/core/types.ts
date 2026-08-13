@@ -6,6 +6,8 @@
 // ─── detect_i18n_config ──────────────────────────────────────────
 // Returns I18nConfig directly (re-exported from config/types)
 export type { I18nConfig } from '../config/types.js'
+import type { LocaleRefAmbiguity } from './shared.js'
+export type { LocaleRefAmbiguity } from './shared.js'
 
 // ─── list_locale_dirs ────────────────────────────────────────────
 
@@ -56,6 +58,19 @@ export interface LocaleRefInfo {
   name?: string
 }
 
+/**
+ * A locale ref in the request that matched no known locale. Its values were
+ * not written; the keys still appear in `written` because other locales
+ * succeeded, so this field is the only signal the write did less than asked.
+ */
+export interface UnresolvedLocaleRef {
+  ref: string
+  /** Keys whose value for this ref was dropped. */
+  keys: string[]
+  /** "Did you mean …?", when a near match exists. */
+  suggestion?: string
+}
+
 export interface MutationResult {
   applied: string[]
   skipped: string[]
@@ -63,6 +78,10 @@ export interface MutationResult {
   filesWritten: number
   preview?: MutationPreview[]
   placeholderValidation?: PlaceholderValidationResult
+  /** Present only when a ref resolved to nothing. */
+  unresolvedLocales?: UnresolvedLocaleRef[]
+  /** Present only when a ref matched several locales and precedence picked one. */
+  ambiguousLocales?: LocaleRefAmbiguity[]
 }
 
 export interface AddTranslationsResult {
@@ -74,6 +93,10 @@ export interface AddTranslationsResult {
   skipped: string[]
   filesWritten?: number
   warnings?: string[]
+  /** Present only when a locale ref resolved to nothing — see UnresolvedLocaleRef. */
+  unresolvedLocales?: UnresolvedLocaleRef[]
+  /** Present only when a locale ref matched several locales. */
+  ambiguousLocales?: LocaleRefAmbiguity[]
   placeholderValidation?: PlaceholderValidationResult
   summary?: {
     keysToAdd: number
@@ -93,6 +116,10 @@ export interface WriteTranslationsResult {
   filesWritten?: number
   warnings?: string[]
   placeholderValidation?: PlaceholderValidationResult
+  /** Present only when a locale ref resolved to nothing — see UnresolvedLocaleRef. */
+  unresolvedLocales?: UnresolvedLocaleRef[]
+  /** Present only when a locale ref matched several locales. */
+  ambiguousLocales?: LocaleRefAmbiguity[]
   summary?: {
     keysWritten: number
     keysSkipped: number
@@ -109,6 +136,10 @@ export interface UpdateTranslationsResult {
   updated?: string[]
   skipped: string[]
   filesWritten?: number
+  /** Present only when a locale ref resolved to nothing — see UnresolvedLocaleRef. */
+  unresolvedLocales?: UnresolvedLocaleRef[]
+  /** Present only when a locale ref matched several locales. */
+  ambiguousLocales?: LocaleRefAmbiguity[]
   placeholderValidation?: PlaceholderValidationResult
   summary?: {
     keysToUpdate: number

@@ -196,6 +196,35 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.results).toBeUndefined()
   })
 
+  // #301: stderr is the server's own log, so an MCP caller can only learn
+  // that a locale ref was dropped if the result itself says so.
+  it('write_translations reports an unresolvable locale ref in the result', async () => {
+    const { json } = await callTool('write_translations', {
+      projectDir,
+      layer: 'root',
+      translations: { 'actions.cancel': { de: 'Abbrechen', 'de-DE-formal': 'Brechen Sie ab' } },
+    })
+
+    expect(json?.unresolvedLocales).toEqual([
+      expect.objectContaining({ ref: 'de-DE-formal', keys: ['actions.cancel'] }),
+    ])
+    // The trap this guards: the key IS written, for the locale that resolved.
+    expect(json?.written).toContain('actions.cancel')
+    expect(json?.filesWritten).toBe(1)
+  })
+
+  it('write_translations leaves the result shape untouched when every ref resolves', async () => {
+    const { json } = await callTool('write_translations', {
+      projectDir,
+      layer: 'root',
+      translations: { 'actions.close': { de: 'Schliessen', en: 'Close' } },
+    })
+
+    expect(json).not.toHaveProperty('unresolvedLocales')
+    expect(json).not.toHaveProperty('ambiguousLocales')
+    expect(json?.filesWritten).toBe(2)
+  })
+
   it('find_duplicate_keys returns a valid empty result for a single-layer project', async () => {
     const { json } = await callTool('find_duplicate_keys', { projectDir })
 

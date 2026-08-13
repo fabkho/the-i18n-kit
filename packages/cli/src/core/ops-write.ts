@@ -27,8 +27,10 @@ import type {
   ScaffoldLocaleResult,
   ScaffoldLocaleFileInfo,
   PlaceholderValidationResult,
+  UnresolvedLocaleRef,
 } from './types.js'
-import { findWritableLayerOrThrow, findLocaleImpl, findLocaleSuggestion } from './shared.js'
+import { findWritableLayerOrThrow, findLocaleImpl, findLocaleSuggestion, resolveLocaleRef } from './shared.js'
+import type { LocaleRefAmbiguity } from './shared.js'
 import { validatePlaceholders, mergePlaceholderValidation } from './ops-translate.js'
 
 /**
@@ -45,6 +47,8 @@ async function applyTranslations(
   const applied: string[] = []
   const skipped: string[] = []
   const warnings: string[] = []
+  const unresolved = new Map<string, UnresolvedLocaleRef>()
+  const ambiguities = new Map<string, LocaleRefAmbiguity>()
   const filesWritten = new Set<string>()
   const preview: Array<{ locale: string; key: string; value: string }> = []
 
@@ -73,9 +77,30 @@ async function applyTranslations(
           warnings.push(`${key} (${localeRef}): ${warning}`)
         }
       }
-      const locale = findLocale(config, localeRef)
+      const { locale, ambiguity } = resolveLocaleRef(config, localeRef)
+      if (ambiguity && !ambiguities.has(localeRef)) {
+        ambiguities.set(localeRef, ambiguity)
+        log.warn(
+          `Locale ref "${localeRef}" matches ${ambiguity.candidates.length} locales by ${ambiguity.matchedBy} `
+          + `(${ambiguity.candidates.join(', ')}) — using "${ambiguity.resolvedTo}". Use a locale code to be explicit.`,
+        )
+      }
       if (!locale) {
-        log.warn(`Locale not found: ${localeRef}, skipping.${findLocaleSuggestion(config, localeRef)}`)
+        // stderr alone is invisible to an MCP caller, and the key still lands
+        // in `applied` via the other locales — so the result must carry this
+        // or the write reads as a clean success (#301).
+        const suggestion = findLocaleSuggestion(config, localeRef)
+        log.warn(`Locale not found: ${localeRef}, skipping.${suggestion}`)
+        const existing = unresolved.get(localeRef)
+        if (existing) {
+          existing.keys.push(key)
+        } else {
+          unresolved.set(localeRef, {
+            ref: localeRef,
+            keys: [key],
+            ...(suggestion ? { suggestion: suggestion.trim() } : {}),
+          })
+        }
         continue
       }
       if (!byLocale.has(locale)) {
@@ -124,11 +149,29 @@ async function applyTranslations(
       : `${error.key} (${error.locale}): placeholder mismatch; missing: ${error.missing.join(', ') || '-'}; extra: ${error.extra.join(', ') || '-'}`))
   }
 
+  // A dropped ref is a warning too, so callers that only read `warnings`
+  // still see it — but it also gets its own field, because "the write silently
+  // did less than you asked" is not the same class as a placeholder nit.
+  for (const u of unresolved.values()) {
+    warnings.push(
+      `Locale "${u.ref}" matched no known locale — ${u.keys.length} key(s) not written for it.`
+      + (u.suggestion ? ` ${u.suggestion}` : ''),
+    )
+  }
+
   const result: MutationResult = {
     applied: [...new Set(applied)],
     skipped: [...new Set(skipped)],
     warnings,
     filesWritten: filesWritten.size,
+  }
+
+  if (unresolved.size > 0) {
+    result.unresolvedLocales = [...unresolved.values()]
+  }
+
+  if (ambiguities.size > 0) {
+    result.ambiguousLocales = [...ambiguities.values()]
   }
 
   if (placeholderValidation) {
@@ -139,6 +182,32 @@ async function applyTranslations(
     result.preview = preview
   }
 
+  return result
+}
+
+/** The optional diagnostics every mutation result carries. */
+interface MutationDiagnostics {
+  warnings?: string[]
+  placeholderValidation?: PlaceholderValidationResult
+  unresolvedLocales?: UnresolvedLocaleRef[]
+  ambiguousLocales?: LocaleRefAmbiguity[]
+}
+
+/**
+ * Copy the diagnostics off a MutationResult onto a public result, omitting the
+ * empty ones so a clean run keeps its minimal shape. Centralised so the
+ * write/add/update branches cannot drift apart on which of them they remember
+ * to surface — they already had, before unresolvedLocales existed.
+ */
+function attachDiagnostics<T extends MutationDiagnostics>(
+  result: T,
+  mutation: MutationResult,
+  opts: { warnings?: boolean } = {},
+): T {
+  if (opts.warnings !== false && mutation.warnings.length > 0) result.warnings = mutation.warnings
+  if (mutation.placeholderValidation) result.placeholderValidation = mutation.placeholderValidation
+  if (mutation.unresolvedLocales) result.unresolvedLocales = mutation.unresolvedLocales
+  if (mutation.ambiguousLocales) result.ambiguousLocales = mutation.ambiguousLocales
   return result
 }
 
@@ -163,9 +232,8 @@ export async function writeTranslations(opts: {
   const mode = opts.mode ?? 'upsert'
   const isDryRun = opts.dryRun ?? false
 
-  const { applied, skipped, warnings, filesWritten, preview, placeholderValidation } = await applyTranslations(
-    config, layer, translations, mode, findLocaleImpl, isDryRun,
-  )
+  const mutation = await applyTranslations(config, layer, translations, mode, findLocaleImpl, isDryRun)
+  const { applied, skipped, filesWritten, preview } = mutation
 
   if (isDryRun) {
     const result: WriteTranslationsResult = {
@@ -179,19 +247,14 @@ export async function writeTranslations(opts: {
       },
     }
     if (skipped.length > 0) { result.skippedKeys = skipped }
-    if (warnings.length > 0) { result.warnings = warnings }
-    if (placeholderValidation) { result.placeholderValidation = placeholderValidation }
-    return result
+    return attachDiagnostics(result, mutation)
   }
 
-  const result: WriteTranslationsResult = {
+  return attachDiagnostics({
     written: applied,
     skipped,
     filesWritten,
-  }
-  if (warnings.length > 0) { result.warnings = warnings }
-  if (placeholderValidation) { result.placeholderValidation = placeholderValidation }
-  return result
+  } as WriteTranslationsResult, mutation)
 }
 
 /**
@@ -210,9 +273,8 @@ export async function addTranslations(opts: {
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? false
 
-  const { applied, skipped, warnings, filesWritten, preview, placeholderValidation } = await applyTranslations(
-    config, layer, translations, 'add', findLocaleImpl, isDryRun,
-  )
+  const mutation = await applyTranslations(config, layer, translations, 'add', findLocaleImpl, isDryRun)
+  const { applied, skipped, filesWritten, preview } = mutation
 
   if (isDryRun) {
     const result: AddTranslationsResult = {
@@ -228,28 +290,14 @@ export async function addTranslations(opts: {
     if (skipped.length > 0) {
       result.skippedKeys = skipped
     }
-    if (warnings.length > 0) {
-      result.warnings = warnings
-    }
-    if (placeholderValidation) {
-      result.placeholderValidation = placeholderValidation
-    }
-    return result
+    return attachDiagnostics(result, mutation)
   }
 
-  const summary: AddTranslationsResult = {
+  return attachDiagnostics({
     added: applied,
     skipped,
     filesWritten,
-  }
-  if (warnings.length > 0) {
-    summary.warnings = warnings
-  }
-  if (placeholderValidation) {
-    summary.placeholderValidation = placeholderValidation
-  }
-
-  return summary
+  } as AddTranslationsResult, mutation)
 }
 
 /**
@@ -268,9 +316,8 @@ export async function updateTranslations(opts: {
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? false
 
-  const { applied, skipped, filesWritten, preview, placeholderValidation } = await applyTranslations(
-    config, layer, translations, 'update', findLocaleImpl, isDryRun,
-  )
+  const mutation = await applyTranslations(config, layer, translations, 'update', findLocaleImpl, isDryRun)
+  const { applied, skipped, filesWritten, preview } = mutation
 
   if (isDryRun) {
     const result: UpdateTranslationsResult = {
@@ -286,21 +333,16 @@ export async function updateTranslations(opts: {
     if (skipped.length > 0) {
       result.skippedKeys = skipped
     }
-    if (placeholderValidation) {
-      result.placeholderValidation = placeholderValidation
-    }
-    return result
+    // warnings: false — updateTranslations has never surfaced them, and this
+    // deprecated wrapper is not the place to change its contract.
+    return attachDiagnostics(result, mutation, { warnings: false })
   }
 
-  const result: UpdateTranslationsResult = {
+  return attachDiagnostics({
     updated: applied,
     skipped,
     filesWritten,
-  }
-  if (placeholderValidation) {
-    result.placeholderValidation = placeholderValidation
-  }
-  return result
+  } as UpdateTranslationsResult, mutation, { warnings: false })
 }
 
 /**
