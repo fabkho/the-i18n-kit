@@ -93,6 +93,21 @@ describe('init on a framework project', () => {
     expect(result.config).not.toHaveProperty('defaultLocale')
   })
 
+  // derivesLocaleConfig describes the adapter, not this run. Forcing over a
+  // config that happens to carry localeDirs must not make Nuxt look like it
+  // needs them written down.
+  it('still reports the adapter as deriving when force carries locale settings', async () => {
+    // defaultLocale alone: localeDirs *and* defaultLocale together would score
+    // the generic adapter above Nuxt and legitimately change the answer.
+    await writeFile(join(dir, CONFIG_FILENAME), '{"defaultLocale":"en"}')
+
+    const result = await initProjectConfig({ projectDir: dir, force: true })
+
+    expect(result.detected.adapter).toBe('nuxt')
+    expect(result.detected.derivesLocaleConfig).toBe(true)
+    expect(result.config.defaultLocale).toBe('en')
+  })
+
   it('reports the matched adapter and its confidence', async () => {
     const result = await initProjectConfig({ projectDir: dir })
 

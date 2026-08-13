@@ -163,7 +163,8 @@ export interface GeneratedProjectConfig {
   glossary: Record<string, string>
   translationPrompt: string
   localeNotes: Record<string, string>
-  localeDirs?: string[]
+  /** Matches localeDirEntrySchema: a bare path, or a path bound to a layer. */
+  localeDirs?: Array<string | { path: string; layer: string }>
   defaultLocale?: string
   locales?: string[]
 }
@@ -175,7 +176,13 @@ export interface InitProjectConfigResult {
     label: string
     /** Detection score. 0 when nothing matched and generic was assumed. */
     confidence: number
-    /** False only for the generic adapter, which needs locale config written out. */
+    /**
+     * Whether the matched adapter resolves locales, layers and the default
+     * locale from framework config. False only for the generic adapter, which
+     * cannot resolve without them written into `.i18n-mcp.json`. Independent
+     * of whether this run carried locale settings forward from an existing
+     * file under `--force`.
+     */
     derivesLocaleConfig: boolean
     /** Other adapters that also scored, best first. */
     runnersUp?: Array<{ name: string; confidence: number }>

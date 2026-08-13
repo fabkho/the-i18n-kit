@@ -29,6 +29,9 @@ const COMMON_LOCALE_DIRS = [
   'messages',
 ]
 
+/** The one adapter that cannot resolve without locale config in the file. */
+const GENERIC_ADAPTER = 'generic'
+
 const SCHEMA_URL = 'https://raw.githubusercontent.com/fabkho/the-i18n-kit/main/packages/mcp/schema.json'
 
 /**
@@ -137,7 +140,9 @@ function detectedProject(
       adapter: match.adapter.name,
       label: match.adapter.label,
       confidence: match.confidence,
-      derivesLocaleConfig: Object.keys(carried).length === 0,
+      // A property of the adapter, not of this run: forcing over a config that
+      // happens to carry localeDirs must not make Nuxt look like it needs them.
+      derivesLocaleConfig: match.adapter.name !== GENERIC_ADAPTER,
       ...(match.runnersUp.length > 0 ? { runnersUp: match.runnersUp } : {}),
     },
   }
@@ -184,6 +189,13 @@ async function undetectedProject(
   const locales = firstDir ? await probeLocaleCodes(projectDir, firstDir) : []
   const guessed = firstDir ? await guessDefaultLocale(projectDir, firstDir, locales) : undefined
 
+  // A directory of flat .php files is matched as a locale dir but cannot be
+  // resolved: the generic adapter infers the format from the directory and has
+  // no flat-PHP branch (#308). Emitting locale codes for it would be worse than
+  // emitting none — the adapter would then treat them as JSON and read every
+  // file as empty. Say so instead of shipping a config that quietly does that.
+  const phpOnly = firstDir !== undefined && locales.length === 0
+
   return {
     config: {
       ...authoringScaffold(),
@@ -193,12 +205,15 @@ async function undetectedProject(
       ...carried,
     },
     detected: {
-      adapter: 'generic',
+      adapter: GENERIC_ADAPTER,
       label: 'Generic',
       confidence: 0,
       derivesLocaleConfig: false,
       ...(localeDirs.length === 0
         ? { note: 'No framework and no locale directory found. Wrote a template — set localeDirs and defaultLocale before running other commands.' }
+        : {}),
+      ...(phpOnly
+        ? { note: `Found ${firstDir} but no JSON locale files in it. Flat PHP locale files are not resolvable by the generic adapter — see the-i18n-kit#308.` }
         : {}),
     },
   }
