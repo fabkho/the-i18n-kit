@@ -102,6 +102,7 @@ describe('the-i18n-mcp server over in-memory transport', () => {
       'find_orphan_keys',
       'find_undefined_keys',
       'get_missing_translations',
+      'get_translation_status',
       'get_translations',
       'list_namespaces',
       'remove_orphan_keys',
@@ -223,6 +224,25 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json).not.toHaveProperty('unresolvedLocales')
     expect(json).not.toHaveProperty('ambiguousLocales')
     expect(json?.filesWritten).toBe(2)
+  })
+
+  it('get_translation_status reports coverage in one call', async () => {
+    const { json } = await callTool('get_translation_status', { projectDir })
+
+    // The fixture has de fully populated and en empty, so en is 0%.
+    expect(json?.summary.completionPercent).toBeDefined()
+    expect(json?.summary.referenceLocale.code).toBe('de')
+    expect(json?.locales).toBeDefined()
+    expect(json?.layers).toBeDefined()
+  })
+
+  it('get_translation_status marks protected locales as excluded', async () => {
+    const dir = await makeProject({ protectedLocales: ['en'] })
+    const { json } = await callTool('get_translation_status', { projectDir: dir })
+
+    expect(json?.summary.protectedLocales).toEqual(['en'])
+    expect(json?.locales?.[0]).toMatchObject({ code: 'en', excludedFromOverall: true })
+    await rm(dir, { recursive: true, force: true })
   })
 
   it('find_duplicate_keys returns a valid empty result for a single-layer project', async () => {

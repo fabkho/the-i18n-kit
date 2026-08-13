@@ -114,6 +114,7 @@ describe('resolveExitCode', () => {
         .toBe(EXIT_GATE_TRIPPED)
     })
 
+    // The shape `status --fail-under N` uses (#253).
     it('supports a below-threshold direction for coverage-style gates', () => {
       const coverage: RequestedGate = {
         name: 'fail-under',
@@ -126,6 +127,30 @@ describe('resolveExitCode', () => {
       expect(resolveExitCode({ summary: { completionPercent: 90 } }, [coverage]).code)
         .toBe(EXIT_SUCCESS)
       expect(resolveExitCode({ summary: { completionPercent: 97 } }, [coverage]).code)
+        .toBe(EXIT_SUCCESS)
+    })
+
+    it('reports the coverage gate with its observed value and threshold', () => {
+      const coverage: RequestedGate = {
+        name: 'fail-under',
+        counter: 'completionPercent',
+        direction: 'below',
+        threshold: 90,
+      }
+      expect(resolveExitCode({ summary: { completionPercent: 37.5 } }, [coverage]).tripped)
+        .toEqual([{ ...coverage, observed: 37.5 }])
+    })
+
+    // A project with nothing to translate reports 100, so an empty project
+    // must not trip a coverage floor.
+    it('does not trip on a complete project', () => {
+      const coverage: RequestedGate = {
+        name: 'fail-under',
+        counter: 'completionPercent',
+        direction: 'below',
+        threshold: 100,
+      }
+      expect(resolveExitCode({ summary: { completionPercent: 100 } }, [coverage]).code)
         .toBe(EXIT_SUCCESS)
     })
   })

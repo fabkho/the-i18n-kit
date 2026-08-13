@@ -16,6 +16,7 @@ import {
   getTranslations,
   writeTranslations,
   getMissingTranslations,
+  getTranslationStatus,
   searchTranslations,
   removeTranslations,
   renameTranslationKey,
@@ -444,6 +445,43 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('finding missing translations', error)
+      }
+    },
+  )
+
+  // ─── Tool: get_translation_status ──────────────────────────────
+
+  server.registerTool(
+    'get_translation_status',
+    {
+      title: 'Get Translation Status',
+      description:
+        'Translation coverage in one call: per-locale and per-layer counts of total, translated, missing and empty keys, plus an overall completion percentage. Use this instead of calling get_missing_translations per layer and counting keys yourself. Empty-string values count as untranslated. Locales listed in protectedLocales are reported but excluded from the overall figure, since they are maintained by hand.',
+      inputSchema: z.object({
+        layer: z
+          .string()
+          .optional()
+          .describe('Layer name to scan (e.g., "root", "app-admin"). If omitted, scans all layers.'),
+        referenceLocale: z
+          .string()
+          .optional()
+          .describe('Locale code used as the source of truth (e.g., "en", "en-US"). Defaults to the project default locale.'),
+        projectDir: z
+          .string()
+          .optional()
+          .describe('Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd.'),
+        outputFile: z
+          .string()
+          .optional()
+          .describe('Absolute path to write the full per-locale and per-layer breakdown. Returns only the summary to the caller.'),
+      }),
+    },
+    async ({ layer, referenceLocale, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
+      try {
+        const result = await getTranslationStatus({ layer, referenceLocale, projectDir, outputFile })
+        return jsonContent(result)
+      } catch (error) {
+        return toolErrorResponse('reading translation status', error)
       }
     },
   )

@@ -9,6 +9,7 @@ export {
   addTranslations,
   updateTranslations,
   getMissingTranslations,
+  getTranslationStatus,
   findEmptyTranslations,
   searchTranslations,
   removeTranslations,

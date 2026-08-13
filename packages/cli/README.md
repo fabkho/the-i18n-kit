@@ -42,6 +42,7 @@ the-i18n-cli check                           # Find used-but-undefined keys (non
 | `add` | Add new translation keys (skips keys that already exist) |
 | `update` | Update existing keys (skips keys that do not exist) |
 | `missing` | Find keys missing in target locales |
+| `status` | Translation coverage per locale and per layer, with one overall percentage |
 | `search` | Search keys and values |
 | `remove` | Remove keys from all locale files in a layer |
 | `rename` | Rename/move a key across all locale files |
@@ -79,10 +80,12 @@ Gates are opt-in flags, so every invocation without one keeps the exit code it h
 |------|---------|-----------|
 | `--fail-on-missing` | `missing` | Any key is missing in a target locale |
 | `--fail-on-orphans` | `remove-orphans` | Any orphan key is found (dry-run still applies) |
+| `--fail-under <n>` | `status` | Overall completion is below `n` percent |
 
 ```bash
 the-i18n-cli missing --fail-on-missing          # exit 2 blocks the merge
 the-i18n-cli remove-orphans --fail-on-orphans   # dry-run, but non-zero on findings
+the-i18n-cli status --fail-under 90             # ratchet coverage like test coverage
 ```
 
 Gates compose on one invocation, and a failed run outranks a tripped gate — exit `1` wins over exit `2`. When a gate trips, the JSON result gains a `gatesTripped` array naming it and reporting the observed value against the threshold; nothing else in the result changes, so existing consumers keep working:
@@ -121,6 +124,32 @@ the-i18n-cli init --force    # overwrite an existing config
 A project with no recognised framework is the exception: the generic adapter cannot resolve anything without `localeDirs` and `defaultLocale`, so `init` probes the common locale directory layouts and writes what it finds. The reference locale is guessed as the **fullest** locale file rather than the alphabetically first, since a source locale is the one everything else is translated from.
 
 The result reports which adapter matched and with what confidence, so you can tell why Nuxt was chosen over generic. `init` is non-interactive, so it runs unattended in a devcontainer or CI bootstrap, and it refuses to overwrite an existing config unless you pass `--force`. Even then it preserves any `localeDirs`, `defaultLocale` and `locales` already in the file — `--force` refreshes the scaffolding, it does not discard your locale wiring.
+
+## Coverage
+
+```bash
+the-i18n-cli status                  # per locale and per layer, plus one overall number
+the-i18n-cli status --layer root     # one layer
+the-i18n-cli status --fail-under 90  # CI gate: exit 2 below the threshold
+```
+
+One call replaces calling `missing` per layer and counting keys yourself:
+
+```json
+{
+  "summary": {
+    "totalKeys": 8, "translatedKeys": 3, "missingKeys": 4, "emptyKeys": 1,
+    "completionPercent": 37.5,
+    "protectedLocales": ["de-formal"], "localesChecked": 2
+  }
+}
+```
+
+**Empty strings count as untranslated.** A scaffolded key nobody filled renders as a blank, so counting it as complete would let a locale read as done while showing gaps in the UI — consistent with how `missing` already treats them. They are reported separately from `missing` so you can tell a scaffold-and-forget locale from an untouched one.
+
+**Protected locales are reported but excluded from the overall figure**, in both the project and per-layer numbers. They are maintained by hand, so counting their gaps as project debt makes a healthy project read as failing and moves a number nobody can act on.
+
+The full per-locale and per-layer arrays grow with the project, so pass `--output-file` to write them to disk and get back only the summary.
 
 ## Referring to Locales
 

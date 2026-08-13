@@ -13,7 +13,7 @@ import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { ToolError } from '../utils/errors.js'
 
 import type { LocaleDirInfo, SearchMatch } from './types.js'
-import { findLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, localeRefInfo } from './shared.js'
+import { findLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, localeRefInfo, resolveLayersToScan } from './shared.js'
 import { resolveOutputFile, resolveReportFilePath } from './report.js'
 
 /**
@@ -184,16 +184,7 @@ export async function getMissingTranslations(opts: {
       })
     : config.locales.filter(l => l.code !== refLocale.code)
 
-  const layersToScan = layer
-    ? config.localeDirs.filter(d => d.layer === layer)
-    : config.localeDirs.filter(d => !d.aliasOf)
-
-  if (layersToScan.length === 0) {
-    if (layer) {
-      findLayerOrThrow(config, layer)
-    }
-    throw new ToolError('No locale directories found. Run detect_i18n_config to verify the project setup.', 'LAYER_NOT_FOUND')
-  }
+  const layersToScan = resolveLayersToScan(config, layer)
 
   const result: Record<string, Record<string, string[]>> = {}
   let totalMissing = 0
