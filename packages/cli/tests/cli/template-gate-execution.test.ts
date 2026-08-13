@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdtemp, mkdir, writeFile, readFile, chmod, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -24,16 +25,20 @@ interface Run { stdout: string, stderr: string, code: number }
 
 /**
  * GitLab job scripts run under busybox sh in the default alpine image, so they
- * are exercised with `sh` — running them under bash would hide bash-isms the
- * runner would reject. The action's steps declare `shell: bash` and use bash
- * arrays, so those are exercised with bash.
+ * are exercised with a POSIX shell — running them under bash would hide
+ * bash-isms the runner would reject. `dash` is preferred where present because
+ * macOS `/bin/sh` is bash in POSIX mode and still accepts constructs a real
+ * POSIX shell rejects (`set -o pipefail` among them), which would let a
+ * portability regression pass locally and fail on CI. The action's steps
+ * declare `shell: bash` and use bash arrays, so those are exercised with bash.
  */
+const posixShell = existsSync('/bin/dash') ? '/bin/dash' : 'sh'
 async function runScript(
   script: string,
   cwd: string,
   env: Record<string, string>,
   binDir: string,
-  shell: 'sh' | 'bash' = 'sh',
+  shell: string = posixShell,
 ): Promise<Run> {
   const scriptPath = join(cwd, '.job.sh')
   await writeFile(scriptPath, script)
