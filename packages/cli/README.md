@@ -96,6 +96,28 @@ Gates compose on one invocation, and a failed run outranks a tripped gate — ex
 
 `check` is the exception: it gates unconditionally with exit `1`, because a key that renders raw in production is a defect rather than a threshold.
 
+## Referring to Locales
+
+Anywhere a locale is named — `--ref`, `--targets`, `protectedLocales`, the keys of a `write_translations` payload — you may use the locale's **code**, its **language tag**, or its **file name** (extension included). Resolution takes them in that order.
+
+**Prefer the code.** Codes are unique by construction; language tags are not. A project can declare an informal and a formal German that both carry `language: "de-DE"`, in which case `de-DE` is ambiguous — it resolves to the first match, and that depends on the order of your framework's locale array. The precedence rule guarantees only that a locale's own code is never shadowed by a *different* locale's language tag.
+
+A ref that matches nothing is reported rather than silently dropped:
+
+```json
+{
+  "written": ["common.save"],
+  "filesWritten": 2,
+  "unresolvedLocales": [
+    { "ref": "de-DE-formal", "keys": ["common.save"], "suggestion": "Did you mean \"de-formal\" or \"de-DE\" or \"de-DE-formal.json\"?" }
+  ]
+}
+```
+
+`unresolvedLocales` is the only reliable signal that a write did less than you asked: the key still appears in `written` because the other locales succeeded, and `filesWritten` is short by one. A ref matching several locales is reported the same way under `ambiguousLocales`, naming every candidate and the one that was used. Both fields are absent when every ref resolves uniquely, so a clean write is byte-for-byte what it always was.
+
+Note that a locale's `file` must be given with its extension (`de-DE-formal.json`); the bare stem is not a valid ref.
+
 ## Translation Modes
 
 `translate` and `translate-key` run in one of two modes — every result reports which one ran (`mode: "provider" | "agent" | "dry-run"`).

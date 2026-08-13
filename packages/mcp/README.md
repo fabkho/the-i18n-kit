@@ -108,7 +108,7 @@ The Vue and React/Next adapters resolve a single locale directory and take the a
 | `discover` | Auto-detect framework, locales, layers, protected locales, and the active translation mode + list locale dirs by layer with file counts and namespaces. **Call first.** |
 | `list_namespaces` | List the translation key tree grouped by namespace prefix, with counts per node |
 | `get_translations` | Cross-locale view of keys with `locale: "*"` (add `compact: true` for a per-key summary) — or read a single locale |
-| `write_translations` | Write key-value pairs. Mode: `upsert` (default), `add`, or `update`. Supports `dryRun` |
+| `write_translations` | Write key-value pairs. Mode: `upsert` (default), `add`, or `update`. Supports `dryRun`. Locale keys may be a code, language tag or file name — prefer the code (see [Referring to locales](#referring-to-locales)) |
 | `remove_translations` | Remove keys from all locale files in a layer |
 | `rename_translation_key` | Rename/move a key across all locales |
 | `get_missing_translations` | Find keys missing in target locales |
@@ -128,6 +128,24 @@ The Vue and React/Next adapters resolve a single locale directory and take the a
 | `add-language` | Add a new language end-to-end: config, scaffold, translate, verify |
 
 ## Examples
+
+### Referring to locales
+
+A locale may be named by its **code**, its **language tag**, or its **file name** (extension included), resolved in that order. **Prefer the code** — codes are unique, language tags need not be. A project with an informal and a formal German that both declare `language: "de-DE"` makes `de-DE` ambiguous, and it resolves by config order.
+
+A ref that matches nothing does not fail the call, it is reported:
+
+```json
+{
+  "written": ["common.save"],
+  "filesWritten": 2,
+  "unresolvedLocales": [
+    { "ref": "de-DE-formal", "keys": ["common.save"], "suggestion": "Did you mean \"de-formal\" …?" }
+  ]
+}
+```
+
+Check `unresolvedLocales` after a write. The key still appears in `written` because the other locales succeeded, so it is the only signal that one locale was dropped — `filesWritten` will also be short. Ambiguous refs appear under `ambiguousLocales` with every candidate and the one used. Neither field is present when all refs resolve uniquely.
 
 ### `write_translations` — Hand-crafted translations
 

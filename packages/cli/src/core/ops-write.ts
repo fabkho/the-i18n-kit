@@ -27,8 +27,10 @@ import type {
   ScaffoldLocaleResult,
   ScaffoldLocaleFileInfo,
   PlaceholderValidationResult,
+  UnresolvedLocaleRef,
 } from './types.js'
-import { findWritableLayerOrThrow, findLocaleImpl, findLocaleSuggestion } from './shared.js'
+import { findWritableLayerOrThrow, findLocaleImpl, findLocaleSuggestion, resolveLocaleRef } from './shared.js'
+import type { LocaleRefAmbiguity } from './shared.js'
 import { validatePlaceholders, mergePlaceholderValidation } from './ops-translate.js'
 
 /**
@@ -45,6 +47,8 @@ async function applyTranslations(
   const applied: string[] = []
   const skipped: string[] = []
   const warnings: string[] = []
+  const unresolved = new Map<string, UnresolvedLocaleRef>()
+  const ambiguities = new Map<string, LocaleRefAmbiguity>()
   const filesWritten = new Set<string>()
   const preview: Array<{ locale: string; key: string; value: string }> = []
 
@@ -73,9 +77,30 @@ async function applyTranslations(
           warnings.push(`${key} (${localeRef}): ${warning}`)
         }
       }
-      const locale = findLocale(config, localeRef)
+      const { locale, ambiguity } = resolveLocaleRef(config, localeRef)
+      if (ambiguity && !ambiguities.has(localeRef)) {
+        ambiguities.set(localeRef, ambiguity)
+        log.warn(
+          `Locale ref "${localeRef}" matches ${ambiguity.candidates.length} locales by ${ambiguity.matchedBy} `
+          + `(${ambiguity.candidates.join(', ')}) — using "${ambiguity.resolvedTo}". Use a locale code to be explicit.`,
+        )
+      }
       if (!locale) {
-        log.warn(`Locale not found: ${localeRef}, skipping.${findLocaleSuggestion(config, localeRef)}`)
+        // stderr alone is invisible to an MCP caller, and the key still lands
+        // in `applied` via the other locales — so the result must carry this
+        // or the write reads as a clean success (#301).
+        const suggestion = findLocaleSuggestion(config, localeRef)
+        log.warn(`Locale not found: ${localeRef}, skipping.${suggestion}`)
+        const existing = unresolved.get(localeRef)
+        if (existing) {
+          existing.keys.push(key)
+        } else {
+          unresolved.set(localeRef, {
+            ref: localeRef,
+            keys: [key],
+            ...(suggestion ? { suggestion: suggestion.trim() } : {}),
+          })
+        }
         continue
       }
       if (!byLocale.has(locale)) {
@@ -124,11 +149,29 @@ async function applyTranslations(
       : `${error.key} (${error.locale}): placeholder mismatch; missing: ${error.missing.join(', ') || '-'}; extra: ${error.extra.join(', ') || '-'}`))
   }
 
+  // A dropped ref is a warning too, so callers that only read `warnings`
+  // still see it — but it also gets its own field, because "the write silently
+  // did less than you asked" is not the same class as a placeholder nit.
+  for (const u of unresolved.values()) {
+    warnings.push(
+      `Locale "${u.ref}" matched no known locale — ${u.keys.length} key(s) not written for it.`
+      + (u.suggestion ? ` ${u.suggestion}` : ''),
+    )
+  }
+
   const result: MutationResult = {
     applied: [...new Set(applied)],
     skipped: [...new Set(skipped)],
     warnings,
     filesWritten: filesWritten.size,
+  }
+
+  if (unresolved.size > 0) {
+    result.unresolvedLocales = [...unresolved.values()]
+  }
+
+  if (ambiguities.size > 0) {
+    result.ambiguousLocales = [...ambiguities.values()]
   }
 
   if (placeholderValidation) {
@@ -163,7 +206,7 @@ export async function writeTranslations(opts: {
   const mode = opts.mode ?? 'upsert'
   const isDryRun = opts.dryRun ?? false
 
-  const { applied, skipped, warnings, filesWritten, preview, placeholderValidation } = await applyTranslations(
+  const { applied, skipped, warnings, filesWritten, preview, placeholderValidation, unresolvedLocales, ambiguousLocales } = await applyTranslations(
     config, layer, translations, mode, findLocaleImpl, isDryRun,
   )
 
@@ -181,6 +224,8 @@ export async function writeTranslations(opts: {
     if (skipped.length > 0) { result.skippedKeys = skipped }
     if (warnings.length > 0) { result.warnings = warnings }
     if (placeholderValidation) { result.placeholderValidation = placeholderValidation }
+    if (unresolvedLocales) { result.unresolvedLocales = unresolvedLocales }
+    if (ambiguousLocales) { result.ambiguousLocales = ambiguousLocales }
     return result
   }
 
@@ -191,6 +236,8 @@ export async function writeTranslations(opts: {
   }
   if (warnings.length > 0) { result.warnings = warnings }
   if (placeholderValidation) { result.placeholderValidation = placeholderValidation }
+  if (unresolvedLocales) { result.unresolvedLocales = unresolvedLocales }
+  if (ambiguousLocales) { result.ambiguousLocales = ambiguousLocales }
   return result
 }
 
@@ -210,7 +257,7 @@ export async function addTranslations(opts: {
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? false
 
-  const { applied, skipped, warnings, filesWritten, preview, placeholderValidation } = await applyTranslations(
+  const { applied, skipped, warnings, filesWritten, preview, placeholderValidation, unresolvedLocales, ambiguousLocales } = await applyTranslations(
     config, layer, translations, 'add', findLocaleImpl, isDryRun,
   )
 
@@ -234,6 +281,8 @@ export async function addTranslations(opts: {
     if (placeholderValidation) {
       result.placeholderValidation = placeholderValidation
     }
+    if (unresolvedLocales) { result.unresolvedLocales = unresolvedLocales }
+    if (ambiguousLocales) { result.ambiguousLocales = ambiguousLocales }
     return result
   }
 
@@ -248,6 +297,8 @@ export async function addTranslations(opts: {
   if (placeholderValidation) {
     summary.placeholderValidation = placeholderValidation
   }
+  if (unresolvedLocales) { summary.unresolvedLocales = unresolvedLocales }
+  if (ambiguousLocales) { summary.ambiguousLocales = ambiguousLocales }
 
   return summary
 }
@@ -268,7 +319,7 @@ export async function updateTranslations(opts: {
   const config = await detectI18nConfig(dir)
   const isDryRun = opts.dryRun ?? false
 
-  const { applied, skipped, filesWritten, preview, placeholderValidation } = await applyTranslations(
+  const { applied, skipped, filesWritten, preview, placeholderValidation, unresolvedLocales, ambiguousLocales } = await applyTranslations(
     config, layer, translations, 'update', findLocaleImpl, isDryRun,
   )
 
@@ -289,6 +340,8 @@ export async function updateTranslations(opts: {
     if (placeholderValidation) {
       result.placeholderValidation = placeholderValidation
     }
+    if (unresolvedLocales) { result.unresolvedLocales = unresolvedLocales }
+    if (ambiguousLocales) { result.ambiguousLocales = ambiguousLocales }
     return result
   }
 

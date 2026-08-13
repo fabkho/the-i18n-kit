@@ -62,7 +62,10 @@ export function localeRefInfo(locale: LocaleDefinition): LocaleRefInfo {
 }
 
 function localeAcceptedRefs(locale: LocaleDefinition): string[] {
-  return [locale.code, locale.language, locale.file].filter(Boolean) as string[]
+  // Deduped: code and language are frequently the same string (a generic
+  // adapter derives both from the filename), and "de" or "de" or "de.json"
+  // reads like a bug in the suggestion rather than one locale's three refs.
+  return [...new Set([locale.code, locale.language, locale.file].filter(Boolean) as string[])]
 }
 
 function formatLocaleChoices(locales: LocaleDefinition[]): string {
@@ -71,27 +74,97 @@ function formatLocaleChoices(locales: LocaleDefinition[]): string {
     .join('\n')
 }
 
+const stripJson = (ref: string) => (ref.endsWith('.json') ? ref.slice(0, -5) : ref)
+
+/**
+ * How well one of a locale's refs matches the requested one. Higher wins.
+ * Ranking matters rather than first-match: for "de-DE-formal", the informal
+ * `de` locale matches by containment (its language is `de-DE`) while the
+ * formal one matches exactly once `.json` is stripped from its file name.
+ * First-match order returned `de`, pointing the caller at the wrong locale —
+ * following that hint would write formal German into the informal file (#301).
+ */
+function suggestionScore(locale: LocaleDefinition, normalized: string): number {
+  let best = 0
+  for (const ref of localeAcceptedRefs(locale)) {
+    const candidate = stripJson(ref)
+    if (candidate === normalized) return 3
+    if (candidate.toLowerCase() === normalized.toLowerCase()) best = Math.max(best, 2)
+    else if (candidate.includes(normalized) || normalized.includes(candidate)) best = Math.max(best, 1)
+  }
+  return best
+}
+
 export function findLocaleSuggestion(config: I18nConfig, localeRef: string): string {
-  const normalized = localeRef.endsWith('.json') ? localeRef.slice(0, -5) : localeRef
-  const suggestion = config.locales.find((locale) => {
-    return localeAcceptedRefs(locale).some((ref) => {
-      const normalizedRef = ref.endsWith('.json') ? ref.slice(0, -5) : ref
-      return normalizedRef === normalized
-        || normalizedRef.toLowerCase() === normalized.toLowerCase()
-        || normalizedRef.includes(normalized)
-        || normalized.includes(normalizedRef)
-    })
-  })
+  const normalized = stripJson(localeRef)
+
+  let suggestion: LocaleDefinition | undefined
+  let bestScore = 0
+  for (const locale of config.locales) {
+    const score = suggestionScore(locale, normalized)
+    if (score > bestScore) {
+      bestScore = score
+      suggestion = locale
+    }
+  }
   if (!suggestion) return ''
 
   const refs = localeAcceptedRefs(suggestion).map(ref => `"${ref}"`).join(' or ')
   return ` Did you mean ${refs}?`
 }
 
+/** Fields a locale ref may match, in resolution precedence order. */
+const LOCALE_MATCH_FIELDS = ['code', 'language', 'file'] as const
+export type LocaleMatchField = (typeof LOCALE_MATCH_FIELDS)[number]
+
+export interface LocaleRefAmbiguity {
+  ref: string
+  /** The field that matched more than one locale. */
+  matchedBy: LocaleMatchField
+  /** Codes of every locale the ref matched, in config order. */
+  candidates: string[]
+  /** The one that was used — the first candidate. */
+  resolvedTo: string
+}
+
+export interface LocaleRefResolution {
+  locale?: LocaleDefinition
+  ambiguity?: LocaleRefAmbiguity
+}
+
+/**
+ * Resolve a locale ref with deliberate precedence: an exact `code` outranks a
+ * `language` tag, which outranks a `file` name.
+ *
+ * Codes are unique by construction; language tags are not — two locales can
+ * both declare `de-DE` (an informal and a formal German, say). Without
+ * precedence, a locale's unique code could be shadowed by a different locale's
+ * language tag purely through config ordering. Within one field a ref that
+ * still matches several locales is reported as ambiguous rather than silently
+ * resolved to whichever came first, because that choice depends on array order
+ * and can change under the caller without warning (#301).
+ */
+export function resolveLocaleRef(config: I18nConfig, localeRef: string): LocaleRefResolution {
+  for (const field of LOCALE_MATCH_FIELDS) {
+    const matches = config.locales.filter(locale => locale[field] === localeRef)
+    const [first] = matches
+    if (!first) continue
+    if (matches.length === 1) return { locale: first }
+    return {
+      locale: first,
+      ambiguity: {
+        ref: localeRef,
+        matchedBy: field,
+        candidates: matches.map(m => m.code),
+        resolvedTo: first.code,
+      },
+    }
+  }
+  return {}
+}
+
 export function findLocaleImpl(config: I18nConfig, localeRef: string) {
-  return config.locales.find(
-    l => l.code === localeRef || l.file === localeRef || l.language === localeRef,
-  )
+  return resolveLocaleRef(config, localeRef).locale
 }
 
 /**
