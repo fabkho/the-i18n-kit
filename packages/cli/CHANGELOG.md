@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.5.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.4.0...the-i18n-cli-4.5.0) (2026-08-14)
+
+
+### Features
+
+* **cli:** status — coverage per locale and per layer, with a --fail-under gate ([#311](https://github.com/fabkho/the-i18n-kit/issues/311)) ([8db7c96](https://github.com/fabkho/the-i18n-kit/commit/8db7c96128d79ce6f120fc9745b01e4130e4168d)), closes [#253](https://github.com/fabkho/the-i18n-kit/issues/253)
+
+
+### Bug Fixes
+
+* **cli:** register scan so it can actually be invoked ([#310](https://github.com/fabkho/the-i18n-kit/issues/310)) ([9db0f6e](https://github.com/fabkho/the-i18n-kit/commit/9db0f6e0e70281c61e004974d4af6cca601017f1)), closes [#307](https://github.com/fabkho/the-i18n-kit/issues/307)
+
 ## [4.4.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.3.0...the-i18n-cli-4.4.0) (2026-08-13)
 
 
