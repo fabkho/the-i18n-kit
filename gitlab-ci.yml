@@ -142,6 +142,11 @@
     I18N_KEYS: ""             # comma-separated keys (default: all missing)
     I18N_BATCH_SIZE: "50"     # keys per LLM call
     I18N_DRY_RUN: "false"     # preview without writing files
+    I18N_FAIL_ON_FAILED: ""   # set "true" to add --fail-on-failed → exit 2 when any key
+                              # failed. Off by default: a partly failed run still
+                              # writes and commits what succeeded, and the keys that
+                              # failed stay missing for the next run to retry. Pair
+                              # with `allow_failure: false` to make it block.
 
     # Optional — dependencies
     I18N_CLI_VERSION: "latest"  # pin the-i18n-cli (npm version or dist-tag)
@@ -209,6 +214,7 @@
       [ -n "$I18N_SOURCE_LOCALE" ] && args="$args --ref $I18N_SOURCE_LOCALE"
       [ -n "$I18N_KEYS" ]          && args="$args --keys $I18N_KEYS"
       [ "$I18N_DRY_RUN" = "true" ] && args="$args --dry-run"
+      [ "${I18N_FAIL_ON_FAILED:-}" = "true" ] && args="$args --fail-on-failed"
 
       mkdir -p .i18n-reports
       # The CLI owns the pass/fail decision and reports it as an exit code:
@@ -228,6 +234,9 @@
       TRANSLATED=$(jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)' .i18n-reports/translate-output.json 2>/dev/null || echo "?")
       FAILED=$(jq -r '.summary.totalFailed // 0' .i18n-reports/translate-output.json 2>/dev/null || echo "?")
       echo "Translated: $TRANSLATED, failed: $FAILED"
+      # No branch on $FAILED here on purpose: the CLI reports a partial failure
+      # as summary.message in the payload printed above, naming the affected
+      # locales. Branching on a parsed count is what this template stopped doing.
 
       case "$STATUS" in
         0) ;;

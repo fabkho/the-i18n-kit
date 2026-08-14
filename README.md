@@ -212,7 +212,12 @@ Turn findings into exit codes with opt-in gates, so a pipeline blocks a merge wi
 ```bash
 the-i18n-cli missing --fail-on-missing          # exit 2 when any key is missing
 the-i18n-cli remove-orphans --fail-on-orphans   # exit 2 when any orphan is found
+the-i18n-cli translate --fail-on-failed         # exit 2 when the run lost keys
 ```
+
+`translate` needs its own gate: exit `1` means the run translated *nothing*, so a
+run that writes most keys and loses the rest counts as a success and commits the
+partial result. The lost keys stay missing and a re-run retries them.
 
 | Code | Meaning |
 |------|---------|
@@ -337,6 +342,7 @@ Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *
 | `I18N_KEYS` | — | all missing | Comma-separated keys |
 | `I18N_BATCH_SIZE` | — | `50` | Keys per LLM call |
 | `I18N_DRY_RUN` | — | `false` | Preview without writing |
+| `I18N_FAIL_ON_FAILED` | — | `false` | `"true"` adds `--fail-on-failed`, so the job exits `2` when any key failed to translate. Off by default: the run still commits what succeeded, and the failed keys stay missing for the next run to retry |
 | `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
 | `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
 | `I18N_PUSH_TOKEN` | — | — | Project access token (`write_repository`) — push alternative to the job token |
