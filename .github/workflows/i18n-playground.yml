@@ -65,6 +65,11 @@ jobs:
       - name: Build the-i18n-cli
         run: pnpm --filter the-i18n-cli build
 
+      # playground/nuxt lists @the-i18n-kit/nuxt in its modules, so loading its
+      # config needs the module's dist to exist.
+      - name: Build @the-i18n-kit/nuxt
+        run: pnpm --filter @the-i18n-kit/nuxt build
+
       - name: Install local CLI build globally
         run: |
           set -euo pipefail

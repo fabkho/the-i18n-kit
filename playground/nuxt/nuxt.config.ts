@@ -3,7 +3,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
 
-  modules: ['@nuxtjs/i18n'],
+  modules: ['@nuxtjs/i18n', '@the-i18n-kit/nuxt'],
 
   i18n: {
     strategy: 'prefix_and_default',

@@ -24,6 +24,18 @@
       "include-component-in-tag": true,
       "include-v-in-tag": false,
       "component": "the-i18n-mcp"
+    },
+    "packages/nuxt": {
+      "release-type": "node",
+      "package-name": "@the-i18n-kit/nuxt",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "draft": false,
+      "prerelease": false,
+      "include-component-in-tag": true,
+      "include-v-in-tag": false,
+      "component": "the-i18n-kit-nuxt"
     }
   }
 }
