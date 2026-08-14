@@ -50,6 +50,7 @@ the-i18n-cli check                           # Find used-but-undefined keys (non
 | `remove-orphans` | Find and remove keys not referenced in source code (dry-run by default) |
 | `check` | Find keys referenced in code but defined in no consumed locale layer — the inverse of `remove-orphans`. Exits non-zero when any are found, so it can gate CI. Dynamically built keys are reported as uncertain, never as hard findings |
 | `find-duplicates` | Find keys defined in both a shared layer and a consuming child layer (with divergence detection) |
+| `scan` | Find where translation keys are referenced in source, with file and line — use before renaming or removing a key |
 | `scaffold` | Create empty locale files for new languages |
 
 Run `the-i18n-cli <command> --help` for per-command options.
