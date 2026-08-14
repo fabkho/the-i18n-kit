@@ -2,18 +2,14 @@
 
 Nuxt module for [the i18n kit](https://github.com/fabkho/the-i18n-kit).
 
-**Status: skeleton — this module does not do anything yet.** The package exists so
-that the npm name, build tooling and release wiring are settled before the
-implementation lands. Installing it today is a no-op.
+Nuxt already resolves your layer graph and your locale table. Without this module,
+`.i18n-mcp.json` restates both by hand and the CLI re-derives them from outside by
+loading `nuxt.config.ts` — two descriptions of the same thing, with nothing that
+notices when they disagree.
 
-## What it will do
-
-Nuxt already resolves your layer graph and your locale table. Today every consumer
-restates both in `.i18n-mcp.json`, and the two descriptions drift. This module will
-publish what Nuxt resolved as a build artifact that the CLI reads in preference to
-hand-written config, so the derived half of the config stops being written twice.
-
-Tracked in [#305](https://github.com/fabkho/the-i18n-kit/issues/305).
+This module publishes what Nuxt resolved, as a build artifact the CLI reads in
+preference to hand-written config. The derived half of your config stops being
+written twice.
 
 ## Install
 
@@ -24,19 +20,58 @@ pnpm add -D @the-i18n-kit/nuxt
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({
-  modules: ['@the-i18n-kit/nuxt'],
+  modules: ['@nuxtjs/i18n', '@the-i18n-kit/nuxt'],
 })
 ```
 
+Then remove `locales`, `localeDirs` and `defaultLocale` from `.i18n-mcp.json` —
+the module derives them, and declaring them in both places is now an error rather
+than a silent override.
+
+In a monorepo with several Nuxt apps, install it in each app. Every app publishes
+its own artifact and the CLI merges them, exactly as it merges apps today.
+
+## What it does
+
+On `nuxt prepare`, `nuxt dev` and `nuxt build`, it writes `.nuxt/i18n-kit.json`
+describing this app: its locale table, its layers, and which of those layers carry
+translations. `.nuxt` is already gitignored and already wiped by `nuxt cleanup`, so
+the artifact is never a review artifact and cannot be merged.
+
+It also checks, at build time, two things that used to fail silently:
+
+- **`protectedLocales` entries that resolve to nothing.** `de-DE-formal` matches no
+  locale when the code is `de-formal`, so it protected nothing while looking like it
+  did. That is now a build error naming the valid codes.
+- **`protectedLocales` entries that resolve to several locales.** `de-DE` is ambiguous
+  when both `de` and `de-formal` declare it. Reported with all candidates.
+
+A ref that resolves by language tag or file name rather than by code is a warning:
+it works today, but a locale added later with the same tag would make it ambiguous
+without anyone touching the line that wrote it.
+
 ## Options
 
-Configured under the `i18nKit` key. Accepted and validated today; they take effect
-once artifact generation lands.
+Configured under the `i18nKit` key.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `enabled` | `true` | Set to `false` to skip artifact generation. The CLI then falls back to adapter detection, exactly as without the module. |
-| `artifact` | `'i18n-kit.json'` | Artifact path, relative to the Nuxt build dir. |
+| `enabled` | `true` | Set to `false` to skip generation. The CLI falls back to adapter detection, exactly as without the module. |
+| `failOnInvalidConfig` | `true` | Set to `false` to report configuration problems without failing the build. |
+
+The artifact path is fixed at `<app>/.nuxt/i18n-kit.json`. The CLI looks there without
+loading your Nuxt config — that is the point — so it cannot follow a renamed file or a
+custom `buildDir`. With a custom `buildDir` the CLI simply falls back to loading the app,
+as it does without this module.
+
+## Removing it is safe
+
+The CLI prefers the artifact when it is present, parseable, of a version it knows,
+and not older than any `nuxt.config` it describes — the app's or any layer's. Any other case falls back to
+loading the app through Nuxt — which is what it does today, for every project.
+
+So adding this module changes nothing except where the facts come from, and removing
+it degrades rather than breaks.
 
 ## Development
 
@@ -44,7 +79,8 @@ once artifact generation lands.
 
 ```bash
 pnpm --filter @the-i18n-kit/nuxt build   # or `dev` for the stub build
-pnpm --filter playground dev
+pnpm --filter playground exec nuxt prepare
+cat playground/nuxt/.nuxt/i18n-kit.json
 ```
 
 ## License

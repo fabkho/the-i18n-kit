@@ -324,7 +324,7 @@ Drop a `.i18n-mcp.json` at your project root for project-specific context:
     "de": "Informal German (du)",
     "de-formal": "Formal German (Sie)"
   },
-  "protectedLocales": ["en-US", "de-DE-formal"]
+  "protectedLocales": ["en-us", "de-formal"]
 }
 ```
 

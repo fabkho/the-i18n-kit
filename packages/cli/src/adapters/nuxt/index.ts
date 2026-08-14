@@ -7,6 +7,8 @@ import { findNuxtConfig, discoverNuxtApps, deriveLayerName } from '../../config/
 import { loadKit } from '../../config/nuxt-loader'
 import { loadProjectConfig } from '../../config/project-config'
 import { applyLocaleOverride } from '../../config/locale-override'
+import { normalizeFallbackLocale } from '../../config/fallback-locale'
+import { artifactToConfig, readArtifact } from '../../config/artifact'
 import { log } from '../../utils/logger'
 import { ConfigError, toErrorMessage } from '../../utils/errors'
 import { claimLocaleDir } from './layer-dedup'
@@ -52,7 +54,7 @@ export class NuxtAdapter implements FrameworkAdapter {
 
     const [soleAppDir] = appDirs
     if (appDirs.length === 1 && soleAppDir !== undefined) {
-      const config = await loadSingleApp(soleAppDir, projectDir)
+      const config = await loadApp(soleAppDir, projectDir)
       if (soleAppDir !== projectDir) {
         config.rootDir = projectDir
         const rootApp = config.apps[0]
@@ -69,6 +71,31 @@ export class NuxtAdapter implements FrameworkAdapter {
     log.info(`Detected ${config.locales.length} locales, ${config.localeDirs.length} locale directories from ${appDirs.length} app(s)`)
     return config
   }
+}
+
+/**
+ * One app's config, preferring what @the-i18n-kit/nuxt published from inside
+ * the build over reconstructing it from outside. The artifact is additive: any
+ * reason not to trust it falls through to loading the app exactly as before,
+ * so a project without the module — or with a stale one — behaves as it always
+ * has.
+ */
+async function loadApp(appDir: string, discoveryRoot: string): Promise<I18nConfig> {
+  const artifact = await readArtifact(appDir)
+  if (!artifact) return loadSingleApp(appDir, discoveryRoot)
+
+  const config = await artifactToConfig(artifact, appDir, discoveryRoot, await loadProjectConfig(discoveryRoot))
+
+  // An artifact describing no locale directory leaves nothing to read, which
+  // the fallback path reports as a ConfigError naming what is missing. Silently
+  // returning an empty config instead would make installing the module turn a
+  // clear error into no output at all.
+  if (config.localeDirs.length === 0) {
+    log.warn(`The artifact for ${appDir} describes no locale directories — loading the app instead.`)
+    return loadSingleApp(appDir, discoveryRoot)
+  }
+
+  return config
 }
 
 async function loadSingleApp(appDir: string, discoveryRoot: string): Promise<I18nConfig> {
@@ -131,7 +158,7 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
     log.info(`Loading Nuxt app: ${relative(discoveryRoot, appDir) || '.'}`)
     let appConfig: I18nConfig
     try {
-      appConfig = await loadSingleApp(appDir, discoveryRoot)
+      appConfig = await loadApp(appDir, discoveryRoot)
     }
     catch (error) {
       log.warn(`Failed to load app at ${appDir}: ${toErrorMessage(error)}`)
@@ -244,7 +271,7 @@ async function extractI18nConfig(
     )
   }
 
-  const fallbackLocale = extractFallbackLocale(i18nOptions)
+  const fallbackLocale = normalizeFallbackLocale(i18nOptions.fallbackLocale, defaultLocale)
   const localeDirs = await discoverLocaleDirs(layers, i18nOptions, discoveryRoot)
 
   const layerRootDirs = [...new Set(layers.map(l => l.config.rootDir))]
@@ -267,36 +294,6 @@ async function extractI18nConfig(
     projectConfig: projectConfig ?? undefined,
     apps: [appInfo],
   }
-}
-
-function extractFallbackLocale(
-  i18nOptions: Record<string, unknown>,
-): Record<string, string[]> {
-  const fallback = i18nOptions.fallbackLocale
-
-  if (typeof fallback === 'string') {
-    return { default: [fallback] }
-  }
-
-  if (Array.isArray(fallback)) {
-    return { default: (fallback as unknown[]).map(String) }
-  }
-
-  if (fallback && typeof fallback === 'object') {
-    const result: Record<string, string[]> = {}
-    for (const [key, value] of Object.entries(fallback as Record<string, unknown>)) {
-      if (Array.isArray(value)) {
-        result[key] = value.map(String)
-      }
-      else if (typeof value === 'string') {
-        result[key] = [value]
-      }
-    }
-    return result
-  }
-
-  const defaultLocale = (i18nOptions.defaultLocale as string) ?? 'en'
-  return { default: [defaultLocale] }
 }
 
 async function discoverLocaleDirs(

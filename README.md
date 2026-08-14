@@ -56,6 +56,7 @@ Agent changes wording for an existing key
 |---------|---------|-------------|
 | [**the-i18n-cli**](./packages/cli) | [![npm](https://img.shields.io/npm/v/the-i18n-cli?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-cli) | CLI + core library — install globally |
 | [**the-i18n-mcp**](./packages/mcp) | [![npm](https://img.shields.io/npm/v/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-mcp) | MCP server for AI agents |
+| [**@the-i18n-kit/nuxt**](./packages/nuxt) | [![npm](https://img.shields.io/npm/v/@the-i18n-kit/nuxt?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/nuxt) | Nuxt module — publishes the layer graph and locale table Nuxt already resolved |
 
 ---
 
@@ -191,9 +192,13 @@ Human-maintained locales can be excluded from automatic translation via `protect
 
 ```json
 {
-  "protectedLocales": ["en-US", "en-GB", "de-DE-formal"]
+  "protectedLocales": ["en-us", "en", "de-formal"]
 }
 ```
+
+Address locales by **code**. A ref may also be a language tag or a file name (with its
+extension), but codes are the only form guaranteed to be unique — see
+[Referring to Locales](./packages/cli/README.md#referring-to-locales).
 
 Protected locales are excluded from the default target set of both translate operations and reported as `skipped` with reason `protected-locale`. Explicitly naming a protected locale in `targetLocales` overrides the protection with a warning. `discover` lists the resolved protected locales.
 
@@ -424,6 +429,12 @@ All tools work immediately.
 
 Drop a `.i18n-mcp.json` at your project root to give agents (and the CLI) project context:
 
+> **Nuxt:** install [`@the-i18n-kit/nuxt`](./packages/nuxt) and the derived half of this
+> file goes away. The module publishes the locale table and layer graph Nuxt already
+> resolved, so `locales`, `localeDirs` and `defaultLocale` stop being restated by hand —
+> and `protectedLocales` entries that match nothing, or match several locales, fail the
+> build instead of failing quietly.
+
 ```json
 {
   "$schema": "node_modules/the-i18n-mcp/schema.json",
@@ -437,7 +448,7 @@ Drop a `.i18n-mcp.json` at your project root to give agents (and the CLI) projec
     "de": "Informal German (du)",
     "de-formal": "Formal German (Sie)"
   },
-  "protectedLocales": ["en-US", "de-DE-formal"]
+  "protectedLocales": ["en-us", "de-formal"]
 }
 ```
 
