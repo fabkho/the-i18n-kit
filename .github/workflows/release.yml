@@ -22,6 +22,7 @@ jobs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       cli_release_created: ${{ steps.release.outputs['packages/cli--release_created'] }}
       mcp_release_created: ${{ steps.release.outputs['packages/mcp--release_created'] }}
+      nuxt_release_created: ${{ steps.release.outputs['packages/nuxt--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -54,7 +55,7 @@ jobs:
         id: targets
         run: |
           set -euo pipefail
-          for pkg in cli mcp; do
+          for pkg in cli mcp nuxt; do
             name=$(jq -r .name "packages/$pkg/package.json")
             local_ver=$(jq -r .version "packages/$pkg/package.json")
             remote_ver=$(npm view "$name" version 2>/dev/null || echo "0.0.0")
@@ -76,5 +77,13 @@ jobs:
       - name: Publish the-i18n-mcp
         if: ${{ steps.targets.outputs.mcp == 'true' }}
         run: pnpm --filter the-i18n-mcp publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Scoped, so --access public is load-bearing rather than a formality:
+      # without it npm defaults @the-i18n-kit/* to restricted.
+      - name: Publish @the-i18n-kit/nuxt
+        if: ${{ steps.targets.outputs.nuxt == 'true' }}
+        run: pnpm --filter @the-i18n-kit/nuxt publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

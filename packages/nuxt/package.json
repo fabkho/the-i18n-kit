@@ -1,0 +1,57 @@
+{
+  "name": "@the-i18n-kit/nuxt",
+  "version": "0.1.0",
+  "description": "Nuxt module that publishes the layer graph and locale table Nuxt already resolved, so the i18n kit stops asking you to restate them",
+  "keywords": [
+    "nuxt",
+    "nuxt-module",
+    "i18n",
+    "internationalization",
+    "translation",
+    "localization",
+    "locale",
+    "l10n",
+    "layers",
+    "developer-tools"
+  ],
+  "author": "Fabian Kirchhoff",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fabkho/the-i18n-kit.git",
+    "directory": "packages/nuxt"
+  },
+  "main": "./dist/module.mjs",
+  "types": "./dist/types.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/types.d.mts",
+      "import": "./dist/module.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "nuxt-module-build build",
+    "dev": "nuxt-module-build build --stub",
+    "prepack": "nuxt-module-build build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@nuxt/kit": "^3.0.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@nuxt/module-builder": "^1.0.3",
+    "@nuxt/schema": "^4.4.2",
+    "@types/node": "^22.0.0",
+    "nuxt": "^4.4.2",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}
