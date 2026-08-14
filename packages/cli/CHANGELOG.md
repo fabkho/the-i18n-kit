@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.5.0...the-i18n-cli-4.6.0) (2026-08-14)
+
+
+### Features
+
+* **cli:** gate translate on partial failures, and stop them being silent ([#317](https://github.com/fabkho/the-i18n-kit/issues/317)) ([7525579](https://github.com/fabkho/the-i18n-kit/commit/752557925a1630af4f6a6eb41e31e64f7ff7ce72)), closes [#316](https://github.com/fabkho/the-i18n-kit/issues/316)
+
 ## [4.5.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.4.0...the-i18n-cli-4.5.0) (2026-08-14)
 
 
