@@ -12,6 +12,7 @@ import { artifactToConfig, readArtifact } from '../../config/artifact'
 import { log } from '../../utils/logger'
 import { ConfigError, toErrorMessage } from '../../utils/errors'
 import { claimLocaleDir } from './layer-dedup'
+import { AppMerger } from './merge-apps'
 
 export class NuxtAdapter implements FrameworkAdapter {
   readonly name = 'nuxt'
@@ -143,90 +144,37 @@ async function loadSingleApp(appDir: string, discoveryRoot: string): Promise<I18
 
 async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promise<I18nConfig> {
   const projectConfig = await loadProjectConfig(discoveryRoot)
-
-  const allLocaleDirs: LocaleDir[] = []
-  const allLocales: LocaleDefinition[] = []
-  const allLayerRootDirs: string[] = []
-  const allApps: AppInfo[] = []
-  const seenLocalePaths = new Map<string, { layer: string, layerRootDir: string }>()
-  const seenLocaleCodes = new Set<string>()
-  const usedLayerNames = new Set<string>()
-  let defaultLocale = 'en'
-  let fallbackLocale: Record<string, string[]> = { default: ['en'] }
+  const merger = new AppMerger()
 
   for (const appDir of appDirs) {
     log.info(`Loading Nuxt app: ${relative(discoveryRoot, appDir) || '.'}`)
+
     let appConfig: I18nConfig
     try {
       appConfig = await loadApp(appDir, discoveryRoot)
     }
     catch (error) {
+      // One unloadable app must not take the others with it: a monorepo where
+      // a single app fails to build still has translations worth managing.
       log.warn(`Failed to load app at ${appDir}: ${toErrorMessage(error)}`)
       continue
     }
 
-    if (allLocaleDirs.length === 0) {
-      defaultLocale = appConfig.defaultLocale
-      fallbackLocale = appConfig.fallbackLocale
-    }
-
-    const layerNameRemap = new Map<string, string>()
-
-    for (const dir of appConfig.localeDirs) {
-      const realPath = await realpath(dir.path).catch(() => dir.path)
-
-      let claimDir = dir
-      if (!seenLocalePaths.has(realPath)) {
-        let layerName = dir.layer
-        if (usedLayerNames.has(layerName)) {
-          layerName = deriveLayerName(dir.layerRootDir, discoveryRoot, usedLayerNames)
-        }
-        if (layerName !== dir.layer) {
-          layerNameRemap.set(dir.layer, layerName)
-        }
-        usedLayerNames.add(layerName)
-        claimDir = { ...dir, layer: layerName }
-      }
-
-      claimLocaleDir(allLocaleDirs, seenLocalePaths, claimDir, realPath)
-    }
-
-    for (const locale of appConfig.locales) {
-      if (!seenLocaleCodes.has(locale.code)) {
-        seenLocaleCodes.add(locale.code)
-        allLocales.push(locale)
-      }
-    }
-
-    for (const rootDir of appConfig.layerRootDirs) {
-      if (!allLayerRootDirs.includes(rootDir)) {
-        allLayerRootDirs.push(rootDir)
-      }
-    }
-
-    for (const appInfo of appConfig.apps) {
-      const remappedLayers = appInfo.layers.map(name => layerNameRemap.get(name) ?? name)
-      allApps.push({ ...appInfo, layers: remappedLayers })
-    }
+    await merger.add(appConfig, discoveryRoot)
   }
 
-  if (allLocaleDirs.length === 0) {
+  if (merger.localeDirs.length === 0) {
     throw new ConfigError(
       `No locale directories found in any Nuxt app under ${discoveryRoot}. `
       + 'Make sure your Nuxt apps have i18n/locales/ directories with JSON files.',
     )
   }
 
-  return {
-    rootDir: discoveryRoot,
-    defaultLocale,
-    fallbackLocale,
-    locales: applyLocaleOverride(allLocales, projectConfig?.locales),
-    localeDirs: allLocaleDirs,
-    layerRootDirs: allLayerRootDirs,
-    projectConfig: projectConfig ?? undefined,
-    apps: allApps,
-  }
+  return merger.toConfig(
+    discoveryRoot,
+    projectConfig ?? undefined,
+    applyLocaleOverride(merger.locales, projectConfig?.locales),
+  )
 }
 
 async function extractI18nConfig(
