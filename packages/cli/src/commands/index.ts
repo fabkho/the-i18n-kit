@@ -9,6 +9,7 @@ export const commands = {
   'add': () => import('./add.js').then(m => m.default as CommandDef),
   'update': () => import('./update.js').then(m => m.default as CommandDef),
   'missing': () => import('./missing.js').then(m => m.default as CommandDef),
+  'status': () => import('./status.js').then(m => m.default as CommandDef),
   'empty': () => import('./empty.js').then(m => m.default as CommandDef),
   'search': () => import('./search.js').then(m => m.default as CommandDef),
   'remove': () => import('./remove.js').then(m => m.default as CommandDef),

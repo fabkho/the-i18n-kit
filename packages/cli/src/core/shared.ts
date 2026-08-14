@@ -52,6 +52,30 @@ export function findReferenceLocaleOrThrow(config: I18nConfig, requested?: strin
   return refLocale
 }
 
+/**
+ * The locale directories an operation should scan: one named layer, or every
+ * non-alias layer. Alias layers are skipped because they point at another
+ * layer's files, so scanning both would count the same keys twice.
+ *
+ * Throws rather than returning empty: an operation with nothing to scan has no
+ * meaningful result, and a mistyped layer name should say so.
+ */
+export function resolveLayersToScan(config: I18nConfig, layer?: string): LocaleDir[] {
+  const layers = layer
+    ? config.localeDirs.filter(d => d.layer === layer)
+    : config.localeDirs.filter(d => !d.aliasOf)
+
+  if (layers.length === 0) {
+    // Surfaces the better "layer not found, here are the valid ones" error.
+    if (layer) findLayerOrThrow(config, layer)
+    throw new ToolError(
+      'No locale directories found. Run detect_i18n_config to verify the project setup.',
+      'LAYER_NOT_FOUND',
+    )
+  }
+  return layers
+}
+
 export function localeRefInfo(locale: LocaleDefinition): LocaleRefInfo {
   return {
     code: locale.code,

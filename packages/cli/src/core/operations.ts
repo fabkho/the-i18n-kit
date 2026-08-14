@@ -44,6 +44,7 @@ export {
   scaffoldLocaleFiles,
 } from './ops-write.js'
 export { initProjectConfig } from './ops-init.js'
+export { getTranslationStatus } from './ops-status.js'
 
 export {
   findOrphanKeys,

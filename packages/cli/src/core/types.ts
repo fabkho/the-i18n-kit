@@ -209,6 +209,51 @@ export interface MissingTranslationsResult {
   reportFile?: string
 }
 
+// ─── status ──────────────────────────────────────────────────────
+
+export interface LocaleStatus extends LocaleRefInfo {
+  total: number
+  translated: number
+  missing: number
+  /** Present but empty-string — scaffolded and never filled. */
+  empty: number
+  completion: number
+  /** Listed in protectedLocales: maintained by hand. */
+  protected?: true
+  /** Protected locales are reported but kept out of the overall figure. */
+  excludedFromOverall?: true
+}
+
+export interface LayerStatus {
+  layer: string
+  total: number
+  translated: number
+  missing: number
+  empty: number
+  completion: number
+}
+
+export interface TranslationStatusSummary {
+  referenceLocale: LocaleRefInfo
+  layersScanned: string[]
+  localesChecked: number
+  protectedLocales: string[]
+  totalKeys: number
+  translatedKeys: number
+  missingKeys: number
+  emptyKeys: number
+  /** Overall completion, protected locales excluded. Read by --fail-under. */
+  completionPercent: number
+}
+
+export interface TranslationStatusResult {
+  locales?: LocaleStatus[]
+  layers?: LayerStatus[]
+  summary: TranslationStatusSummary
+  /** Present when the full breakdown went to a file instead. */
+  reportFile?: string
+}
+
 // ─── find_empty_translations ─────────────────────────────────────
 
 export interface EmptyTranslationsResult {
