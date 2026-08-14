@@ -36,6 +36,10 @@ inputs:
     description: 'Preview translations without writing files'
     required: false
     default: 'false'
+  fail_on_failed:
+    description: 'Fail the step (exit 2) when any key failed to translate. Off by default: a partly failed run still writes what succeeded, and the failed keys stay missing for the next run to retry.'
+    required: false
+    default: 'false'
   working_directory:
     description: 'Project root directory (default: github.workspace)'
     required: false
@@ -141,6 +145,9 @@ runs:
         if [ "${{ inputs.dry_run }}" = "true" ]; then
           args+=(--dry-run)
         fi
+        if [ "${{ inputs.fail_on_failed }}" = "true" ]; then
+          args+=(--fail-on-failed)
+        fi
 
         # The CLI owns the pass/fail decision and reports it as an exit code:
         # 0 success, 1 the run itself failed, 2 a requested gate tripped. Parsing
@@ -179,7 +186,7 @@ runs:
         esac
 
         if [ "$failed" -gt 0 ]; then
-          echo "::warning::$failed keys failed to translate ($count succeeded)."
+          echo "::warning::$failed keys failed to translate ($count succeeded). They are still missing, so re-running retries them. Set fail_on_failed: true to make this fail the step instead."
         fi
 
     - name: Create PR with translations

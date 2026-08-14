@@ -142,12 +142,21 @@ describe('gitlab-ci.yml job scripts, executed', () => {
    * short of the git and push stages that follow it.
    */
   describe('.i18n-translate STATUS branching', () => {
-    async function runTranslate(stubResult: string, stubExit: number): Promise<Run> {
+    /** The stub records the args it was handed, so flag wiring is observable. */
+    async function runTranslate(
+      stubResult: string,
+      stubExit: number,
+      env: Record<string, string> = {},
+    ): Promise<Run & { args: string }> {
       const dir = await mkdtemp(join(tmpdir(), 'i18n-tpl-translate-'))
       const stubBin = join(dir, '.bin')
       await mkdir(stubBin, { recursive: true })
       const shim = join(stubBin, 'the-i18n-cli')
-      await writeFile(shim, `#!/bin/sh\ncat <<'JSON'\n${stubResult}\nJSON\nexit ${stubExit}\n`)
+      const argsFile = join(dir, 'args.txt')
+      await writeFile(
+        shim,
+        `#!/bin/sh\nprintf '%s ' "$@" > '${argsFile}'\ncat <<'JSON'\n${stubResult}\nJSON\nexit ${stubExit}\n`,
+      )
       await chmod(shim, 0o755)
 
       const run = await runScript(await jobScript('.i18n-translate'), dir, {
@@ -160,10 +169,12 @@ describe('gitlab-ci.yml job scripts, executed', () => {
         I18N_KEYS: '',
         I18N_BATCH_SIZE: '50',
         I18N_DRY_RUN: 'true',
+        ...env,
       }, stubBin)
 
+      const args = existsSync(argsFile) ? await readFile(argsFile, 'utf-8') : ''
       await rm(dir, { recursive: true, force: true })
-      return run
+      return { ...run, args }
     }
 
     it('exits 0 on a successful run', async () => {
@@ -195,6 +206,32 @@ describe('gitlab-ci.yml job scripts, executed', () => {
       const failLooking = JSON.stringify({ summary: { totalTranslated: 0, totalFailed: 9 } })
 
       expect((await runTranslate(failLooking, 0)).code).toBe(0)
+    })
+
+    it('requests the partial-failure gate only when asked', async () => {
+      const clean = JSON.stringify({ summary: { totalTranslated: 3, totalFailed: 0 } })
+
+      expect((await runTranslate(clean, 0)).args).not.toContain('--fail-on-failed')
+      expect((await runTranslate(clean, 0, { I18N_FAIL_ON_FAILED: 'true' })).args)
+        .toContain('--fail-on-failed')
+    })
+
+    // The gate is opt-in, so the ungated run is the one most projects get. Its
+    // only trace of a partial failure is the CLI's own summary.message, which
+    // the job must surface without parsing it — the counts stay display-only.
+    it('surfaces the CLI guidance on a partial failure it does not gate on', async () => {
+      const partial = JSON.stringify({
+        summary: {
+          totalTranslated: 795,
+          totalFailed: 141,
+          message: '141 key(s) failed to translate (locales: da-DK, fr-FR). Those keys remain missing — re-run to retry them.',
+        },
+      })
+      const run = await runTranslate(partial, 0)
+
+      expect(run.code).toBe(0)
+      expect(run.stdout).toContain('Translated: 795, failed: 141')
+      expect(run.stdout).toContain('Those keys remain missing')
     })
   })
 

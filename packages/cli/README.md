@@ -81,13 +81,21 @@ Gates are opt-in flags, so every invocation without one keeps the exit code it h
 |------|---------|-----------|
 | `--fail-on-missing` | `missing` | Any key is missing in a target locale |
 | `--fail-on-orphans` | `remove-orphans` | Any orphan key is found (dry-run still applies) |
+| `--fail-on-failed` | `translate` | Any key failed to translate |
 | `--fail-under <n>` | `status` | Overall completion is below `n` percent |
 
 ```bash
 the-i18n-cli missing --fail-on-missing          # exit 2 blocks the merge
 the-i18n-cli remove-orphans --fail-on-orphans   # dry-run, but non-zero on findings
+the-i18n-cli translate --fail-on-failed         # exit 2 when the run lost keys
 the-i18n-cli status --fail-under 90             # ratchet coverage like test coverage
 ```
+
+`translate` needs its own gate because exit `1` is reserved for a run that
+translated *nothing*. A run that writes 795 keys and loses 141 is a success by
+that measure: it exits `0`, and the partial result is committed like any other.
+The failed keys are still missing, so re-running retries them — the gate is for
+noticing that you need to.
 
 Gates compose on one invocation, and a failed run outranks a tripped gate — exit `1` wins over exit `2`. When a gate trips, the JSON result gains a `gatesTripped` array naming it and reporting the observed value against the threshold; nothing else in the result changes, so existing consumers keep working:
 
