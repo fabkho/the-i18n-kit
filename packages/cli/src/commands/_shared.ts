@@ -27,6 +27,13 @@ export function createCommand(opts: {
    * spec with an entry in `args`.
    */
   gates?: GateSpec[]
+  /**
+   * Receives citty's parsed args. `any` is deliberate: each command declares
+   * its own `args` shape and citty does not thread that type through to the
+   * handler, so narrowing here only moves the cast into all nineteen command
+   * modules. The shape is validated by citty against the `args` above.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
   run: (args: any) => Promise<unknown>
 }): CommandDef {
   return defineCommand({
@@ -46,7 +53,7 @@ export function createCommand(opts: {
         process.exitCode = EXIT_RUN_FAILED
       }
     },
-  }) as any
+  }) as CommandDef
 }
 
 /** The run succeeded and no gate tripped. */

@@ -226,6 +226,16 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.filesWritten).toBe(2)
   })
 
+  // All-layers mode nests fallbackContexts per layer, so a top-level check
+  // skipped the agent-mode guidance in exactly the mode layered projects use.
+  it('translate_missing still returns agent guidance without a layer argument', async () => {
+    const { json } = await callTool('translate_missing', { projectDir })
+
+    expect(json?.layers).toBeDefined()
+    expect(json?.summary.mode).toBe('agent')
+    expect(json?.summary.message).toContain('write_translations')
+  })
+
   it('get_translation_status reports coverage in one call', async () => {
     const { json } = await callTool('get_translation_status', { projectDir })
 

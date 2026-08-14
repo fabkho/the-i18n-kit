@@ -176,8 +176,9 @@ async function discoverLocales(localeDir: string): Promise<LocaleDefinition[]> {
     }))
 }
 
-function extractDefaultLocale(projectDir: string): string | null {
+function extractDefaultLocale(_projectDir: string): string | null {
   // Stub: default-locale extraction from Vue project config is not
-  // implemented — callers fall back to the first discovered locale.
+  // implemented — callers fall back to the first discovered locale, which is
+  // why `defaultLocale` cannot be pinned for this adapter (#296).
   return null
 }

@@ -29,6 +29,10 @@ import type {
   TranslateMissingLocaleResult,
   PlaceholderValidationResult,
   TranslateKeyResult,
+  TranslateMissingResult,
+  TranslateMissingOutcome,
+  TranslateAllLayersResult,
+  TranslateAllLayersSummary,
 } from './types.js'
 import { findWritableLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, findLocaleOrThrow, localeRefInfo } from './shared.js'
 
@@ -461,7 +465,7 @@ export async function translateMissing(opts: {
   progressFn?: ProgressFn
   /** Called once after the pre-scan with the computed total number of progress steps. */
   onProgressTotal?: (total: number) => void
-}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
+}): Promise<TranslateMissingOutcome> {
   if (opts.layer === undefined) return translateMissingAllLayers(opts)
   const layer = opts.layer
   const dir = opts.projectDir ?? process.cwd()
@@ -758,7 +762,7 @@ export async function translateMissing(opts: {
   const totalSkipped = Object.values(results).reduce((sum, r) => sum + r.skipped.length, 0)
   const totalWouldTranslate = Object.values(results).reduce((sum, r) => sum + (r.wouldTranslate?.length ?? 0), 0)
 
-  const summary: Record<string, unknown> = {
+  const summary: TranslateMissingResult['summary'] = {
     mode,
     totalTranslated,
     totalFailed,
@@ -796,7 +800,7 @@ export async function translateMissing(opts: {
     }
   }
 
-  const output: Record<string, unknown> = { results, summary }
+  const output: TranslateMissingResult = { results, summary }
   if (hasFallbackContexts) {
     output.fallbackContexts = fallbackContexts
   }
@@ -814,7 +818,7 @@ export async function translateMissing(opts: {
  */
 async function translateMissingAllLayers(
   opts: Omit<Parameters<typeof translateMissing>[0], 'layer'>,
-): Promise<Record<string, unknown>> {
+): Promise<TranslateAllLayersResult> {
   const config = await detectI18nConfig(opts.projectDir ?? process.cwd())
   const layerNames = collectTranslatableLayers(config)
   if (layerNames.length === 0) {
@@ -845,13 +849,14 @@ function collectTranslatableLayers(config: I18nConfig): string[] {
 async function runLayerTranslations(
   layerNames: string[],
   opts: Omit<Parameters<typeof translateMissing>[0], 'layer'>,
-): Promise<{ layers: Record<string, Record<string, unknown>>, byLayer: TranslateLayerTotals[] }> {
-  const layers: Record<string, Record<string, unknown>> = {}
+): Promise<{ layers: Record<string, TranslateMissingResult>, byLayer: TranslateLayerTotals[] }> {
+  const layers: Record<string, TranslateMissingResult> = {}
   const byLayer: TranslateLayerTotals[] = []
   for (const layerName of layerNames) {
-    let layerResult: Record<string, unknown>
+    let layerResult: TranslateMissingResult
     try {
-      layerResult = await translateMissing({ ...opts, layer: layerName })
+      // A named layer always takes the single-layer branch.
+      layerResult = await translateMissing({ ...opts, layer: layerName }) as TranslateMissingResult
     } catch (error) {
       // A layer without reference-locale data has nothing to drive
       // translation — skip it so one sparse layer cannot fail the run for
@@ -868,7 +873,7 @@ async function runLayerTranslations(
   return { layers, byLayer }
 }
 
-function layerTotals(layerName: string, layerResult: Record<string, unknown>): TranslateLayerTotals {
+function layerTotals(layerName: string, layerResult: TranslateMissingResult): TranslateLayerTotals {
   const layerSummary = layerResult.summary as {
     totalTranslated: number
     totalFailed: number
@@ -885,17 +890,17 @@ function layerTotals(layerName: string, layerResult: Record<string, unknown>): T
 }
 
 function buildAllLayersSummary(
-  layers: Record<string, Record<string, unknown>>,
+  layers: Record<string, TranslateMissingResult>,
   byLayer: TranslateLayerTotals[],
   opts: Omit<Parameters<typeof translateMissing>[0], 'layer'>,
-): Record<string, unknown> {
+): TranslateAllLayersSummary {
   const isDryRun = opts.dryRun ?? false
   const total = (pick: (l: TranslateLayerTotals) => number): number =>
     byLayer.reduce((sum, l) => sum + pick(l), 0)
   // Locales are project-global, so mode, reference locale, and target set are
   // identical across layers — hoist them from the first translated layer.
-  const first = Object.values(layers)[0]?.summary as Record<string, unknown> | undefined
-  const summary: Record<string, unknown> = {
+  const first = Object.values(layers)[0]?.summary
+  const summary: TranslateAllLayersSummary = {
     mode: isDryRun ? 'dry-run' : opts.translateFn ? 'provider' : 'agent',
     totalTranslated: total(l => l.totalTranslated),
     totalFailed: total(l => l.totalFailed),

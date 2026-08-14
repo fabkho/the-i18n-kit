@@ -198,7 +198,8 @@ export interface InitProjectConfigResult {
 // ─── get_missing_translations ────────────────────────────────────
 
 export interface MissingTranslationsResult {
-  missing: Record<string, Record<string, string[]>>
+  /** Absent when the full report went to `reportFile` instead. */
+  missing?: Record<string, Record<string, string[]>>
   summary: {
     referenceLocale: string | LocaleRefInfo
     targetLocales: Array<string | LocaleRefInfo>
@@ -257,7 +258,8 @@ export interface TranslationStatusResult {
 // ─── find_empty_translations ─────────────────────────────────────
 
 export interface EmptyTranslationsResult {
-  emptyKeys: Record<string, Record<string, string[]>>
+  /** Absent when the full report went to `reportFile` instead. */
+  emptyKeys?: Record<string, Record<string, string[]>>
   summary: {
     totalEmpty: number
     localesChecked: string[]
@@ -365,10 +367,27 @@ export interface TranslateMissingLocaleResult {
   placeholderValidation?: PlaceholderValidationResult
 }
 
+/** One locale's digest in compact mode: counts rather than key lists. */
+export interface TranslateMissingCompactEntry {
+  locale: string
+  mode: TranslateMode
+  missing: number
+  translated: number
+  failed: number
+  skipped: number
+  wouldTranslate?: number
+  batches?: number
+  model?: string
+  writeError?: string
+}
+
 export interface TranslateMissingResult {
-  results: Record<string, TranslateMissingLocaleResult>
+  /** Absent in compact mode, which returns `summary.byLocale` instead. */
+  results?: Record<string, TranslateMissingLocaleResult>
   fallbackContexts?: Record<string, Record<string, unknown>>
   summary: {
+    /** Compact mode only: a per-locale digest in place of full `results`. */
+    byLocale?: TranslateMissingCompactEntry[]
     mode: TranslateMode
     totalTranslated: number
     totalFailed: number
@@ -389,6 +408,36 @@ export interface TranslateMissingResult {
  * with the same accessors. `totalWouldTranslate` is always present (0 outside
  * dry runs).
  */
+/** Aggregated summary across every locale-backed layer. */
+export interface TranslateAllLayersSummary {
+  mode: TranslateMode
+  totalTranslated: number
+  totalFailed: number
+  totalSkipped: number
+  totalWouldTranslate?: number
+  /** Layer names that were translated. */
+  layers: string[]
+  byLayer: TranslateLayerTotals[]
+  dryRun: boolean
+  referenceLocale?: string | LocaleRefInfo
+  targetLocales?: Array<string | LocaleRefInfo>
+  /** Surface-owned guidance (set by the CLI command or MCP tool). */
+  message?: string
+}
+
+/**
+ * All-layers mode (`--layer` omitted): one result per layer plus an aggregated
+ * summary. Discriminate with `'layers' in result` — both members carry a
+ * `summary`, and both summaries carry `mode`, so mode checks need no narrowing.
+ */
+export interface TranslateAllLayersResult {
+  layers: Record<string, TranslateMissingResult>
+  summary: TranslateAllLayersSummary
+}
+
+/** What translateMissing returns: depends on whether a layer was named. */
+export type TranslateMissingOutcome = TranslateMissingResult | TranslateAllLayersResult
+
 export interface TranslateLayerTotals {
   layer: string
   totalTranslated: number
@@ -427,10 +476,20 @@ export interface TranslateKeyResult {
 
 // ─── find_orphan_keys ────────────────────────────────────────────
 
+/** A key referenced only from apps outside its layer's consumption scope. */
+export interface MisplacedUsageRef {
+  key: string
+  /** Layer the key is defined in. */
+  layer: string
+  /** Out-of-scope scan units (apps or layers) where the key was found. */
+  usingApps: string[]
+}
+
 export interface DynamicKeyRef {
   expression: string
-  file: string
-  line: number
+  /** Absent for context-free bare candidates, which have no single call site. */
+  file?: string
+  line?: number
 }
 
 export interface UnresolvedKeyWarningRef {
@@ -442,18 +501,24 @@ export interface UnresolvedKeyWarningRef {
 }
 
 export interface FindOrphanKeysResult {
-  orphanKeys: Record<string, string[]>
+  /** Absent when the full report went to `reportFile` instead. */
+  orphanKeys?: Record<string, string[]>
   uncertainKeys?: Record<string, string[]>
+  /** Keys used only from apps that do not consume the owning layer. */
+  misplacedUsages?: MisplacedUsageRef[]
+  misplacedUsageNote?: string
   summary: {
     totalKeys: number
     orphanCount: number
     uncertainCount?: number
+    misplacedCount?: number
     dynamicMatchedCount?: number
     ignoredCount?: number
     usedCount?: number
     filesScanned: number
     layersChecked?: string[]
     dirsScanned?: string[]
+    scanScope?: Record<string, string[]>
     locale?: string
     message?: string
   }
@@ -465,6 +530,25 @@ export interface FindOrphanKeysResult {
 }
 
 // ─── scan_code_usage ─────────────────────────────────────────────
+
+/** Where each requested key is referenced in source. */
+export interface CodeUsageResult {
+  /** Absent when the full report went to `reportFile` instead. */
+  usages?: Record<string, CodeUsageRef[]>
+  /** Requested keys with no reference anywhere in the scanned source. */
+  notFoundInCode?: string[]
+  /** Dynamic expressions that could reach the requested keys. */
+  dynamicKeys?: DynamicKeyRef[]
+  summary: {
+    uniqueKeysFound: number
+    totalReferences: number
+    filesScanned: number
+    dirsScanned?: string[]
+    message?: string
+  }
+  /** Present when the full report went to a file instead. */
+  reportFile?: string
+}
 
 export interface CodeUsageRef {
   file: string
@@ -492,18 +576,25 @@ export interface RemoveOrphanKeysResult {
   orphanKeys?: Record<string, string[]>
   removed?: Record<string, string[]>
   uncertainKeys?: Record<string, string[]>
+  misplacedUsages?: MisplacedUsageRef[]
+  misplacedUsageNote?: string
   summary: {
     dryRun?: boolean
     totalKeys: number
     orphanCount?: number
     removedCount?: number
     uncertainCount?: number
+    misplacedCount?: number
     dynamicMatchedCount?: number
     ignoredCount?: number
     usedCount?: number
     remainingCount?: number
     filesScanned?: number
     filesWritten?: number
+    layersChecked?: string[]
+    dirsScanned?: string[]
+    scanScope?: Record<string, string[]>
+    locale?: string
     message?: string
   }
   dynamicKeyWarning?: string

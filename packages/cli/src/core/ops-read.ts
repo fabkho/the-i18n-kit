@@ -12,7 +12,7 @@ import { readLocaleData, readLocaleDataIfPresent, resolveLocaleEntries } from '.
 import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { ToolError } from '../utils/errors.js'
 
-import type { LocaleDirInfo, SearchMatch } from './types.js'
+import type { LocaleDirInfo, SearchMatch, MissingTranslationsResult, EmptyTranslationsResult } from './types.js'
 import { findLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, localeRefInfo, resolveLayersToScan } from './shared.js'
 import { resolveOutputFile, resolveReportFilePath } from './report.js'
 
@@ -166,7 +166,7 @@ export async function getMissingTranslations(opts: {
   locales?: string[]
   projectDir?: string
   outputFile?: string
-}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
+}): Promise<MissingTranslationsResult> {
   const { layer } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
@@ -248,7 +248,7 @@ export async function findEmptyTranslations(opts: {
   locale?: string
   projectDir?: string
   outputFile?: string
-}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
+}): Promise<EmptyTranslationsResult> {
   const { layer, locale } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
