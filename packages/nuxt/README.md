@@ -57,13 +57,17 @@ Configured under the `i18nKit` key.
 | Option | Default | Description |
 | --- | --- | --- |
 | `enabled` | `true` | Set to `false` to skip generation. The CLI falls back to adapter detection, exactly as without the module. |
-| `artifact` | `'i18n-kit.json'` | Artifact path, relative to the Nuxt build dir. |
 | `failOnInvalidConfig` | `true` | Set to `false` to report configuration problems without failing the build. |
+
+The artifact path is fixed at `<app>/.nuxt/i18n-kit.json`. The CLI looks there without
+loading your Nuxt config — that is the point — so it cannot follow a renamed file or a
+custom `buildDir`. With a custom `buildDir` the CLI simply falls back to loading the app,
+as it does without this module.
 
 ## Removing it is safe
 
 The CLI prefers the artifact when it is present, parseable, of a version it knows,
-and not older than the `nuxt.config` it describes. Any other case falls back to
+and not older than any `nuxt.config` it describes — the app's or any layer's. Any other case falls back to
 loading the app through Nuxt — which is what it does today, for every project.
 
 So adding this module changes nothing except where the facts come from, and removing

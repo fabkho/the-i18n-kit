@@ -52,6 +52,16 @@ describe('protectedLocales against the real locale table', () => {
     expect(diagnostic?.message).toContain('Prefer "en-us"')
   })
 
+  // "Available codes: " with nothing after it reads as a broken message rather
+  // than as the finding it is.
+  it('says so plainly when no locales resolved at all', () => {
+    const [diagnostic] = checkProtectedLocales(['de'], [])
+
+    expect(diagnostic?.level).toBe('error')
+    expect(diagnostic?.message).toContain('No locales resolved')
+    expect(diagnostic?.message).not.toContain('Available codes:')
+  })
+
   it('has nothing to say when protectedLocales is absent', () => {
     expect(checkProtectedLocales(undefined, locales)).toEqual([])
   })

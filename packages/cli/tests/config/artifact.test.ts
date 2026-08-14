@@ -98,6 +98,22 @@ describe('reading an artifact', () => {
     expect(await readArtifact(dir)).toBeNull()
   })
 
+  // A layer's own config decides that layer's locales, so an unchanged app
+  // config says nothing about the layers it extends.
+  it("returns null when a layer's config is newer than the artifact", async () => {
+    const layerDir = join(dir, 'layers', 'nested')
+    await mkdir(layerDir, { recursive: true })
+    await writeArtifact(validArtifact({
+      layers: [{ rootDir: dir, localeDir: join(dir, 'i18n', 'locales') }, { rootDir: layerDir }],
+    }))
+    await writeFile(join(layerDir, 'nuxt.config.ts'), 'export default {}')
+
+    const future = new Date(Date.now() + 60_000)
+    await utimes(join(layerDir, 'nuxt.config.ts'), future, future)
+
+    expect(await readArtifact(dir)).toBeNull()
+  })
+
   it('accepts an artifact newer than the config', async () => {
     await writeFile(join(dir, 'nuxt.config.ts'), 'export default {}')
     await writeArtifact(validArtifact())
@@ -145,6 +161,21 @@ describe('converting an artifact to a config', () => {
 
     expect(config.localeDirs).toHaveLength(1)
     expect(config.layerRootDirs).toEqual(['/repo/app-admin', '/repo/app-admin/layers/dashboard-next'])
+  })
+
+  // The adapter treats this as unusable and loads the app instead: the fallback
+  // path reports a ConfigError naming what is missing, and installing the module
+  // must not turn that into an empty result.
+  it('yields no locale directories when no layer has one', async () => {
+    const artifact = validArtifact({
+      appDir: '/repo/app-admin',
+      layers: [{ rootDir: '/repo/app-admin' }, { rootDir: '/repo' }],
+    })
+
+    const config = await artifactToConfig(artifact, '/repo/app-admin', root, null)
+
+    expect(config.localeDirs).toEqual([])
+    expect(config.layerRootDirs).toEqual(['/repo/app-admin', '/repo'])
   })
 
   it('carries the locale table through unchanged', async () => {

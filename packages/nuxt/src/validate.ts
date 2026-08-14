@@ -42,7 +42,11 @@ export function checkProtectedLocales(
   locales: ArtifactLocale[],
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
-  const codes = locales.map(l => l.code).join(', ')
+  // "Available codes: " with nothing after it reads as a broken message rather
+  // than as the finding it is — that no locales resolved at all.
+  const available = locales.length > 0
+    ? `Available codes: ${locales.map(l => l.code).join(', ')}`
+    : 'No locales resolved from your i18n configuration at all.'
 
   for (const ref of protectedLocales ?? []) {
     const found = match(locales, ref)
@@ -50,7 +54,7 @@ export function checkProtectedLocales(
     if (!found) {
       diagnostics.push({
         level: 'error',
-        message: `protectedLocales: "${ref}" matches no locale, so it protects nothing. Available codes: ${codes}`,
+        message: `protectedLocales: "${ref}" matches no locale, so it protects nothing. ${available}`,
       })
       continue
     }

@@ -57,14 +57,6 @@ export async function readArtifact(appDir: string): Promise<I18nKitArtifact | nu
   const path = resolve(appDir, ARTIFACT_PATH)
   if (!existsSync(path)) return null
 
-  if (isStale(appDir, path)) {
-    log.warn(
-      `Ignoring ${path}: the Nuxt config has changed since it was generated. `
-      + 'Run `nuxt prepare` to refresh it — falling back to loading the app.',
-    )
-    return null
-  }
-
   let parsed: unknown
   try {
     parsed = JSON.parse(await readFile(path, 'utf-8'))
@@ -82,25 +74,56 @@ export async function readArtifact(appDir: string): Promise<I18nKitArtifact | nu
     return null
   }
 
+  // Staleness is checked after parsing so the layers can be checked too: a
+  // layer's own config decides that layer's locales, and an app config that
+  // has not changed says nothing about the layers it extends.
+  const changed = staleAgainst(result.data, path)
+  if (changed) {
+    log.warn(
+      `Ignoring ${path}: ${changed} has changed since it was generated. `
+      + 'Run `nuxt prepare` to refresh it — falling back to loading the app.',
+    )
+    return null
+  }
+
   log.info(`Using the layer graph published by ${result.data.generator}`)
   return result.data
 }
 
 /**
- * An artifact older than the config it describes is a lie about the current
- * project, and a quiet one. Cheaper to distrust it than to explain later why
- * a renamed locale never took effect.
+ * An artifact older than any config it describes is a lie about the current
+ * project, and a quiet one. Cheaper to distrust it than to explain later why a
+ * renamed locale never took effect.
+ *
+ * Returns the config that outdates it, for the message; undefined when the
+ * artifact is current, when no config can be found, or when a stat fails —
+ * unreadable timestamps are not evidence of staleness.
  */
-function isStale(appDir: string, artifactPath: string): boolean {
-  const configFile = findNuxtConfig(appDir)
-  if (!configFile) return false
-
+function staleAgainst(artifact: I18nKitArtifact, artifactPath: string): string | undefined {
+  let artifactMtime: number
   try {
-    return statSync(resolve(appDir, configFile)).mtimeMs > statSync(artifactPath).mtimeMs
+    artifactMtime = statSync(artifactPath).mtimeMs
   }
   catch {
-    return false
+    return undefined
   }
+
+  const dirs = [artifact.appDir, ...artifact.layers.map(l => l.rootDir)]
+
+  for (const dir of new Set(dirs)) {
+    const configFile = findNuxtConfig(dir)
+    if (!configFile) continue
+
+    const configPath = resolve(dir, configFile)
+    try {
+      if (statSync(configPath).mtimeMs > artifactMtime) return configPath
+    }
+    catch {
+      continue
+    }
+  }
+
+  return undefined
 }
 
 /**

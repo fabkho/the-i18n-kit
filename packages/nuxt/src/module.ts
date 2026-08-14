@@ -11,18 +11,24 @@ import type { Diagnostic } from './validate'
 
 const CONFIG_FILENAME = '.i18n-mcp.json'
 
+/**
+ * Fixed, not configurable. The CLI looks for `<app>/.nuxt/i18n-kit.json` without
+ * loading your Nuxt config — that is the point of the artifact — so it cannot
+ * follow a renamed file. A configurable producer with a fixed consumer is a
+ * setting that silently stops the two from meeting.
+ *
+ * The same reasoning applies to a custom `buildDir`: the CLI will not find the
+ * artifact there and falls back to loading the app, as it does without this
+ * module.
+ */
+const ARTIFACT_FILENAME = 'i18n-kit.json'
+
 export interface ModuleOptions {
   /**
    * Set to false to skip artifact generation entirely. The CLI then falls back
    * to adapter detection, exactly as it behaves without the module installed.
    */
   enabled?: boolean
-
-  /**
-   * Where the artifact is written, relative to the Nuxt build dir.
-   * Only change this if something else already owns the default path.
-   */
-  artifact?: string
 
   /**
    * Report configuration problems without failing the build. The problems are
@@ -42,7 +48,6 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
   },
   defaults: {
     enabled: true,
-    artifact: 'i18n-kit.json',
     failOnInvalidConfig: true,
   },
   setup(options, nuxt) {
@@ -82,18 +87,28 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
 
       report(diagnostics, logger, options.failOnInvalidConfig ?? true)
 
+      // Nothing to publish, and an empty table is worse than no artifact: the
+      // CLI would have to decide whether it means "no locales" or "not built".
+      if (artifact.locales.length === 0) {
+        logger.warn(
+          'No locales resolved from your i18n configuration, so nothing was published. '
+          + 'The CLI will fall back to loading this app itself.',
+        )
+        return
+      }
+
       // A template rather than a plain write: Nuxt owns the build dir, wipes it
       // during prepare and regenerates it in dev. Writing directly here races
       // that — the file lands and is then cleaned away before the build ends.
       addTemplate({
-        filename: options.artifact ?? 'i18n-kit.json',
+        filename: ARTIFACT_FILENAME,
         write: true,
         getContents: () => `${JSON.stringify(artifact, null, 2)}\n`,
       })
 
       logger.success(
         `Published ${artifact.locales.length} locale(s) across ${artifact.layers.length} layer(s) `
-        + `to ${join(nuxt.options.buildDir, options.artifact ?? 'i18n-kit.json')}`,
+        + `to ${join(nuxt.options.buildDir, ARTIFACT_FILENAME)}`,
       )
     })
   },

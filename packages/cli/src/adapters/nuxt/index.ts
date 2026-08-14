@@ -84,7 +84,18 @@ async function loadApp(appDir: string, discoveryRoot: string): Promise<I18nConfi
   const artifact = await readArtifact(appDir)
   if (!artifact) return loadSingleApp(appDir, discoveryRoot)
 
-  return artifactToConfig(artifact, appDir, discoveryRoot, await loadProjectConfig(discoveryRoot))
+  const config = await artifactToConfig(artifact, appDir, discoveryRoot, await loadProjectConfig(discoveryRoot))
+
+  // An artifact describing no locale directory leaves nothing to read, which
+  // the fallback path reports as a ConfigError naming what is missing. Silently
+  // returning an empty config instead would make installing the module turn a
+  // clear error into no output at all.
+  if (config.localeDirs.length === 0) {
+    log.warn(`The artifact for ${appDir} describes no locale directories — loading the app instead.`)
+    return loadSingleApp(appDir, discoveryRoot)
+  }
+
+  return config
 }
 
 async function loadSingleApp(appDir: string, discoveryRoot: string): Promise<I18nConfig> {

@@ -192,9 +192,13 @@ Human-maintained locales can be excluded from automatic translation via `protect
 
 ```json
 {
-  "protectedLocales": ["en-US", "en-GB", "de-DE-formal"]
+  "protectedLocales": ["en-us", "en", "de-formal"]
 }
 ```
+
+Address locales by **code**. A ref may also be a language tag or a file name (with its
+extension), but codes are the only form guaranteed to be unique — see
+[Referring to Locales](./packages/cli/README.md#referring-to-locales).
 
 Protected locales are excluded from the default target set of both translate operations and reported as `skipped` with reason `protected-locale`. Explicitly naming a protected locale in `targetLocales` overrides the protection with a warning. `discover` lists the resolved protected locales.
 
@@ -444,7 +448,7 @@ Drop a `.i18n-mcp.json` at your project root to give agents (and the CLI) projec
     "de": "Informal German (du)",
     "de-formal": "Formal German (Sie)"
   },
-  "protectedLocales": ["en-US", "de-DE-formal"]
+  "protectedLocales": ["en-us", "de-formal"]
 }
 ```
 
