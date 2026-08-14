@@ -618,7 +618,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
       inputSchema: z.object({
         layer: z
           .string()
-          .describe('Layer name from discover to translate (e.g., "root", "app-admin"). Call discover to discover available layers.'),
+          .optional()
+          .describe('Layer name from discover to translate (e.g., "root", "app-admin"). Omit to translate every locale-backed layer in one call — the recommended default for layered projects, which returns a result per layer plus an aggregated summary.'),
         referenceLocale: z
           .string()
           .optional()
@@ -685,8 +686,15 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           onProgressTotal: (total) => { progressTotal = total },
         })
 
-        // MCP-owned guidance for agent mode
-        if (result.fallbackContexts && result.summary) {
+        // MCP-owned guidance for agent mode. All-layers mode (no `layer`
+        // argument, the default for layered projects since #292) nests the
+        // fallback contexts per layer, so checking only the top level would
+        // skip the guidance in exactly the case an agent is most likely to hit.
+        const hasFallbacks = 'layers' in result
+          ? Object.values(result.layers).some(l => l.fallbackContexts)
+          : Boolean(result.fallbackContexts)
+
+        if (hasFallbacks && result.summary) {
           (result.summary as Record<string, unknown>).message
             = 'Agent mode — no provider configured on the server. Use the fallbackContexts to translate '
             + 'inline, then call write_translations (mode: "upsert") to write the results. To enable '

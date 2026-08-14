@@ -28,6 +28,8 @@ import type {
   ScaffoldLocaleFileInfo,
   PlaceholderValidationResult,
   UnresolvedLocaleRef,
+  RemoveTranslationsResult,
+  RenameTranslationKeyResult,
 } from './types.js'
 import { findWritableLayerOrThrow, findLocaleImpl, findLocaleSuggestion, resolveLocaleRef } from './shared.js'
 import type { LocaleRefAmbiguity } from './shared.js'
@@ -353,7 +355,7 @@ export async function removeTranslations(opts: {
   keys: string[]
   dryRun?: boolean
   projectDir?: string
-}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
+}): Promise<RemoveTranslationsResult> {
   const { layer, keys } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
@@ -402,7 +404,11 @@ export async function removeTranslations(opts: {
     }
   }
 
-  const uniqueRemoved = [...new Set(removed.map(r => r.split(':')[1]))]
+  // Entries are "locale:key"; guard the split so a malformed entry cannot
+  // put undefined into a string[] the type promises is dense.
+  const uniqueRemoved = [...new Set(
+    removed.map(r => r.split(':')[1]).filter((k): k is string => k !== undefined),
+  )]
   return {
     removed: uniqueRemoved,
     removedPerLocale: removed,
@@ -420,7 +426,7 @@ export async function renameTranslationKey(opts: {
   newKey: string
   dryRun?: boolean
   projectDir?: string
-}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
+}): Promise<RenameTranslationKeyResult> {
   const { layer, oldKey, newKey } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)

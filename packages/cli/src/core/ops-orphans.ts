@@ -14,6 +14,7 @@ import { getLeafKeys, removeNestedValue } from '../io/key-operations.js'
 import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from '../scanner/code-scanner.js'
 import type { OrphanScanPlan, OrphanScanResult } from '../scanner/code-scanner.js'
 import { getPatternSet } from '../scanner/patterns.js'
+import type { FindOrphanKeysResult, RemoveOrphanKeysResult, CodeUsageResult } from './types.js'
 import { ToolError } from '../utils/errors.js'
 
 import { log } from '../utils/logger.js'
@@ -144,7 +145,7 @@ async function runOrphanScan(
  * (e.g. keyed "lang" when the adapter names the layer "root") silently drops
  * its ignorePatterns, so warn on stderr listing the valid names (#265).
  */
-export function warnUnknownOrphanScanLayers(config: I18nConfig): void {
+function warnUnknownOrphanScanLayers(config: I18nConfig): void {
   const orphanScan = config.projectConfig?.orphanScan
   if (!orphanScan) return
   const layerNames = config.localeDirs.map(d => d.layer)
@@ -235,7 +236,7 @@ export async function findOrphanKeys(opts: {
   excludeDirs?: string[]
   projectDir?: string
   outputFile?: string
-}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
+}): Promise<FindOrphanKeysResult> {
   const { layer, locale, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
@@ -276,7 +277,7 @@ export async function findOrphanKeys(opts: {
   }
 
   const misplacedCount = orphanResult.misplacedUsages.length
-  const output: Record<string, unknown> = {
+  const output: FindOrphanKeysResult = {
     orphanKeys: sortedByLayer,
     uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
     misplacedUsages: misplacedCount > 0 ? orphanResult.misplacedUsages : undefined,
@@ -314,7 +315,7 @@ export async function findOrphanKeys(opts: {
 
   const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
   if (reportPath) {
-    await writeReportFile(reportPath, output, {
+    await writeReportFile(reportPath, output as unknown as Record<string, unknown>, {
       tool: 'find_orphan_keys',
       args: { layer, locale, scanDirs, excludeDirs },
     })
@@ -333,7 +334,7 @@ export async function scanCodeUsage(opts: {
   excludeDirs?: string[]
   projectDir?: string
   outputFile?: string
-}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
+}): Promise<CodeUsageResult> {
   const { keys, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
@@ -373,7 +374,7 @@ export async function scanCodeUsage(opts: {
     ? keys.filter(k => !byKey[k])
     : []
 
-  const output: Record<string, unknown> = {
+  const output: CodeUsageResult = {
     usages: sortedByKey,
     summary: {
       uniqueKeysFound: Object.keys(sortedByKey).length,
@@ -397,7 +398,7 @@ export async function scanCodeUsage(opts: {
 
   const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'scan_code_usage')
   if (reportPath) {
-    await writeReportFile(reportPath, output, {
+    await writeReportFile(reportPath, output as unknown as Record<string, unknown>, {
       tool: 'scan_code_usage',
       args: { keys, scanDirs, excludeDirs },
     })
@@ -421,7 +422,7 @@ export async function removeOrphanKeys(opts: {
   outputFile?: string
   /** Also write the orphan findings as a GitLab Code Quality JSON array to this path. */
   codequalityOutput?: string
-}): Promise<Record<string, unknown>> { // TODO: use specific result type from types.ts
+}): Promise<RemoveOrphanKeysResult> {
   const { layer, locale, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
@@ -449,7 +450,7 @@ export async function removeOrphanKeys(opts: {
     const emptyOutput = { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
     const emptyReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (emptyReportPath) {
-      await writeReportFile(emptyReportPath, emptyOutput, {
+      await writeReportFile(emptyReportPath, emptyOutput as unknown as Record<string, unknown>, {
         tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
       })
@@ -478,7 +479,7 @@ export async function removeOrphanKeys(opts: {
     if (orphanResult.uncertainCount > 0) messageParts.push(`${orphanResult.uncertainCount} uncertain key(s) were excluded because they overlap with dynamic translation patterns.`)
     if (misplacedCount > 0) messageParts.push(`${misplacedCount} key(s) are referenced only outside their layer's scope (see misplacedUsages).`)
     if (dynamicMatchedCount === 0 && ignoredCount === 0 && orphanResult.uncertainCount === 0 && misplacedCount === 0) messageParts.push('All translation keys are referenced in code.')
-    const zeroOutput: Record<string, unknown> = {
+    const zeroOutput: RemoveOrphanKeysResult = {
       orphanKeys: {},
       uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
       misplacedUsages,
@@ -487,7 +488,7 @@ export async function removeOrphanKeys(opts: {
     }
     const zeroReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (zeroReportPath) {
-      await writeReportFile(zeroReportPath, zeroOutput, {
+      await writeReportFile(zeroReportPath, zeroOutput as unknown as Record<string, unknown>, {
         tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
       })
@@ -498,7 +499,7 @@ export async function removeOrphanKeys(opts: {
 
   // Dry run — just report
   if (isDryRun) {
-    const output: Record<string, unknown> = {
+    const output: RemoveOrphanKeysResult = {
       orphanKeys: orphansByLayer,
       uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
       misplacedUsages,
@@ -532,7 +533,7 @@ export async function removeOrphanKeys(opts: {
     }
     const dryRunReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
     if (dryRunReportPath) {
-      await writeReportFile(dryRunReportPath, output, {
+      await writeReportFile(dryRunReportPath, output as unknown as Record<string, unknown>, {
         tool: 'remove_orphan_keys',
         args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
       })
@@ -565,7 +566,7 @@ export async function removeOrphanKeys(opts: {
     removedByLayer[layerName] = orphans
   }
 
-  const removalOutput: Record<string, unknown> = {
+  const removalOutput: RemoveOrphanKeysResult = {
     removed: removedByLayer,
     uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
     misplacedUsages,
@@ -587,7 +588,7 @@ export async function removeOrphanKeys(opts: {
 
   const removalReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
   if (removalReportPath) {
-    await writeReportFile(removalReportPath, removalOutput, {
+    await writeReportFile(removalReportPath, removalOutput as unknown as Record<string, unknown>, {
       tool: 'remove_orphan_keys',
       args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
     })

@@ -36,10 +36,11 @@ export default createCommand({
       translateFn,
     })
 
-    // CLI-owned guidance: agent mode here just means no provider was given
-    const summary = result.summary as Record<string, unknown> | undefined
-    if (summary?.mode === 'agent') {
-      summary.message = 'No provider configured — nothing was translated. Pass --provider and --model '
+    // CLI-owned guidance: agent mode here just means no provider was given.
+    // Single-layer and all-layers results both carry summary.mode, so this
+    // needs no narrowing.
+    if (result.summary.mode === 'agent') {
+      result.summary.message = 'No provider configured — nothing was translated. Pass --provider and --model '
         + '(API key via --apiKey or the OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env vars) '
         + 'to translate automatically.'
     }
