@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.1.1...the-i18n-mcp-7.2.0) (2026-08-14)
+
+
+### Features
+
+* **cli:** status — coverage per locale and per layer, with a --fail-under gate ([#311](https://github.com/fabkho/the-i18n-kit/issues/311)) ([8db7c96](https://github.com/fabkho/the-i18n-kit/commit/8db7c96128d79ce6f120fc9745b01e4130e4168d)), closes [#253](https://github.com/fabkho/the-i18n-kit/issues/253)
+
 ## [7.1.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.1.0...the-i18n-mcp-7.1.1) (2026-08-13)
 
 
