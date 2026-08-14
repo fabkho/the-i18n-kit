@@ -6,8 +6,10 @@ import type { NuxtModule } from '@nuxt/schema'
 
 import { version } from '../package.json'
 import { buildArtifact } from './artifact'
-import { checkOwnedKeys, checkProtectedLocales } from './validate'
+import { checkOwnedKeys, checkPolicyConflicts, checkProtectedLocales } from './validate'
 import type { Diagnostic } from './validate'
+import { readPolicy } from './policy'
+import type { I18nKitPolicy } from './policy'
 
 const CONFIG_FILENAME = '.i18n-mcp.json'
 
@@ -23,7 +25,7 @@ const CONFIG_FILENAME = '.i18n-mcp.json'
  */
 const ARTIFACT_FILENAME = 'i18n-kit.json'
 
-export interface ModuleOptions {
+export interface ModuleOptions extends I18nKitPolicy {
   /**
    * Set to false to skip artifact generation entirely. The CLI then falls back
    * to adapter detection, exactly as it behaves without the module installed.
@@ -72,17 +74,27 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
         return
       }
 
+      const policy = readPolicy(options as Record<string, unknown>)
+      const projectConfig = await readProjectConfig(nuxt.options.rootDir, logger)
+
       const artifact = await buildArtifact({
         appDir: nuxt.options.rootDir,
         i18n,
         layers: nuxt.options._layers as unknown as Array<{ config: { rootDir: string, i18n?: Record<string, unknown> } }>,
         generator: `@the-i18n-kit/nuxt@${version}`,
+        policy,
       })
 
-      const projectConfig = await readProjectConfig(nuxt.options.rootDir, logger)
+      // protectedLocales may come from either source; whichever declared it is
+      // checked against the locale table Nuxt actually resolved.
+      const protectedLocales = policy.protectedLocales
+        ?? (projectConfig?.protectedLocales as string[] | undefined)
+
       const diagnostics = [
         ...checkOwnedKeys(projectConfig),
-        ...checkProtectedLocales(projectConfig?.protectedLocales as string[] | undefined, artifact.locales),
+        ...checkPolicyConflicts(policy, projectConfig),
+        ...checkProtectedLocales(protectedLocales, artifact.locales),
+        ...warnUnreadablePolicy(policy, projectConfig),
       ]
 
       report(diagnostics, logger, options.failOnInvalidConfig ?? true)
@@ -138,6 +150,30 @@ function report(diagnostics: Diagnostic[], logger: LoggerLike, failOnInvalidConf
       + 'Set i18nKit.failOnInvalidConfig to false to report without failing.',
     )
   }
+}
+
+/**
+ * Policy declared only in `nuxt.config.ts` is invisible to the CLI until a build
+ * has produced an artifact. For most keys that costs a little context; for the
+ * ones that SUPPRESS work it is dangerous — an unbuilt checkout would translate
+ * locales you marked protected, which is the failure this module exists to
+ * prevent, arriving from the other side.
+ */
+function warnUnreadablePolicy(
+  policy: I18nKitPolicy,
+  projectConfig: Record<string, unknown> | null,
+): Diagnostic[] {
+  const suppressing = (['protectedLocales', 'orphanScan'] as const)
+    .filter(key => policy[key] !== undefined && projectConfig?.[key] === undefined)
+
+  if (suppressing.length === 0) return []
+
+  return [{
+    level: 'warn',
+    message: `${suppressing.join(' and ')} declared only in nuxt.config.ts. `
+      + 'The CLI reads it from the generated artifact, so a checkout that has not been built '
+      + `will not apply it. Keep it in ${CONFIG_FILENAME} if that matters — the CLI reads that directly.`,
+  }]
 }
 
 /**

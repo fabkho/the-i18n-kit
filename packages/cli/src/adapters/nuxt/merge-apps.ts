@@ -23,6 +23,14 @@ export class AppMerger {
   defaultLocale = 'en'
   fallbackLocale: Record<string, string[]> = { default: ['en'] }
 
+  /**
+   * Authoring policy contributed by the apps themselves — each app's artifact
+   * may carry what its nuxt.config declared. Accumulated first-wins, then
+   * overlaid by .i18n-mcp.json, which is the source a reader can see without
+   * building.
+   */
+  private readonly policy: Record<string, unknown> = {}
+
   private readonly claimedPaths = new Map<string, { layer: string, layerRootDir: string }>()
   private readonly seenLocaleCodes = new Set<string>()
   private readonly usedLayerNames = new Set<string>()
@@ -36,6 +44,7 @@ export class AppMerger {
       this.fallbackLocale = appConfig.fallbackLocale
     }
 
+    this.collectPolicy(appConfig)
     const renamedLayers = await this.claimDirs(appConfig, discoveryRoot)
     this.collectLocales(appConfig)
     this.collectLayerRoots(appConfig)
@@ -43,6 +52,10 @@ export class AppMerger {
   }
 
   toConfig(discoveryRoot: string, projectConfig: I18nConfig['projectConfig'], locales: LocaleDefinition[]): I18nConfig {
+    const merged = Object.keys(this.policy).length > 0
+      ? { ...this.policy, ...projectConfig } as I18nConfig['projectConfig']
+      : projectConfig
+
     return {
       rootDir: discoveryRoot,
       defaultLocale: this.defaultLocale,
@@ -50,7 +63,7 @@ export class AppMerger {
       locales,
       localeDirs: this.localeDirs,
       layerRootDirs: this.layerRootDirs,
-      projectConfig,
+      projectConfig: merged,
       apps: this.apps,
     }
   }
@@ -85,6 +98,12 @@ export class AppMerger {
   private uniqueLayerName(dir: LocaleDir, discoveryRoot: string): string {
     if (!this.usedLayerNames.has(dir.layer)) return dir.layer
     return deriveLayerName(dir.layerRootDir, discoveryRoot, this.usedLayerNames)
+  }
+
+  private collectPolicy(appConfig: I18nConfig): void {
+    for (const [key, value] of Object.entries(appConfig.projectConfig ?? {})) {
+      if (value !== undefined && this.policy[key] === undefined) this.policy[key] = value
+    }
   }
 
   private collectLocales(appConfig: I18nConfig): void {

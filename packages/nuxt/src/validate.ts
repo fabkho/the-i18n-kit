@@ -1,4 +1,6 @@
 import type { ArtifactLocale } from './artifact'
+import { conflictingPolicyKeys } from './policy'
+import type { I18nKitPolicy } from './policy'
 
 /**
  * Same precedence the CLI resolves with (#301): an exact `code` outranks a
@@ -98,4 +100,20 @@ export function checkOwnedKeys(projectConfig: Record<string, unknown> | null): D
       message: `.i18n-mcp.json declares "${key}", which this module derives from your Nuxt config. `
         + `Remove it from .i18n-mcp.json — keeping both means two sources of truth and no way to tell which won.`,
     }))
+}
+
+/**
+ * The same key declared in `nuxt.config.ts` and in `.i18n-mcp.json`. Neither
+ * wins: silent precedence between two sources is the drift this module exists
+ * to end, and a reader cannot tell which one took effect.
+ */
+export function checkPolicyConflicts(
+  policy: I18nKitPolicy,
+  projectConfig: Record<string, unknown> | null,
+): Diagnostic[] {
+  return conflictingPolicyKeys(policy, projectConfig).map(key => ({
+    level: 'error' as const,
+    message: `"${key}" is declared both in nuxt.config.ts (i18nKit) and in .i18n-mcp.json. `
+      + 'Keep one — this module will not choose between them.',
+  }))
 }

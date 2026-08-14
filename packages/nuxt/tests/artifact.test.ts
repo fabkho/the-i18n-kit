@@ -157,3 +157,31 @@ describe('the fallback chain', () => {
     expect(artifact.fallbackLocale).toBeNull()
   })
 })
+
+describe('the authoring policy', () => {
+  it('is published when nuxt.config declared any', async () => {
+    const artifact = await buildArtifact({
+      appDir: dir,
+      i18n: { locales: [{ code: 'de', file: 'de.json' }] },
+      layers: [],
+      generator: 'test',
+      policy: { glossary: { anny: 'never translate' } },
+    })
+
+    expect(artifact.policy).toEqual({ glossary: { anny: 'never translate' } })
+  })
+
+  // Absent rather than empty, so the CLI can tell "nothing declared here" from
+  // "declared as empty" without guessing.
+  it('is absent when nothing was declared', async () => {
+    const artifact = await buildArtifact({
+      appDir: dir,
+      i18n: { locales: [{ code: 'de', file: 'de.json' }] },
+      layers: [],
+      generator: 'test',
+      policy: {},
+    })
+
+    expect('policy' in artifact).toBe(false)
+  })
+})
