@@ -56,6 +56,7 @@ Agent changes wording for an existing key
 |---------|---------|-------------|
 | [**the-i18n-cli**](./packages/cli) | [![npm](https://img.shields.io/npm/v/the-i18n-cli?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-cli) | CLI + core library — install globally |
 | [**the-i18n-mcp**](./packages/mcp) | [![npm](https://img.shields.io/npm/v/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-mcp) | MCP server for AI agents |
+| [**@the-i18n-kit/nuxt**](./packages/nuxt) | [![npm](https://img.shields.io/npm/v/@the-i18n-kit/nuxt?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/nuxt) | Nuxt module — publishes the layer graph and locale table Nuxt already resolved |
 
 ---
 
@@ -423,6 +424,12 @@ All tools work immediately.
 ## Project Config
 
 Drop a `.i18n-mcp.json` at your project root to give agents (and the CLI) project context:
+
+> **Nuxt:** install [`@the-i18n-kit/nuxt`](./packages/nuxt) and the derived half of this
+> file goes away. The module publishes the locale table and layer graph Nuxt already
+> resolved, so `locales`, `localeDirs` and `defaultLocale` stop being restated by hand —
+> and `protectedLocales` entries that match nothing, or match several locales, fail the
+> build instead of failing quietly.
 
 ```json
 {
