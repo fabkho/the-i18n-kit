@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.6.0...the-i18n-cli-4.7.0) (2026-08-14)
+
+
+### Features
+
+* **nuxt:** publish the layer graph and locale table from inside the build ([#319](https://github.com/fabkho/the-i18n-kit/issues/319)) ([4a64746](https://github.com/fabkho/the-i18n-kit/commit/4a64746fb27675308e4faaed559fde5a64ef1a70))
+
 ## [4.6.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.5.0...the-i18n-cli-4.6.0) (2026-08-14)
 
 
