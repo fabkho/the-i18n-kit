@@ -47,10 +47,16 @@ jobs:
 
       - run: pnpm build
 
-      # Idempotent version diff: publish only when package.json version
-      # is ahead of what's on the npm registry. Lets the same job recover
-      # from a failed publish (e.g. expired token) without needing a fresh
-      # release-please cycle — just re-run via workflow_dispatch.
+      # Idempotent version check: publish only when this exact version is not
+      # on the registry yet. Lets the same job recover from a failed publish
+      # (e.g. expired token) without needing a fresh release-please cycle —
+      # just re-run via workflow_dispatch.
+      #
+      # Asks for the exact version rather than the latest dist-tag, so a moved
+      # tag cannot make a published version look missing. A registry error that
+      # is not "no such version" fails the job instead of being read as absent:
+      # guessing "not published" on a network or auth blip would send us into a
+      # publish that can only fail confusingly.
       - name: Compute publish targets
         id: targets
         run: |
@@ -58,13 +64,25 @@ jobs:
           for pkg in cli mcp nuxt; do
             name=$(jq -r .name "packages/$pkg/package.json")
             local_ver=$(jq -r .version "packages/$pkg/package.json")
-            remote_ver=$(npm view "$name" version 2>/dev/null || echo "0.0.0")
-            if [ "$local_ver" != "$remote_ver" ]; then
-              echo "$pkg=true"  >> "$GITHUB_OUTPUT"
-              echo "::notice::Will publish $name@$local_ver (registry: $remote_ver)"
-            else
+
+            set +e
+            found=$(npm view "$name@$local_ver" version 2>/tmp/npm-view.err)
+            status=$?
+            set -e
+
+            # Verified against the live registry: a published version exits 0
+            # with the version echoed, while both an unpublished version of a
+            # known package and a wholly unknown package exit non-zero with E404.
+            if [ "$status" -eq 0 ] && [ -n "$found" ]; then
               echo "$pkg=false" >> "$GITHUB_OUTPUT"
               echo "::notice::Skipping $name@$local_ver (already on registry)"
+            elif grep -q 'E404' /tmp/npm-view.err; then
+              echo "$pkg=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::Will publish $name@$local_ver (not on registry)"
+            else
+              cat /tmp/npm-view.err
+              echo "::error::Could not determine registry state for $name@$local_ver"
+              exit 1
             fi
           done
 

@@ -2,14 +2,18 @@
 
 Nuxt module for [the i18n kit](https://github.com/fabkho/the-i18n-kit).
 
+**Status: skeleton — this module does not do anything yet.** The package exists so
+that the npm name, build tooling and release wiring are settled before the
+implementation lands. Installing it today is a no-op.
+
+## What it will do
+
 Nuxt already resolves your layer graph and your locale table. Today every consumer
-restates both in `.i18n-mcp.json`, and the two descriptions drift. This module
-publishes what Nuxt resolved as a build artifact the CLI reads in preference to
+restates both in `.i18n-mcp.json`, and the two descriptions drift. This module will
+publish what Nuxt resolved as a build artifact that the CLI reads in preference to
 hand-written config, so the derived half of the config stops being written twice.
 
-**Status: skeleton.** The package exists so the npm name, build tooling and release
-wiring are settled; artifact generation lands with
-[#305](https://github.com/fabkho/the-i18n-kit/issues/305).
+Tracked in [#305](https://github.com/fabkho/the-i18n-kit/issues/305).
 
 ## Install
 
@@ -26,7 +30,8 @@ export default defineNuxtConfig({
 
 ## Options
 
-Configured under the `i18nKit` key.
+Configured under the `i18nKit` key. Accepted and validated today; they take effect
+once artifact generation lands.
 
 | Option | Default | Description |
 | --- | --- | --- |
