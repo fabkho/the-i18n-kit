@@ -277,13 +277,26 @@ Prefixes assembled in another scope defeat this even when they are literal — a
 
 Detection is confidence-scored: the highest-scoring adapter wins, and a `.i18n-mcp.json` carrying both `localeDirs` and `defaultLocale` outscores framework inference. Set `"framework": "vue"` (or any adapter name) to force one adapter.
 
-The Vue and React/Next adapters resolve a single locale directory and take the alphabetically first discovered locale as the default. To pin a different reference locale, use `localeDirs` + `defaultLocale`:
+### Read, not guessed
 
-```json
-{
-  "defaultLocale": "en",
-  "localeDirs": ["src/locales"]
-}
+Where a project already declares its locales, the adapter reads that file rather than inferring from directory order:
+
+| Setup | Read from | Gives |
+|---|---|---|
+| next-intl | `src/i18n/routing.ts` — `defineRouting({ ... })` | `locales`, `defaultLocale` |
+| next-translate | `i18n.js` | `locales`, `defaultLocale` |
+| Next.js Pages Router | `next.config.{ts,js,mjs}` — `i18n: { ... }` | `locales`, `defaultLocale` |
+| Vue + `@intlify/unplugin-vue-i18n` | `vite.config.{ts,js}` — the plugin's `include` | locale directories |
+
+These files are executed, so a `next.config.js` wrapped in `withNextIntl(...)` or `withSentryConfig(...)` may fail without the right environment. That is never fatal: the CLI warns and falls back to the directory probing above, exactly as it behaved before it could read them.
+
+A value you declare yourself always wins over both. To pin the reference locale regardless of what any framework config says:
+
+```ts
+export default defineI18nKitConfig({
+  defaultLocale: 'en',
+  localeDirs: ['src/locales'],
+})
 ```
 
 ## Programmatic API
@@ -309,7 +322,23 @@ await translateKey({
 
 ## Project Config
 
-Drop a `.i18n-mcp.json` at your project root for project-specific context:
+Project-specific context goes in `i18n-kit.config.ts` at your project root, where the editor checks it:
+
+```ts
+import { defineI18nKitConfig } from 'the-i18n-cli/config'
+
+export default defineI18nKitConfig({
+  context: 'B2B SaaS booking platform',
+  glossary: {
+    Booking: "Core concept. Dutch: 'Boeking'.",
+  },
+  protectedLocales: ['en-us', 'de-formal'],
+})
+```
+
+Read directly, with no build step — a `protectedLocales` entry that only takes effect once something has been built is a locale that quietly goes unprotected in a fresh checkout. `.ts`, `.mts`, `.js`, `.mjs` and `.cjs` all work, and the file is looked up from the working directory upwards, the way `eslint` and `tsconfig` resolve theirs.
+
+`.i18n-mcp.json` accepts the same keys and remains supported:
 
 ```json
 {
@@ -327,6 +356,8 @@ Drop a `.i18n-mcp.json` at your project root for project-specific context:
   "protectedLocales": ["en-us", "de-formal"]
 }
 ```
+
+Use one or the other. Both may be present, but declaring the same key in both is an error naming both files rather than a silent precedence rule.
 
 See the [full config reference](https://github.com/fabkho/the-i18n-kit#project-config) for all options. `samplingPreferences` is deprecated and ignored (accepted for backward compatibility) — configure a provider instead.
 

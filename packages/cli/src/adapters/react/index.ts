@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
 import type { I18nConfig, LocaleDefinition } from '../../config/types'
 import { loadProjectConfig } from '../../config/project-config'
+import { readNextI18n } from '../../config/framework/next'
 import { applyLocaleOverride } from '../../config/locale-override'
 import { ConfigError } from '../../utils/errors'
 import { loadPackageJson, collectDependencies, hasNuxtConfig, noLocaleDirError, buildSingleDirConfig } from '../shared'
@@ -63,10 +64,16 @@ export class ReactAdapter implements FrameworkAdapter {
       )
     }
 
+    // Declared first, then what the project already tells next-intl or Next
+    // itself, and only then directory order — which is not a statement about
+    // the default locale at all, merely the alphabet (#296).
+    const framework = await readNextI18n(projectDir)
+    const defaultLocale = projectConfig?.defaultLocale ?? framework?.defaultLocale ?? firstLocale.code
+
     return buildSingleDirConfig({
       projectDir,
       localeDir,
-      defaultLocale: firstLocale.code,
+      defaultLocale,
       locales: applyLocaleOverride(locales, projectConfig?.locales),
       projectConfig,
     })
