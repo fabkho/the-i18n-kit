@@ -305,6 +305,40 @@ describe('buildTranslationUserMessage', () => {
 })
 
 describe('extractJsonFromResponse', () => {
+  /**
+   * Captured from a real Gemini response on anny-ui !2070: the correct
+   * translation, complete, missing only its closing brace. The whole response
+   * was thrown away and the key reported as failed — five keys never got
+   * translated across repeated runs because of two absent characters.
+   */
+  const truncatedResponse = '{\n  "pages.organizations.locations.chooseYourLocation": "Roghnaigh do shu\u00edomh"'
+
+  it('recovers a response that ends mid-object', () => {
+    const result = extractJsonFromResponse(truncatedResponse)
+
+    expect(result).toEqual({
+      'pages.organizations.locations.chooseYourLocation': 'Roghnaigh do shuíomh',
+    })
+  })
+
+  it('keeps the pairs that did arrive when the last one is cut mid-value', () => {
+    const result = extractJsonFromResponse('{"a": "first", "b": "second", "c": "thir')
+
+    expect(result).toEqual({ a: 'first', b: 'second' })
+  })
+
+  it('keeps the pairs that did arrive when the cut lands mid-key', () => {
+    const result = extractJsonFromResponse('{"a": "first", "b": "second", "c')
+
+    expect(result).toEqual({ a: 'first', b: 'second' })
+  })
+
+  // Nothing usable arrived: still an error, because inventing an empty object
+  // would report every key as silently omitted rather than as failed.
+  it('still throws when the object was cut before any pair completed', () => {
+    expect(() => extractJsonFromResponse('{"a": "fir')).toThrow(/ended mid-object/)
+  })
+
   it('parses clean JSON directly', () => {
     const result = extractJsonFromResponse('{"key":"value"}')
     expect(result).toEqual({ key: 'value' })
