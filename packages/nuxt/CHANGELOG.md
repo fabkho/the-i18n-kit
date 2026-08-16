@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-nuxt-0.1.2...the-i18n-kit-nuxt-0.1.3) (2026-08-16)
+
+
+### Features
+
+* **cli:** typed config, and read the framework's own config instead of guessing ([#328](https://github.com/fabkho/the-i18n-kit/issues/328)) ([83c22b8](https://github.com/fabkho/the-i18n-kit/commit/83c22b8e3c3b44e1fd39270e81c38225f1d44d5a)), closes [#324](https://github.com/fabkho/the-i18n-kit/issues/324)
+* **nuxt:** declare the kit's config in nuxt.config.ts, typed ([#322](https://github.com/fabkho/the-i18n-kit/issues/322)) ([25175a5](https://github.com/fabkho/the-i18n-kit/commit/25175a580fe2e805bf861e24c0fa6c531283e927))
+
 ## [0.1.2](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-nuxt-0.1.1...the-i18n-kit-nuxt-0.1.2) (2026-08-14)
 
 
