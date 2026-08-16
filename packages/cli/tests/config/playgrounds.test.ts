@@ -15,6 +15,27 @@ beforeEach(() => {
   clearConfigCache()
 })
 
+describe('playground/php-flat', () => {
+  // php-array meant Laravel's directory-per-locale layout everywhere, so a flat
+  // lang/<locale>.php resolved to nothing at all (#308). The format cannot tell
+  // the two layouts apart — only the directory can.
+  it('resolves a PHP project that is not laid out like Laravel', async () => {
+    const config = await detectI18nConfig(resolve(playgroundsDir, 'php-flat'))
+
+    expect(config.framework).toBe('generic')
+    expect(config.localeFileFormat).toBe('php-array')
+    expect(config.locales.map(l => l.code)).toEqual(['de', 'en', 'fr'])
+  })
+
+  // `file` is what tells the reader there is one file per locale. The namespaced
+  // layout in playground/laravel has none, and leaves it unset.
+  it('names the flat file on each locale', async () => {
+    const config = await detectI18nConfig(resolve(playgroundsDir, 'php-flat'))
+
+    expect(config.locales.map(l => l.file)).toEqual(['de.php', 'en.php', 'fr.php'])
+  })
+})
+
 describe('playground/react', () => {
   it('takes its default locale from next-intl, not from directory order', async () => {
     const config = await detectI18nConfig(resolve(playgroundsDir, 'react'))
