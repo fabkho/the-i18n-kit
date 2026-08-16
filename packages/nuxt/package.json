@@ -1,6 +1,6 @@
 {
   "name": "@the-i18n-kit/nuxt",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Nuxt module that publishes the layer graph and locale table Nuxt already resolved, so the i18n kit stops asking you to restate them",
   "keywords": [
     "nuxt",
