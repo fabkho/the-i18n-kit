@@ -464,7 +464,12 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
 
   let relativePaths: string[]
   try {
-    relativePaths = await glob(pat.filePatterns, { cwd: rootDir, ignore, dot: false, absolute: false })
+    // Sorted, because tinyglobby walks directories in parallel and promises no
+    // stable order. Scan order becomes output order, so without this the same
+    // binary disagrees with itself between runs on an unchanged tree — which
+    // makes diffing before and after a change, the technique that catches what
+    // unit tests miss, read as thousands of lines of noise (#327).
+    relativePaths = (await glob(pat.filePatterns, { cwd: rootDir, ignore, dot: false, absolute: false })).sort()
   } catch {
     return { usages: [], dynamicKeys: [], filesScanned: 0, uniqueKeys: new Set(), bareStringCandidates: new Set(), bareDynamicCandidates: new Set() }
   }

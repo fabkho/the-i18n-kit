@@ -1,8 +1,27 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { extractKeys, findOrphanKeysForConfig, scanSourceFiles, toRelativePath, buildDynamicKeyRegexes, buildIgnorePatternRegexes } from '../../src/scanner/code-scanner.js'
+
+/**
+ * tinyglobby returns whatever order its parallel walk happened to finish in.
+ * A handful of files in a temp directory is not enough to make that vary, so
+ * the order is forced here instead of hoped for — otherwise the determinism
+ * test below passes with or without the fix it exists to guard.
+ */
+const globControl = vi.hoisted(() => ({ reverse: false }))
+
+vi.mock('tinyglobby', async (importActual) => {
+  const actual = await importActual<typeof import('tinyglobby')>()
+  return {
+    ...actual,
+    glob: async (...args: Parameters<typeof actual.glob>) => {
+      const paths = await actual.glob(...args)
+      return globControl.reverse ? [...paths].reverse() : paths
+    },
+  }
+})
 
 const tmpDir = join(dirname(fileURLToPath(import.meta.url)), '../../.tmp-test/scanner')
 
@@ -35,6 +54,52 @@ describe('single-segment keys used via a bare t()', () => {
     const { usages } = extractKeys(`{{ $t('save') }}`, 'a.vue')
 
     expect(usages.map(u => u.key)).toEqual(['save'])
+  })
+})
+
+describe('scan order determinism (#327)', () => {
+  /**
+   * tinyglobby walks directories in parallel and promises no stable order, and
+   * nothing downstream re-sorted, so scan order became output order: the same
+   * binary disagreed with itself between runs on an unchanged tree — 3,194
+   * differing lines on a 7-app monorepo, identical once sorted.
+   *
+   * That made diffing output before and after a change unusable, which is the
+   * technique that catches what unit tests miss.
+   */
+  const determinismDir = join(tmpDir, 'determinism')
+
+  beforeAll(async () => {
+    await mkdir(join(determinismDir, 'b'), { recursive: true })
+    await mkdir(join(determinismDir, 'a'), { recursive: true })
+    await writeFile(join(determinismDir, 'b', 'two.vue'), `<template>{{ $t('b.two') }}</template>`)
+    await writeFile(join(determinismDir, 'a', 'one.vue'), `<template>{{ $t('a.one') }}</template>`)
+    await writeFile(join(determinismDir, 'a', 'three.vue'), `<template>{{ $t('a.three') }}</template>`)
+  })
+
+  afterAll(() => {
+    globControl.reverse = false
+  })
+
+  it('produces the same result whichever order the walk returns files in', async () => {
+    globControl.reverse = false
+    const forwards = await scanSourceFiles(determinismDir)
+
+    globControl.reverse = true
+    const backwards = await scanSourceFiles(determinismDir)
+
+    // Whole records, not just keys: a usage carries its file and line, and the
+    // bug was in the order files were read. Comparing keys alone would pass
+    // while file and line drifted underneath.
+    expect(backwards.usages).toEqual(forwards.usages)
+  })
+
+  it('orders usages by file path rather than by walk order', async () => {
+    globControl.reverse = true
+
+    const { usages } = await scanSourceFiles(determinismDir)
+
+    expect(usages.map(u => u.key)).toEqual(['a.one', 'a.three', 'b.two'])
   })
 })
 
