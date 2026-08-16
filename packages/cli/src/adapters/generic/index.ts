@@ -71,11 +71,14 @@ export class GenericAdapter implements FrameworkAdapter {
       )
     }
 
-    const locales: LocaleDefinition[] = discoveredLocales.map(code => ({
+    const locales: LocaleDefinition[] = await Promise.all(discoveredLocales.map(async code => ({
       code,
       language: code,
-      ...(detectedFormat === 'json' ? { file: `${code}.json` } : {}),
-    }))
+      // `file` names the flat file to read and write. A namespaced PHP layout
+      // (Laravel's lang/<locale>/<namespace>.php) has no single file, and
+      // resolveLocaleEntries discovers those from disk instead.
+      ...(await flatFileFor(localeDirs, code, detectedFormat)),
+    })))
 
     log.info(
       `Generic adapter: ${locales.length} locale(s), format=${detectedFormat}, `
@@ -96,6 +99,22 @@ export class GenericAdapter implements FrameworkAdapter {
   }
 }
 
+/**
+ * The flat file for a locale, when there is one. Absent for a namespaced
+ * layout, where each namespace is its own file and no single name applies.
+ */
+async function flatFileFor(
+  localeDirs: Array<{ path: string }>,
+  code: string,
+  format: LocaleFileFormat,
+): Promise<{ file?: string }> {
+  const ext = format === 'php-array' ? '.php' : '.json'
+  for (const dir of localeDirs) {
+    if (existsSync(join(dir.path, `${code}${ext}`))) return { file: `${code}${ext}` }
+  }
+  return {}
+}
+
 async function detectFileFormat(localeDir: string): Promise<LocaleFileFormat> {
   let entries: import('node:fs').Dirent[]
   try {
@@ -105,9 +124,13 @@ async function detectFileFormat(localeDir: string): Promise<LocaleFileFormat> {
     return 'json'
   }
 
-  // Flat files: en.json, de.json
+  // Flat files: en.json, de.json — or en.php, de.php for a PHP project that
+  // does not use Laravel's directory-per-locale layout.
   if (entries.some(e => e.isFile() && e.name.endsWith('.json'))) {
     return 'json'
+  }
+  if (entries.some(e => e.isFile() && e.name.endsWith('.php'))) {
+    return 'php-array'
   }
 
   // Directory-per-locale: en/, de/ — check contents
@@ -140,8 +163,9 @@ async function discoverLocales(localeDirs: LocaleDir[], format: LocaleFileFormat
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue
 
-      if (entry.isFile() && entry.name.endsWith('.json') && format === 'json') {
-        const code = entry.name.replace(/\.json$/, '')
+      const flatExt = format === 'php-array' ? '.php' : '.json'
+      if (entry.isFile() && entry.name.endsWith(flatExt)) {
+        const code = entry.name.slice(0, -flatExt.length)
         if (!NON_LOCALE_NAMES.has(code.toLowerCase())) {
           codes.add(code)
         }
