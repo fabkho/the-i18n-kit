@@ -38,6 +38,42 @@ describe('single-segment keys used via a bare t()', () => {
   })
 })
 
+describe('scan order determinism (#327)', () => {
+  /**
+   * tinyglobby walks directories in parallel and promises no stable order, and
+   * nothing downstream re-sorted, so scan order became output order: the same
+   * binary disagreed with itself between runs on an unchanged tree — 3,194
+   * differing lines on a 7-app monorepo, identical once sorted.
+   *
+   * That made diffing output before and after a change unusable, which is the
+   * technique that catches what unit tests miss.
+   */
+  const determinismDir = join(tmpDir, 'determinism')
+
+  beforeAll(async () => {
+    await mkdir(join(determinismDir, 'b'), { recursive: true })
+    await mkdir(join(determinismDir, 'a'), { recursive: true })
+    // Written b-first so creation order and sorted order differ.
+    await writeFile(join(determinismDir, 'b', 'two.vue'), `<template>{{ $t('b.two') }}</template>`)
+    await writeFile(join(determinismDir, 'a', 'one.vue'), `<template>{{ $t('a.one') }}</template>`)
+    await writeFile(join(determinismDir, 'a', 'three.vue'), `<template>{{ $t('a.three') }}</template>`)
+  })
+
+  it('returns usages in the same order on every run', async () => {
+    const first = await scanSourceFiles(determinismDir)
+    const second = await scanSourceFiles(determinismDir)
+
+    // Identical, not merely equivalent: the ordering is the bug.
+    expect(first.usages.map(u => u.key)).toEqual(second.usages.map(u => u.key))
+  })
+
+  it('orders usages by file path rather than by directory walk order', async () => {
+    const { usages } = await scanSourceFiles(determinismDir)
+
+    expect(usages.map(u => u.key)).toEqual(['a.one', 'a.three', 'b.two'])
+  })
+})
+
 describe('extractKeys', () => {
   function extract(content: string, filePath = 'test.vue') {
     return extractKeys(content, filePath)
