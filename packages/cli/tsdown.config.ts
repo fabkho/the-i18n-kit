@@ -11,6 +11,9 @@ export default defineConfig({
     'src/config/framework/stubs/unplugin-vue-i18n.ts',
     'src/config/framework/stubs/next-intl-routing.ts',
   ],
+  // Never bundle the parser: it loads a platform-specific native binding at
+  // runtime, and an inlined copy cannot find it (#332).
+  external: ['oxc-parser'],
   format: 'esm',
   target: 'node18',
   clean: true,

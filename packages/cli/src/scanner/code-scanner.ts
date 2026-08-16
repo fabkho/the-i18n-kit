@@ -2,6 +2,9 @@ import { readFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { glob } from 'tinyglobby'
 import { log } from '../utils/logger.js'
+import { createOxcFrontend } from './frontends/oxc.js'
+import type { LanguageFrontend } from './frontends/types.js'
+import { interpret } from './rules.js'
 import type { ScanPatternSet } from './patterns.js'
 import { VUE_NUXT_PATTERNS } from './patterns.js'
 
@@ -458,6 +461,55 @@ function collectBareCandidates(content: string, constTable: Map<string, string>,
  *
  * When `patterns` is omitted, defaults to Vue/Nuxt patterns.
  */
+/**
+ * One file's evidence, preferring a frontend that reads the language as syntax
+ * over one that matches it as text (#332).
+ *
+ * A frontend that declines — an unparseable file, a parser that would not load
+ * — falls through to pattern matching rather than failing. Better evidence when
+ * it is available, never a scan that stops because it was not.
+ */
+async function extractFileEvidence(
+  content: string,
+  filePath: string,
+  patterns?: ScanPatternSet,
+  constTable?: Map<string, string>,
+): Promise<{ usages: KeyUsage[], dynamicKeys: DynamicKeyUsage[], bareStringCandidates: Set<string> }> {
+  const pat = patterns ?? VUE_NUXT_PATTERNS
+
+  for (const frontend of activeFrontends()) {
+    if (!frontend.handles(filePath)) continue
+
+    const sites = await frontend.read(content, filePath)
+    if (!sites) break
+
+    return interpret(sites, {
+      filePath,
+      ambiguousCalleeNeedsDot: callee => pat.requiresDotForCallee?.(callee) ?? false,
+    })
+  }
+
+  return extractKeys(content, filePath, pat, constTable)
+}
+
+/**
+ * Opt-in, via `I18N_SCANNER=ast`.
+ *
+ * The architecture is settled; the migration is not. #332 gates each frontend
+ * on a differential run showing it is at least as conservative as what it
+ * replaces, and on anny-ui the AST frontend still misses 13 keys the patterns
+ * find — most of them regex artifacts, a handful genuine. A key the outgoing
+ * frontend saw and the incoming one does not becomes an orphan, and orphans
+ * get deleted, so the default stays where the evidence is.
+ *
+ * Flip it once `scripts/scanner-diff.mjs` reports nothing in that direction.
+ */
+function activeFrontends(): LanguageFrontend[] {
+  return process.env.I18N_SCANNER === 'ast' ? [oxcFrontend] : []
+}
+
+const oxcFrontend = createOxcFrontend()
+
 export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], patterns?: ScanPatternSet): Promise<ScanResult> {
   const pat = patterns ?? VUE_NUXT_PATTERNS
   const ignore = [...pat.ignoreDirs, ...(excludeDirs ?? [])]
@@ -491,7 +543,7 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     }
 
     const constTable = pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()
-    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls } = extractKeys(content, filePath, pat, constTable)
+    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls } = await extractFileEvidence(content, filePath, pat, constTable)
     allUsages.push(...usages)
     allDynamicKeys.push(...dynamicKeys)
     for (const candidate of bareFromCalls) bareStringCandidates.add(candidate)

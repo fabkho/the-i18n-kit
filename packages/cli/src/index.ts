@@ -46,6 +46,8 @@ export { detectI18nConfig, getCachedConfig, clearConfigCache } from './config/de
 export type { I18nConfig, LocaleDefinition, LocaleDir, ProjectConfig } from './config/types.js'
 export { buildLayerGraph, serializeLayerGraph } from './config/layer-graph.js'
 export type { LayerGraph, SerializedLayerGraph } from './config/layer-graph.js'
+// Exported for the scanner differential harness (#332).
+export { scanSourceFiles } from './scanner/code-scanner.js'
 
 // IO
 export { readLocaleData } from './io/locale-data.js'
