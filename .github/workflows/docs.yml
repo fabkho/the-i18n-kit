@@ -1,0 +1,72 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - packages/**
+      - action.yml
+      - .github/workflows/docs.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - docs/**
+      - packages/**
+      - action.yml
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+# Allow one concurrent deployment, and let a newer push supersede a running one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The reference generators import from the built packages, so the
+      # packages have to exist before the site is generated.
+      - name: Build packages
+        run: pnpm build
+
+      - name: Generate site
+        run: pnpm --filter @the-i18n-kit/docs generate
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.output/public
+
+  deploy:
+    # Pull requests build to prove the site still generates; only main deploys.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
