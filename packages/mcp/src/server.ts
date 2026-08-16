@@ -16,6 +16,7 @@ import {
   getTranslations,
   writeTranslations,
   getMissingTranslations,
+  findEmptyTranslations,
   getTranslationStatus,
   searchTranslations,
   removeTranslations,
@@ -317,6 +318,39 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('listing namespaces', error)
+      }
+    },
+  )
+
+  // ─── Tool: find_empty_translations ─────────────────────────────
+
+  server.registerTool(
+    'find_empty_translations',
+    {
+      title: 'Find Empty Translations',
+      description:
+        'Find keys whose value is an empty string. '
+        + 'These exist in the locale file, so they are not reported as missing, and they render as nothing in the UI. '
+        + 'Use this after a scaffold or an interrupted translation run to find keys that were created but never filled.',
+      inputSchema: z.object({
+        layer: z
+          .string()
+          .optional()
+          .describe('Layer name to filter by (e.g., "root", "app-admin"). If omitted, checks all layers. Call discover to discover available layers.'),
+        locale: z
+          .string()
+          .optional()
+          .describe('Locale to check (e.g., "de"). If omitted, checks every locale.'),
+        projectDir: projectDirInput(),
+        outputFile: outputFileInput('/tmp/empty-translations.json'),
+      }),
+    },
+    async ({ layer, locale, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
+      try {
+        const result = await findEmptyTranslations({ layer, locale, projectDir, outputFile })
+        return jsonContent(result)
+      } catch (error) {
+        return toolErrorResponse('finding empty translations', error)
       }
     },
   )
