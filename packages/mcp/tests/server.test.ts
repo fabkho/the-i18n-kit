@@ -132,6 +132,18 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(JSON.parse(content.text)).toMatchObject({ greeting: 'Hallo {name}' })
   })
 
+  it('carries the rename notice on the first tool result and no later one', async () => {
+    // An editor spawns this server through npx, so an install-time deprecation
+    // is printed where nobody reads it. The notice has to reach the model at
+    // runtime — once, because repeating it on every call costs context on each
+    // one and teaches the model to skip it (#315).
+    const first = await callTool('discover', { projectDir })
+    const second = await callTool('discover', { projectDir })
+
+    expect(first.json?._notice).toContain('@the-i18n-kit/mcp')
+    expect(second.json).not.toHaveProperty('_notice')
+  })
+
   it('find_empty_translations reports a key that exists but has no value', async () => {
     // Empty values are not missing keys — they are present in the file and
     // render as nothing, which is why they need a report of their own.

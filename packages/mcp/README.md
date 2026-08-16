@@ -1,14 +1,14 @@
 # the-i18n-mcp
 
-[![npm version](https://img.shields.io/npm/v/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-mcp)
-[![npm downloads](https://img.shields.io/npm/dm/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-mcp)
+[![npm version](https://img.shields.io/npm/v/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/mcp)
+[![npm downloads](https://img.shields.io/npm/dm/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/mcp)
 [![License](https://img.shields.io/npm/l/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
 
 MCP server for managing i18n translation files — gives your AI agent full control over your app's translations without dumping entire locale files into context.
 
 13 purpose-built tools that let the agent work surgically — touching only the keys it needs. Auto-detects Nuxt, Laravel, Vue, React/Next.js, or any project with JSON/PHP locale files.
 
-Part of [the-i18n-kit](https://github.com/fabkho/the-i18n-kit) monorepo. For CLI usage, see [the-i18n-cli](https://www.npmjs.com/package/the-i18n-cli).
+Part of [the-i18n-kit](https://github.com/fabkho/the-i18n-kit) monorepo. For CLI usage, see [@the-i18n-kit/cli](https://www.npmjs.com/package/@the-i18n-kit/cli).
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ Add to `.vscode/mcp.json`:
     "the-i18n-mcp": {
       "type": "stdio",
       "command": "npx",
-      "args": ["the-i18n-mcp@latest"]
+      "args": ["@the-i18n-kit/mcp@latest"]
     }
   }
 }
@@ -43,7 +43,7 @@ Add to `.zed/settings.json`:
   "context_servers": {
     "the-i18n-mcp": {
       "command": "npx",
-      "args": ["the-i18n-mcp@latest"]
+      "args": ["@the-i18n-kit/mcp@latest"]
     }
   }
 }
@@ -61,7 +61,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "the-i18n-mcp": {
       "command": "npx",
-      "args": ["the-i18n-mcp@latest"]
+      "args": ["@the-i18n-kit/mcp@latest"]
     }
   }
 }
@@ -242,7 +242,7 @@ Set environment variables on the server process and the server calls the LLM pro
     "the-i18n-mcp": {
       "type": "stdio",
       "command": "npx",
-      "args": ["the-i18n-mcp@latest"],
+      "args": ["@the-i18n-kit/mcp@latest"],
       "env": {
         "I18N_PROVIDER": "google",
         "I18N_MODEL": "gemini-2.5-flash",
@@ -284,7 +284,7 @@ Locales listed in `protectedLocales` are excluded from default translate targets
 
 > `npx the-i18n-mcp` and `npx nuxt-i18n-mcp` still work — both bin names point to the same server.
 
-MCP sampling was removed: `translate_missing` no longer asks the host to pick a model, and `samplingPreferences` in `.i18n-mcp.json` is ignored (still accepted for backward compatibility). To keep server-side translation, configure provider mode via the env variables above; otherwise the tools run in agent mode and your agent translates the returned fallback contexts itself. The core logic lives in [the-i18n-cli](https://www.npmjs.com/package/the-i18n-cli).
+MCP sampling was removed: `translate_missing` no longer asks the host to pick a model, and `samplingPreferences` in `.i18n-mcp.json` is ignored (still accepted for backward compatibility). To keep server-side translation, configure provider mode via the env variables above; otherwise the tools run in agent mode and your agent translates the returned fallback contexts itself. The core logic lives in [@the-i18n-kit/cli](https://www.npmjs.com/package/@the-i18n-kit/cli).
 
 ## License
 

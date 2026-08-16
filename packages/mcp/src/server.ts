@@ -4,13 +4,14 @@ import type { CacheHint } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 
 const require = createRequire(import.meta.url)
-const { version } = require('../package.json') as { version: string }
+const { name: packageName, version } = require('../package.json') as { name: string, version: string }
 
 import {
   detectI18nConfig,
   getCachedConfig,
   readLocaleData,
   ToolError,
+  renameNotice,
   detectConfig,
   listLocaleDirs,
   getTranslations,
@@ -181,11 +182,34 @@ function toolErrorResponse(context: string, error: unknown) {
 }
 
 /**
+ * The rename notice (#315), or null when running under the new name.
+ *
+ * An editor spawns this server through `npx`, so an install-time deprecation
+ * is printed into a stream nobody reads and the agent using the tools never
+ * learns the package moved. It has to reach the model at runtime instead.
+ */
+const RENAME_NOTICE = renameNotice(packageName)
+
+/**
+ * Delivered once, not on every response. Repeating it on every tool call would
+ * cost context on each one and teach the model to skip it — the opposite of
+ * what a notice is for.
+ */
+let noticeDelivered = false
+
+/**
  * Wrap a plain result object as MCP text content.
  */
 function jsonContent(data: unknown) {
+  let payload = data
+
+  if (RENAME_NOTICE && !noticeDelivered && payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
+    noticeDelivered = true
+    payload = { ...payload, _notice: RENAME_NOTICE }
+  }
+
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
+    content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }],
   }
 }
 
@@ -223,12 +247,17 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     ? { mode: 'provider', translateFn: options.translateFn }
     : await resolveTranslationBackend()
 
+  // Each server gets its own one-shot, so a process hosting several does not
+  // silently swallow the notice for all but the first.
+  noticeDelivered = false
+
   const server = new McpServer(
     {
       name: 'the-i18n-mcp',
       version,
     },
     {
+      ...(RENAME_NOTICE ? { instructions: RENAME_NOTICE } : {}),
       // 2026-07-28 responses only — legacy-era responses never carry cache
       // fields. Everything is 'private': locale data is project-local.
       cacheHints: {

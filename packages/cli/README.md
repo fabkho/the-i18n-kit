@@ -1,6 +1,6 @@
 # the-i18n-cli
 
-[![npm version](https://img.shields.io/npm/v/the-i18n-cli?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-cli)
+[![npm version](https://img.shields.io/npm/v/@the-i18n-kit/cli?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/cli)
 [![License](https://img.shields.io/npm/l/the-i18n-cli?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
 
 CLI and core library for managing i18n translation files — supports Nuxt, Laravel, Vue, React/Next.js, and any project with JSON or PHP locale files.
@@ -13,7 +13,7 @@ Part of [the-i18n-kit](https://github.com/fabkho/the-i18n-kit) monorepo. For MCP
 
 ```bash
 # Global install
-npm install -g the-i18n-cli
+npm install -g @the-i18n-kit/cli
 
 # Or use directly with npx
 npx the-i18n-cli --help

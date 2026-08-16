@@ -51,6 +51,7 @@ export { readLocaleData } from './io/locale-data.js'
 
 // Errors
 export { ToolError, toErrorMessage } from './utils/errors.js'
+export { renameNotice } from './utils/rename-notice.js'
 
 // LLM providers
 export { createTranslateFn, TranslateProviderError, classifyProviderError, resolveProviderBaseUrl, BASE_URL_ENV } from './llm/providers.js'

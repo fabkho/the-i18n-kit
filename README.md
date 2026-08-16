@@ -54,9 +54,14 @@ Agent changes wording for an existing key
 
 | Package | Version | Description |
 |---------|---------|-------------|
-| [**the-i18n-cli**](./packages/cli) | [![npm](https://img.shields.io/npm/v/the-i18n-cli?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-cli) | CLI + core library — install globally |
-| [**the-i18n-mcp**](./packages/mcp) | [![npm](https://img.shields.io/npm/v/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/the-i18n-mcp) | MCP server for AI agents |
+| [**@the-i18n-kit/cli**](./packages/cli) | [![npm](https://img.shields.io/npm/v/@the-i18n-kit/cli?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/cli) | CLI + core library — install globally |
+| [**@the-i18n-kit/mcp**](./packages/mcp) | [![npm](https://img.shields.io/npm/v/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/mcp) | MCP server for AI agents |
 | [**@the-i18n-kit/nuxt**](./packages/nuxt) | [![npm](https://img.shields.io/npm/v/@the-i18n-kit/nuxt?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/nuxt) | Nuxt module — publishes the layer graph and locale table Nuxt already resolved |
+
+
+> **Renamed.** The packages moved to the `@the-i18n-kit` scope. `the-i18n-cli` and
+> `the-i18n-mcp` still publish from the same source at the same versions and keep
+> working, but they will stop receiving updates — switch when convenient.
 
 ---
 
@@ -65,7 +70,7 @@ Agent changes wording for an existing key
 ### CLI
 
 ```bash
-npm install -g the-i18n-cli
+npm install -g @the-i18n-kit/cli
 
 the-i18n-cli init                      # create .i18n-mcp.json from framework detection
 the-i18n-cli missing                   # find missing translations
@@ -86,7 +91,7 @@ Add to your MCP host (VS Code, Cursor, Claude Desktop, Zed):
     "the-i18n-mcp": {
       "type": "stdio",
       "command": "npx",
-      "args": ["the-i18n-mcp@latest"]
+      "args": ["@the-i18n-kit/mcp@latest"]
     }
   }
 }
