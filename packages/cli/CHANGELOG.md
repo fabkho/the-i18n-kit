@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.10.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.9.0...the-i18n-cli-4.10.0) (2026-08-16)
+
+
+### Features
+
+* tell users on the old package names that the kit has moved ([#338](https://github.com/fabkho/the-i18n-kit/issues/338)) ([18f146d](https://github.com/fabkho/the-i18n-kit/commit/18f146dfb3fea19102fb97b4ee745b41850aa7aa))
+
 ## [4.9.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.8.1...the-i18n-cli-4.9.0) (2026-08-16)
 
 
