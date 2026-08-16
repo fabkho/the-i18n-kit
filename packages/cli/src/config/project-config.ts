@@ -1,75 +1,18 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { z } from 'zod'
 import type { ProjectConfig } from './types.js'
+import { dropDeprecatedKeys, validateProjectConfig } from './schema.js'
+import { loadTypedConfig } from './typed-config.js'
 import { ConfigError, toErrorMessage } from '../utils/errors.js'
 import { log } from '../utils/logger.js'
 
 export const CONFIG_FILENAME = '.i18n-mcp.json'
 
-// ─── Zod schema ─────────────────────────────────────────────────
-
-const nonEmptyString = z.string().min(1).refine(s => s.trim().length > 0, 'Must not be empty or whitespace-only')
-
-const layerRuleSchema = z.object({
-  layer: z.string(),
-  description: z.string(),
-  when: z.string(),
-})
-
-const localeDirEntrySchema = z.union([
-  nonEmptyString,
-  z.object({
-    path: nonEmptyString,
-    layer: nonEmptyString,
-  }),
-])
-
-const projectConfigSchema = z.object({
-  $schema: z.string().optional(),
-  framework: z.string().optional(),
-  context: z.string().optional(),
-  layerRules: z.array(layerRuleSchema).optional(),
-  glossary: z.record(z.string(), z.string()).optional(),
-  translationPrompt: z.string().optional(),
-  localeNotes: z.record(z.string(), z.string()).optional(),
-  examples: z.array(z.record(z.string(), z.string())).optional(),
-  orphanScan: z.record(z.string(), z.object({
-    ignorePatterns: z.array(z.string()).optional(),
-  }).passthrough()).optional(), // passthrough for backwards-compat with deprecated keys like includeParentLayer
-  localeDirs: z.array(localeDirEntrySchema).optional(),
-  defaultLocale: z.string().optional(),
-  locales: z.array(z.string()).optional(),
-  protectedLocales: z.array(nonEmptyString).optional(),
-  reportOutput: z.union([z.literal(true), nonEmptyString]).optional(),
-  localeFileFormat: z.enum(['json', 'php-array']).optional(),
-  providerBaseUrl: nonEmptyString.optional(),
-  // Deprecated with the removal of MCP sampling: accepted so existing config
-  // files keep validating (the schema is strict), warned about, and ignored.
-  samplingPreferences: z.unknown().optional(),
-}).strict()
-
-/**
- * Validate a candidate project config against the published schema, returning
- * the formatted issue list rather than throwing. `init` uses this to refuse to
- * emit a config the tool would then reject; loadProjectConfig turns the same
- * failure into a ConfigError.
- */
-export function validateProjectConfig(
-  value: unknown,
-): { ok: true; data: ProjectConfig } | { ok: false; error: string } {
-  const result = projectConfigSchema.safeParse(value)
-  if (result.success) return { ok: true, data: result.data as ProjectConfig }
-
-  const error = result.error.issues
-    .map((issue) => {
-      const path = issue.path.length > 0 ? issue.path.join('.') : '(root)'
-      return `  ${path}: ${issue.message}`
-    })
-    .join('\n')
-  return { ok: false, error }
-}
+// The schema itself lives in ./schema.ts, shared with the typed-config loader.
+// Re-exported here because this has been its import path since before there
+// was a second config format.
+export { validateProjectConfig } from './schema.js'
 
 // ─── Config file discovery ──────────────────────────────────────
 
@@ -92,13 +35,57 @@ export function findConfigFile(startDir: string): string | null {
 }
 
 /**
- * Load the optional project config file (.i18n-mcp.json).
- * Walks up from projectDir to find the nearest config file,
- * similar to how ESLint, Prettier, and tsconfig resolve configs.
+ * Load the project's declared configuration, from either place it can be
+ * declared: `i18n-kit.config.ts` and `.i18n-mcp.json`. Both are searched from
+ * projectDir upwards, the way ESLint, Prettier and tsconfig resolve configs.
+ *
+ * Returns null when neither exists — the case that must keep behaving exactly
+ * as it did before there were two. Throws ConfigError when either file is
+ * present but unusable, or when the two disagree.
+ *
+ * Every adapter funnels through here, which is what makes the typed config
+ * work for all of them rather than for whichever one was taught about it.
+ */
+export async function loadProjectConfig(projectDir: string): Promise<ProjectConfig | null> {
+  const [json, typed] = await Promise.all([
+    loadJsonConfig(projectDir),
+    loadTypedConfig(projectDir),
+  ])
+
+  if (!typed) return json?.config ?? null
+  if (!json) return typed.config
+
+  const conflicts = conflictingKeys(typed.config, json.config)
+  if (conflicts.length > 0) {
+    throw new ConfigError(
+      `${conflicts.join(', ')} ${conflicts.length === 1 ? 'is' : 'are'} declared in both\n`
+      + `  ${typed.path}\n`
+      + `  ${json.path}\n`
+      + 'Neither wins — a reader cannot tell which one took effect. '
+      + 'Delete the duplicate from one of them.',
+    )
+  }
+
+  // Disjoint by the check above, so the spread order only decides where
+  // untouched keys come from, not who wins.
+  return { ...json.config, ...typed.config }
+}
+
+/** Keys present in both files, ignoring the JSON-only `$schema`. */
+function conflictingKeys(typed: ProjectConfig, json: ProjectConfig): string[] {
+  const a = typed as Record<string, unknown>
+  const b = json as Record<string, unknown>
+  return Object.keys(a).filter(key => key !== '$schema' && a[key] !== undefined && b[key] !== undefined)
+}
+
+/**
+ * Load the optional `.i18n-mcp.json`, with the path it was found at.
  * Returns null if no config file is found in any ancestor.
  * Throws ConfigError if a file is found but is invalid.
  */
-export async function loadProjectConfig(projectDir: string): Promise<ProjectConfig | null> {
+async function loadJsonConfig(
+  projectDir: string,
+): Promise<{ path: string, config: ProjectConfig } | null> {
   log.debug(`Searching for ${CONFIG_FILENAME} starting from: ${projectDir}`)
 
   const configPath = findConfigFile(projectDir)
@@ -136,14 +123,5 @@ export async function loadProjectConfig(projectDir: string): Promise<ProjectConf
 
   log.debug(`Project config loaded successfully from ${configPath}`)
 
-  const data = result.data as ProjectConfig & { samplingPreferences?: unknown }
-  if ('samplingPreferences' in data) {
-    log.warn(
-      `${CONFIG_FILENAME}: "samplingPreferences" is deprecated and ignored — `
-      + 'MCP sampling was removed. Configure a provider (e.g. I18N_PROVIDER/I18N_MODEL) instead.',
-    )
-    delete data.samplingPreferences
-  }
-
-  return data
+  return { path: configPath, config: dropDeprecatedKeys(result.data, CONFIG_FILENAME) }
 }

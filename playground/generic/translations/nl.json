@@ -1,0 +1,15 @@
+{
+  "app": {
+    "title": "Anny"
+  },
+  "common": {
+    "actions": {
+      "cancel": "Annuleren",
+      "save": "Opslaan"
+    },
+    "messages": {
+      "loading": "Laden...",
+      "success": "Succesvol opgeslagen"
+    }
+  }
+}

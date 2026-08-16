@@ -36,8 +36,8 @@ export interface I18nKitPolicy {
   /** Per-layer orphan-scan settings, keyed by layer name. */
   orphanScan?: Record<string, { ignorePatterns?: string[] }>
 
-  /** Where diagnostic reports are written: true for `.i18n-reports/`, or a path. */
-  reportOutput?: string | boolean
+  /** Where diagnostic reports are written: true for `.i18n-reports/`, or a path. Omit it for none. */
+  reportOutput?: string | true
 
   /** Override the detected locale file format. */
   localeFileFormat?: 'json' | 'php-array'

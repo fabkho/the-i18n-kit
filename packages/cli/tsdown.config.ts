@@ -1,19 +1,36 @@
 import { defineConfig } from 'tsdown'
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/bin.ts'],
+  entry: [
+    'src/index.ts',
+    'src/bin.ts',
+    'src/define-config.ts',
+    // Its own entry because it is never imported — it is aliased to by path
+    // while reading a project's vite.config, so it has to survive bundling as
+    // a file. See config/framework/stubs/unplugin-vue-i18n.ts.
+    'src/config/framework/stubs/unplugin-vue-i18n.ts',
+    'src/config/framework/stubs/next-intl-routing.ts',
+  ],
   format: 'esm',
   target: 'node18',
   clean: true,
   dts: true,
   sourcemap: true,
   onSuccess: async () => {
-    // tsdown generates hashed .d.ts names — create a stable index.d.ts redirect
-    const { readdirSync, writeFileSync } = await import('node:fs')
+    // tsdown emits hashed .d.ts names; package.json points at stable ones, so
+    // write a redirect per entry. An entry can produce several hashed chunks —
+    // its own, plus shared ones it pulls in. The entry's own chunk is the one
+    // nothing else imports.
+    const { readdirSync, readFileSync, writeFileSync } = await import('node:fs')
     const files = readdirSync('dist')
-    const indexDts = files.find(f => f.startsWith('index-') && f.endsWith('.d.ts'))
-    if (indexDts) {
-      writeFileSync('dist/index.d.ts', `export * from './${indexDts}';\n`)
+    const dts = files.filter(f => f.endsWith('.d.ts'))
+    const contents = dts.map(f => readFileSync(`dist/${f}`, 'utf-8')).join('\n')
+
+    for (const entry of ['index', 'define-config']) {
+      const entryChunk = dts.find(f => f.startsWith(`${entry}-`) && !contents.includes(f.replace(/\.d\.ts$/, '.js')))
+      if (entryChunk) {
+        writeFileSync(`dist/${entry}.d.ts`, `export * from './${entryChunk}';\n`)
+      }
     }
   },
 })

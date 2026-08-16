@@ -8,6 +8,7 @@ return [
         'edit' => 'Bearbeiten',
         'create' => 'Erstellen',
         'back' => 'Zurück',
+        'duplicate' => 'Duplizieren',
     ],
     'messages' => [
         'success' => 'Vorgang erfolgreich abgeschlossen.',

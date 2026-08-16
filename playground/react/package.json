@@ -1,0 +1,12 @@
+{
+  "name": "the-i18n-kit/playground-react",
+  "private": true,
+  "type": "module",
+  "description": "Next.js App Router playground for the React adapter",
+  "dependencies": {
+    "next": "^15.0.0",
+    "next-intl": "^3.26.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
