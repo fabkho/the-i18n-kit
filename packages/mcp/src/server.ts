@@ -191,25 +191,30 @@ function toolErrorResponse(context: string, error: unknown) {
 const RENAME_NOTICE = renameNotice(packageName)
 
 /**
- * Delivered once, not on every response. Repeating it on every tool call would
- * cost context on each one and teach the model to skip it — the opposite of
- * what a notice is for.
+ * Wrap a plain result object as MCP text content, delivering the rename notice
+ * on the first result this server produces.
+ *
+ * Built per server rather than shared: with the flag at module scope, two
+ * servers in one process race for a single delivery and whichever called
+ * second never announced itself at all.
+ *
+ * Once, not per call. Repeating it would cost context on every response and
+ * teach the model to skip it — the opposite of what a notice is for.
  */
-let noticeDelivered = false
+function createJsonContent() {
+  let noticeDelivered = false
 
-/**
- * Wrap a plain result object as MCP text content.
- */
-function jsonContent(data: unknown) {
-  let payload = data
+  return function jsonContent(data: unknown) {
+    let payload = data
 
-  if (RENAME_NOTICE && !noticeDelivered && payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
-    noticeDelivered = true
-    payload = { ...payload, _notice: RENAME_NOTICE }
-  }
+    if (RENAME_NOTICE && !noticeDelivered && payload !== null && typeof payload === 'object' && !Array.isArray(payload)) {
+      noticeDelivered = true
+      payload = { ...payload, _notice: RENAME_NOTICE }
+    }
 
-  return {
-    content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }],
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }],
+    }
   }
 }
 
@@ -247,9 +252,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     ? { mode: 'provider', translateFn: options.translateFn }
     : await resolveTranslationBackend()
 
-  // Each server gets its own one-shot, so a process hosting several does not
-  // silently swallow the notice for all but the first.
-  noticeDelivered = false
+  const jsonContent = createJsonContent()
 
   const server = new McpServer(
     {
