@@ -1,0 +1,24 @@
+{
+  "common": {
+    "actions": {
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "save": "Save"
+    },
+    "messages": {
+      "loading": "Loading...",
+      "noData": "No data available",
+      "success": "Successfully saved"
+    },
+    "navigation": {
+      "back": "Back",
+      "home": "Home",
+      "settings": "Settings"
+    }
+  },
+  "booking": {
+    "confirm": "Confirm booking",
+    "resource": "Resource",
+    "slotsLeft": "{count, plural, =0 {No slots left} one {One slot left} other {# slots left}}"
+  }
+}

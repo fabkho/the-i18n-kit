@@ -9,6 +9,7 @@ export default defineConfig({
     // while reading a project's vite.config, so it has to survive bundling as
     // a file. See config/framework/stubs/unplugin-vue-i18n.ts.
     'src/config/framework/stubs/unplugin-vue-i18n.ts',
+    'src/config/framework/stubs/next-intl-routing.ts',
   ],
   format: 'esm',
   target: 'node18',

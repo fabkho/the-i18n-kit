@@ -6,7 +6,8 @@
  * that the default locale, so `{de,en,fr}.json` made German the source of
  * truth for an English project (#296).
  */
-import { asObject, asString, asStringArray, defaultExport, executeConfig, firstExisting } from './execute.js'
+import { createRequire } from 'node:module'
+import { asObject, asString, asStringArray, defaultExport, executeConfig, firstExisting, resolveStub } from './execute.js'
 import { log } from '../../utils/logger.js'
 
 /** next-intl: `defineRouting({ locales, defaultLocale })`, usually re-exported as `routing`. */
@@ -62,15 +63,15 @@ export async function readNextI18n(projectDir: string): Promise<NextI18n | null>
 
 /**
  * next-intl. `defineRouting` returns the object it was handed, so the exported
- * routing object carries `locales` and `defaultLocale` without the plugin
- * having to be stubbed — the package is installed in any project that has one
- * of these files.
+ * routing object carries `locales` and `defaultLocale` verbatim — which is why
+ * substituting it (only when it is missing; see `routingAlias`) cannot change
+ * the answer.
  */
 async function readRouting(projectDir: string): Promise<NextI18n | null> {
   const path = firstExisting(projectDir, ROUTING_FILES)
   if (!path) return null
 
-  const module = await executeConfig(path)
+  const module = await executeConfig(path, { alias: routingAlias(path) })
   if (!module) return null
 
   // `export const routing = defineRouting(...)` is what the docs show, but a
@@ -87,6 +88,37 @@ async function readRouting(projectDir: string): Promise<NextI18n | null> {
   }
 
   return null
+}
+
+/**
+ * Substitute `defineRouting` only when the real one cannot be found from the
+ * routing file's own location.
+ *
+ * The real package always wins where it is installed — it is the authority on
+ * its own API, and a substitution that silently shadowed it would be the kind
+ * of quiet divergence this whole line of work is about. The stub is purely a
+ * rescue for the case where the file exists and its dependencies do not, which
+ * is a fresh clone, a CI job that skipped install, or a fixture. Reading a
+ * declaration should not require a `node_modules` to be present.
+ */
+function routingAlias(routingPath: string): Record<string, string> | undefined {
+  if (resolvableFrom('next-intl/routing', routingPath)) return undefined
+
+  const path = resolveStub('next-intl-routing')
+  if (!path) return undefined
+
+  log.debug(`next-intl is not installed for ${routingPath} — reading it with a stubbed defineRouting`)
+  return { 'next-intl/routing': path }
+}
+
+function resolvableFrom(specifier: string, fromFile: string): boolean {
+  try {
+    createRequire(fromFile).resolve(specifier)
+    return true
+  }
+  catch {
+    return false
+  }
 }
 
 /** next-translate's `i18n.js`, a plain object of `{ locales, defaultLocale, pages }`. */

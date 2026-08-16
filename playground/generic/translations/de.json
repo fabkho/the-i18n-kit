@@ -1,0 +1,20 @@
+{
+  "app": {
+    "tagline": "Buche alles, überall",
+    "title": "Anny"
+  },
+  "booking": {
+    "confirm": "Buchung bestätigen",
+    "resource": "Ressource"
+  },
+  "common": {
+    "actions": {
+      "cancel": "Abbrechen",
+      "save": "Speichern"
+    },
+    "messages": {
+      "loading": "Laden...",
+      "success": "Erfolgreich gespeichert"
+    }
+  }
+}

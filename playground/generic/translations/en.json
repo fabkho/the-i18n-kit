@@ -1,0 +1,20 @@
+{
+  "app": {
+    "tagline": "Book anything, anywhere",
+    "title": "Anny"
+  },
+  "booking": {
+    "confirm": "Confirm booking",
+    "resource": "Resource"
+  },
+  "common": {
+    "actions": {
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "messages": {
+      "loading": "Loading...",
+      "success": "Successfully saved"
+    }
+  }
+}

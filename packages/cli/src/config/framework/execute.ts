@@ -15,6 +15,7 @@
  */
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { toErrorMessage } from '../../utils/errors.js'
 import { log } from '../../utils/logger.js'
 
@@ -55,6 +56,27 @@ export async function executeConfig(
 export function firstExisting(projectDir: string, candidates: readonly string[]): string | null {
   for (const candidate of candidates) {
     const path = resolve(projectDir, candidate)
+    if (existsSync(path)) return path
+  }
+  return null
+}
+
+/**
+ * Locate one of the stub modules in `./stubs/`, as a path jiti can be aliased
+ * to. Returns null when it cannot be found, which leaves normal resolution in
+ * place.
+ *
+ * A stub has to survive the build as a *file* — it is referred to by path and
+ * never imported, so it is declared as its own tsdown entry rather than
+ * bundled. That gives it two possible homes, and this resolves against the
+ * location of this module, which sits beside `stubs/` in the source tree and
+ * at the root of `dist/` in the bundle.
+ */
+export function resolveStub(name: string): string | null {
+  const candidates = [`./stubs/${name}.ts`, `./config/framework/stubs/${name}.js`]
+
+  for (const candidate of candidates) {
+    const path = fileURLToPath(new URL(candidate, import.meta.url))
     if (existsSync(path)) return path
   }
   return null
