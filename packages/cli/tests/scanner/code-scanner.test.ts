@@ -6,6 +6,38 @@ import { extractKeys, findOrphanKeysForConfig, scanSourceFiles, toRelativePath, 
 
 const tmpDir = join(dirname(fileURLToPath(import.meta.url)), '../../.tmp-test/scanner')
 
+describe('single-segment keys used via a bare t()', () => {
+  /**
+   * `requiresDotForCallee` skips `t('word')` because a bare `t` is ambiguous —
+   * `emit('save')` is not a translation. That guard is right, but dropping the
+   * match entirely means a flat catalogue's keys look unreferenced, and
+   * remove-orphans offers a live key for deletion (#298).
+   *
+   * The argument is kept as a bare candidate instead: candidates only protect
+   * a key when one of that exact name exists, so an `emit('save')` in a project
+   * with no `save` key still protects nothing.
+   */
+  it('keeps the argument as a bare candidate rather than dropping it', () => {
+    const { usages, bareStringCandidates } = extractKeys(`const x = t('save')`, 'a.ts')
+
+    expect(usages).toHaveLength(0)
+    expect(bareStringCandidates.has('save')).toBe(true)
+  })
+
+  it('still records a dotted key as a confirmed usage', () => {
+    const { usages } = extractKeys(`const x = t('nested.used')`, 'a.ts')
+
+    expect(usages.map(u => u.key)).toEqual(['nested.used'])
+  })
+
+  // $t and this.$t are unambiguous, so they were never subject to the guard.
+  it('leaves the unambiguous callees recording usages', () => {
+    const { usages } = extractKeys(`{{ $t('save') }}`, 'a.vue')
+
+    expect(usages.map(u => u.key)).toEqual(['save'])
+  })
+})
+
 describe('extractKeys', () => {
   function extract(content: string, filePath = 'test.vue') {
     return extractKeys(content, filePath)
