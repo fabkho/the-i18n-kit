@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.3.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.2.0...the-i18n-mcp-7.3.0) (2026-08-16)
+
+
+### Features
+
+* **mcp:** expose find_empty_translations ([#335](https://github.com/fabkho/the-i18n-kit/issues/335)) ([34834b8](https://github.com/fabkho/the-i18n-kit/commit/34834b889321594dac818c2eee839002a1e5dc5b)), closes [#252](https://github.com/fabkho/the-i18n-kit/issues/252)
+
 ## [7.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.1.1...the-i18n-mcp-7.2.0) (2026-08-14)
 
 

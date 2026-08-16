@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.9.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.8.1...the-i18n-cli-4.9.0) (2026-08-16)
+
+
+### Features
+
+* **release:** publish the packages under the [@the-i18n-kit](https://github.com/the-i18n-kit) scope too ([#336](https://github.com/fabkho/the-i18n-kit/issues/336)) ([f56f1c1](https://github.com/fabkho/the-i18n-kit/commit/f56f1c1b6097b4b99e24e9fd2c9542106a5a6da2)), closes [#315](https://github.com/fabkho/the-i18n-kit/issues/315)
+
 ## [4.8.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.8.0...the-i18n-cli-4.8.1) (2026-08-16)
 
 
