@@ -112,6 +112,7 @@ The Vue and React/Next adapters resolve a single locale directory and take the a
 | `remove_translations` | Remove keys from all locale files in a layer |
 | `rename_translation_key` | Rename/move a key across all locales |
 | `get_missing_translations` | Find keys missing in target locales |
+| `find_empty_translations` | Find keys whose value is an empty string — present in the file, so not missing, but rendering as nothing |
 | `get_translation_status` | Coverage in one call: per-locale and per-layer counts plus an overall completion percentage. Use instead of calling `get_missing_translations` per layer |
 | `search_translations` | Search by key or value (case-insensitive substring, not fuzzy) |
 | `translate_missing` | Find and translate missing keys — provider mode translates directly, agent mode returns fallback contexts |

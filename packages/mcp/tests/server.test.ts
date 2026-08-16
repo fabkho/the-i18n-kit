@@ -99,6 +99,7 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(names).toEqual([
       'discover',
       'find_duplicate_keys',
+      'find_empty_translations',
       'find_orphan_keys',
       'find_undefined_keys',
       'get_missing_translations',
@@ -129,6 +130,29 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     const result = await client.readResource({ uri: 'i18n:///root/de' })
     const content = result.contents[0] as { text: string }
     expect(JSON.parse(content.text)).toMatchObject({ greeting: 'Hallo {name}' })
+  })
+
+  it('find_empty_translations reports a key that exists but has no value', async () => {
+    // Empty values are not missing keys — they are present in the file and
+    // render as nothing, which is why they need a report of their own.
+    const dir = await makeProject()
+    await writeFile(join(dir, 'i18n', 'locales', 'en.json'), JSON.stringify({
+      greeting: '',
+      actions: { save: 'Save' },
+    }))
+
+    const { json } = await callTool('find_empty_translations', { projectDir: dir })
+
+    expect(json?.summary).toMatchObject({ totalEmpty: 1 })
+  })
+
+  it('find_empty_translations narrows to one locale when asked', async () => {
+    const dir = await makeProject()
+    await writeFile(join(dir, 'i18n', 'locales', 'en.json'), JSON.stringify({ greeting: '' }))
+
+    const { json } = await callTool('find_empty_translations', { projectDir: dir, locale: 'de' })
+
+    expect(json?.summary).toMatchObject({ totalEmpty: 0 })
   })
 
   it('discover returns the project configuration and the agent translation mode', async () => {
