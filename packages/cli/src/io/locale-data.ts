@@ -39,7 +39,15 @@ export async function resolveLocaleEntries(
   if (!localeDir) return []
 
   if (config.localeFileFormat === 'php-array') {
-    return resolveNamespacedEntries(localeDir, locale.code, '.php')
+    // Laravel: lang/<locale>/<namespace>.php
+    const namespaced = await resolveNamespacedEntries(localeDir, locale.code, '.php')
+    if (namespaced.length > 0) return namespaced
+
+    // Flat: lang/<locale>.php. Not Laravel's layout, but a legitimate one that
+    // the generic adapter meets in the wild (#308), and indistinguishable from
+    // namespaced by format alone — only the directory says which it is.
+    const flat = locale.file ?? `${locale.code}.php`
+    return existsSync(join(localeDir, flat)) ? [{ path: join(localeDir, flat), namespace: null }] : []
   }
 
   // Namespaced JSON (Next.js/React: messages/en/common.json)
@@ -151,9 +159,14 @@ export async function mutateLocaleData(
   const filesWritten = new Set<string>()
 
   const entries = await resolveLocaleEntries(config, layer, locale)
-  const isNamespaced = config.localeFileFormat === 'php-array'
-    || entries.some(e => e.namespace !== null)
-    || await hasNamespacedJsonLayout(config, layer)
+  // What is on disk decides, not the declared format: a PHP project may be
+  // namespaced (Laravel) or flat (#308), and writing one as the other would
+  // restructure someone's locale files rather than edit them. The format is
+  // the fallback for a locale that has no files yet, where there is nothing
+  // to observe — scaffolding a new Laravel locale, for instance.
+  const isNamespaced = entries.length > 0
+    ? entries.some(e => e.namespace !== null)
+    : config.localeFileFormat === 'php-array' || await hasNamespacedJsonLayout(config, layer)
 
   if (isNamespaced) {
     // Per-namespace write (PHP arrays or namespaced JSON)
