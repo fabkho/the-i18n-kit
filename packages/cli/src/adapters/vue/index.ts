@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
 import type { I18nConfig, LocaleDefinition } from '../../config/types'
 import { loadProjectConfig } from '../../config/project-config'
@@ -53,21 +53,31 @@ export class VueAdapter implements FrameworkAdapter {
   async resolve(projectDir: string): Promise<I18nConfig> {
     const projectConfig = await loadProjectConfig(projectDir)
 
-    const localeDir = await resolveLocaleDir(projectDir)
-    const discovered = await requireLocales(localeDir)
+    const dirs = await resolveLocaleDirs(projectDir)
+    const discovered = await requireLocales(dirs)
     const locales = applyLocaleOverride(discovered, projectConfig?.locales)
 
     // Declared beats discovered. Falling through to the first locale is
     // alphabetical order dressed up as a decision (#296).
     const defaultLocale = projectConfig?.defaultLocale ?? locales[0]?.code ?? discovered[0].code
 
-    return buildSingleDirConfig({
-      projectDir,
-      localeDir,
+    // One directory keeps the shape it has always had, layer name and all.
+    if (dirs.length === 1) {
+      return buildSingleDirConfig({ projectDir, localeDir: dirs[0]!, defaultLocale, locales, projectConfig })
+    }
+
+    const localeDirs = dirs.map(path => ({ path, layer: layerNameFor(path, dirs), layerRootDir: projectDir }))
+
+    return {
+      rootDir: projectDir,
       defaultLocale,
+      fallbackLocale: { default: [defaultLocale] },
       locales,
-      projectConfig,
-    })
+      localeDirs,
+      layerRootDirs: [projectDir],
+      ...(projectConfig ? { projectConfig } : {}),
+      apps: [{ name: 'default', rootDir: projectDir, layers: localeDirs.map(d => d.layer) }],
+    }
   }
 }
 
@@ -105,21 +115,46 @@ async function computeScore(projectDir: string, deps: Record<string, unknown>): 
  * ahead of what the source looks like it means. `include` *is* where the
  * locale files are, by definition; the candidate list is a guess about where
  * people tend to put them.
+ *
+ * All of `include` is kept, not just the first entry — it is an array because
+ * projects do split their messages across directories, and dropping the rest
+ * would silently hide every key in them.
  */
-async function resolveLocaleDir(projectDir: string): Promise<string> {
+async function resolveLocaleDirs(projectDir: string): Promise<string[]> {
   const fromPlugin = await readVueI18nLocaleDirs(projectDir)
-  const localeDir = fromPlugin?.[0] ?? await findLocaleDir(projectDir)
+  if (fromPlugin?.length) return fromPlugin
+
+  const localeDir = await findLocaleDir(projectDir)
   if (!localeDir) throw noLocaleDirError(projectDir, COMMON_LOCALE_DIRS)
-  return localeDir
+  return [localeDir]
 }
 
-/** The locales in a directory, or an explanation of why there are none. */
-async function requireLocales(localeDir: string): Promise<[LocaleDefinition, ...LocaleDefinition[]]> {
-  const locales = await discoverLocales(localeDir)
+/**
+ * A layer name per directory: its own name, or enough of its path to tell it
+ * apart from a sibling of the same name (`messages` and `admin/messages`).
+ */
+function layerNameFor(path: string, all: string[]): string {
+  const name = basename(path)
+  const ambiguous = all.filter(other => basename(other) === name).length > 1
+  return ambiguous ? `${basename(dirname(path))}/${name}` : name
+}
+
+/** The locales across every directory, or an explanation of why there are none. */
+async function requireLocales(localeDirs: string[]): Promise<[LocaleDefinition, ...LocaleDefinition[]]> {
+  const byCode = new Map<string, LocaleDefinition>()
+  for (const dir of localeDirs) {
+    for (const locale of await discoverLocales(dir)) {
+      // First directory to define a locale owns its file name; the rest add
+      // their keys to it, the way a layer does.
+      if (!byCode.has(locale.code)) byCode.set(locale.code, locale)
+    }
+  }
+
+  const locales = [...byCode.values()]
   const [first] = locales
   if (first === undefined) {
     throw new ConfigError(
-      `No JSON locale files found in ${localeDir}. `
+      `No JSON locale files found in ${localeDirs.join(', ')}. `
       + 'Make sure your Vue i18n project has locale files like en.json, de.json etc.',
     )
   }

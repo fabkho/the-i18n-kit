@@ -9,6 +9,7 @@
  */
 import { z } from 'zod'
 import type { ProjectConfig } from './types.js'
+import { log } from '../utils/logger.js'
 
 const nonEmptyString = z.string().min(1).refine(s => s.trim().length > 0, 'Must not be empty or whitespace-only')
 
@@ -39,8 +40,8 @@ const projectConfigSchema = z.object({
     ignorePatterns: z.array(z.string()).optional(),
   }).passthrough()).optional(), // passthrough for backwards-compat with deprecated keys like includeParentLayer
   localeDirs: z.array(localeDirEntrySchema).optional(),
-  defaultLocale: z.string().optional(),
-  locales: z.array(z.string()).optional(),
+  defaultLocale: nonEmptyString.optional(),
+  locales: z.array(nonEmptyString).optional(),
   protectedLocales: z.array(nonEmptyString).optional(),
   reportOutput: z.union([z.literal(true), nonEmptyString]).optional(),
   localeFileFormat: z.enum(['json', 'php-array']).optional(),
@@ -69,6 +70,25 @@ export function validateProjectConfig(
     })
     .join('\n')
   return { ok: false, error }
+}
+
+/**
+ * Strip the deprecated keys the schema still accepts, warning once, so that a
+ * config keeps validating without the value going on to mean anything. Applied
+ * by every loader — a key ignored in `.i18n-mcp.json` but silently honoured in
+ * `i18n-kit.config.ts` would be exactly the divergence this file exists to
+ * prevent.
+ */
+export function dropDeprecatedKeys(config: ProjectConfig, source: string): ProjectConfig {
+  const data = config as ProjectConfig & { samplingPreferences?: unknown }
+  if ('samplingPreferences' in data) {
+    log.warn(
+      `${source}: "samplingPreferences" is deprecated and ignored — `
+      + 'MCP sampling was removed. Configure a provider (e.g. I18N_PROVIDER/I18N_MODEL) instead.',
+    )
+    delete data.samplingPreferences
+  }
+  return data
 }
 
 // ─── Drift guard ────────────────────────────────────────────────

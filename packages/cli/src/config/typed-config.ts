@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ProjectConfig } from './types.js'
-import { validateProjectConfig } from './schema.js'
+import { dropDeprecatedKeys, validateProjectConfig } from './schema.js'
 import { ConfigError, toErrorMessage } from '../utils/errors.js'
 import { log } from '../utils/logger.js'
 
@@ -26,6 +26,7 @@ const TYPED_CONFIG_FILENAMES = [
   'i18n-kit.config.js',
   'i18n-kit.config.mjs',
   'i18n-kit.config.cjs',
+  'i18n-kit.config.cts',
 ] as const
 
 /**
@@ -100,14 +101,26 @@ export async function loadTypedConfig(
     )
   }
 
-  if (module === null || typeof module !== 'object' || !('default' in module)) {
+  if (module === null || typeof module !== 'object') {
     throw new ConfigError(
       `${path} must export its config as the default export — `
       + 'write `export default defineI18nKitConfig({ ... })`.',
     )
   }
 
-  const exported = (module as { default: unknown }).default
+  // In a `.cts` file `module.exports` comes back as the module itself, with no
+  // `default` to unwrap — so for the CommonJS spellings, that object *is* the
+  // config. Everywhere else a missing `default` means a file of named exports,
+  // and saying so beats letting the schema report a config full of unknown keys.
+  const commonJs = path.endsWith('.cts') || path.endsWith('.cjs')
+  if (!('default' in module) && !commonJs) {
+    throw new ConfigError(
+      `${path} must export its config as the default export — `
+      + 'write `export default defineI18nKitConfig({ ... })`.',
+    )
+  }
+
+  const exported = 'default' in module ? (module as { default: unknown }).default : module
 
   if (exported === null || typeof exported !== 'object' || Array.isArray(exported)) {
     throw new ConfigError(
@@ -121,7 +134,7 @@ export async function loadTypedConfig(
     throw new ConfigError(`Invalid ${path}:\n${result.error}`)
   }
 
-  return { path, config: result.data }
+  return { path, config: dropDeprecatedKeys(result.data, path) }
 }
 
 /**

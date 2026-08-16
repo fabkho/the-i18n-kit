@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import type { ProjectConfig } from './types.js'
-import { validateProjectConfig } from './schema.js'
+import { dropDeprecatedKeys, validateProjectConfig } from './schema.js'
 import { loadTypedConfig } from './typed-config.js'
 import { ConfigError, toErrorMessage } from '../utils/errors.js'
 import { log } from '../utils/logger.js'
@@ -123,14 +123,5 @@ async function loadJsonConfig(
 
   log.debug(`Project config loaded successfully from ${configPath}`)
 
-  const data = result.data as ProjectConfig & { samplingPreferences?: unknown }
-  if ('samplingPreferences' in data) {
-    log.warn(
-      `${CONFIG_FILENAME}: "samplingPreferences" is deprecated and ignored — `
-      + 'MCP sampling was removed. Configure a provider (e.g. I18N_PROVIDER/I18N_MODEL) instead.',
-    )
-    delete data.samplingPreferences
-  }
-
-  return { path: configPath, config: data }
+  return { path: configPath, config: dropDeprecatedKeys(result.data, CONFIG_FILENAME) }
 }

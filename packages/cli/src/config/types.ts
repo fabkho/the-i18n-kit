@@ -65,8 +65,12 @@ export interface ProjectConfig {
     /** Glob patterns for translation keys to exclude from orphan detection (e.g., "common.datetime.months.*"). */
     ignorePatterns?: string[]
   }>
-  /** Default output directory for diagnostic tool reports. Set to true for '.i18n-reports/', or a string for a custom relative path. */
-  reportOutput?: string | boolean
+  /**
+   * Where diagnostic reports are written: `true` for '.i18n-reports/', or a
+   * relative path. There is no `false` — omitting the key is how you say no,
+   * and accepting both spellings of "off" would be two ways to mean one thing.
+   */
+  reportOutput?: string | true
   /** Locale directories for the generic adapter. Each entry is a path string (layer="default") or { path, layer } object. */
   localeDirs?: Array<string | { path: string; layer: string }>
   /** Default locale code (required for generic adapter activation). */

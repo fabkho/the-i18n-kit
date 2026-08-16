@@ -8,8 +8,7 @@
  */
 import { existsSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { asObject, executeConfig, firstExisting } from './execute.js'
+import { asObject, executeConfig, firstExisting, resolveStub } from './execute.js'
 import { log } from '../../utils/logger.js'
 
 /**
@@ -47,6 +46,22 @@ export async function readVueI18nLocaleDirs(projectDir: string): Promise<string[
   const path = firstExisting(projectDir, VITE_CONFIG_FILES)
   if (!path) return null
 
+  // Answers are remembered per config file because the file itself can only be
+  // executed once: Node caches an ES module by URL for the life of the
+  // process, so a second read would import the cache, call no plugin, record
+  // nothing, and quietly report that this project declares no locale
+  // directories. Resolving the same project twice has to give the same answer.
+  const remembered = answers.get(path)
+  if (remembered !== undefined) return remembered
+
+  const dirs = await readInclude(path)
+  answers.set(path, dirs)
+  return dirs
+}
+
+const answers = new Map<string, string[] | null>()
+
+async function readInclude(path: string): Promise<string[] | null> {
   const globalScope = globalThis as Record<symbol, unknown>
   delete globalScope[RECORDED]
 
@@ -101,7 +116,10 @@ function includeToDirs(include: unknown, configDir: string): string[] {
 
 /** Everything before the first glob segment: `src/locales/**\/*.json` → `src/locales`. */
 function globRoot(pattern: string): string | undefined {
-  const segments = pattern.split('/')
+  // `resolve()` in a vite.config produces backslashes on Windows, and a
+  // backslash path split on '/' is one segment containing the wildcard —
+  // which would discard the directory entirely.
+  const segments = pattern.replace(/\\/g, '/').split('/')
   const wildcard = segments.findIndex(s => s.includes('*') || s.includes('?') || s.includes('['))
   const kept = wildcard === -1 ? segments.slice(0, -1) : segments.slice(0, wildcard)
   return kept.length > 0 ? kept.join('/') : undefined
@@ -123,16 +141,7 @@ function isDirectory(path: string): boolean {
  * gives up rather than executing a config for no reason.
  */
 function stubAlias(): Record<string, string> | null {
-  // Running from source this file sits next to `stubs/`; in the bundle it is
-  // a chunk at the root of `dist/`, and the stub is emitted as its own entry
-  // under the path it has in `src/`.
-  for (const candidate of [
-    './stubs/unplugin-vue-i18n.ts',
-    './config/framework/stubs/unplugin-vue-i18n.js',
-  ]) {
-    const path = fileURLToPath(new URL(candidate, import.meta.url))
-    if (!existsSync(path)) continue
-    return Object.fromEntries(PLUGIN_SPECIFIERS.map(specifier => [specifier, path]))
-  }
-  return null
+  const path = resolveStub('unplugin-vue-i18n')
+  if (!path) return null
+  return Object.fromEntries(PLUGIN_SPECIFIERS.map(specifier => [specifier, path]))
 }

@@ -306,3 +306,48 @@ describe('Adapter registry: Vue vs Nuxt', () => {
     }
   })
 })
+
+describe('VueAdapter with several unplugin-vue-i18n include roots', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = join(tmpdir(), `vue-multi-include-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    mkdirSync(join(tempDir, 'src/messages'), { recursive: true })
+    mkdirSync(join(tempDir, 'src/admin/messages'), { recursive: true })
+    writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
+      name: 'vue-multi', dependencies: { vue: '^3.5.0', 'vue-i18n': '^11.0.0' },
+    }))
+    writeFileSync(join(tempDir, 'src/messages/en.json'), JSON.stringify({ shared: 'Shared' }))
+    writeFileSync(join(tempDir, 'src/messages/de.json'), JSON.stringify({ shared: 'Geteilt' }))
+    writeFileSync(join(tempDir, 'src/admin/messages/en.json'), JSON.stringify({ admin: 'Admin' }))
+    writeFileSync(join(tempDir, 'vite.config.ts'), `
+      import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
+      export default {
+        plugins: [VueI18nPlugin({
+          include: ['./src/messages/**', './src/admin/messages/**'],
+        })],
+      }
+    `)
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('keeps every include root, each as its own layer', async () => {
+    const config = await new VueAdapter().resolve(tempDir)
+
+    expect(config.localeDirs.map(d => d.path)).toEqual([
+      join(tempDir, 'src/messages'),
+      join(tempDir, 'src/admin/messages'),
+    ])
+    // Both directories are called "messages", so the names have to say more.
+    expect(config.localeDirs.map(d => d.layer)).toEqual(['src/messages', 'admin/messages'])
+    expect(config.apps[0]!.layers).toEqual(['src/messages', 'admin/messages'])
+  })
+
+  it('unions the locales across the roots', async () => {
+    const config = await new VueAdapter().resolve(tempDir)
+    expect(config.locales.map(l => l.code).sort()).toEqual(['de', 'en'])
+  })
+})

@@ -1,0 +1,19 @@
+{
+  "app": {
+    "tagline": "Réservez tout, partout",
+    "title": "Anny"
+  },
+  "booking": {
+    "confirm": "Confirmer la réservation"
+  },
+  "common": {
+    "actions": {
+      "cancel": "Annuler",
+      "save": "Enregistrer"
+    },
+    "messages": {
+      "loading": "Chargement...",
+      "success": "Enregistré avec succès"
+    }
+  }
+}
