@@ -8,6 +8,7 @@
  */
 import { createRequire } from 'node:module'
 import { asObject, asString, asStringArray, defaultExport, executeConfig, firstExisting, resolveStub } from './execute.js'
+import { toErrorMessage } from '../../utils/errors.js'
 import { log } from '../../utils/logger.js'
 
 /** next-intl: `defineRouting({ locales, defaultLocale })`, usually re-exported as `routing`. */
@@ -111,6 +112,28 @@ function routingAlias(routingPath: string): Record<string, string> | undefined {
   return { 'next-intl/routing': path }
 }
 
+/**
+ * `next.config.js` may export `(phase, { defaultConfig }) => config`, sync or
+ * async, which Next.js calls for you. An uncalled function is not a config, so
+ * without this the `i18n` block of every project using that form is invisible.
+ *
+ * A function that throws yields nothing, like any other unreadable config.
+ */
+async function resolveConfigExport(exported: unknown, path: string): Promise<unknown> {
+  if (typeof exported !== 'function') return exported
+
+  try {
+    return await (exported as (phase: string, context: unknown) => unknown)(
+      'phase-production-build',
+      { defaultConfig: {} },
+    )
+  }
+  catch (error) {
+    log.warn(`Could not evaluate the config function in ${path}: ${toErrorMessage(error)}`)
+    return undefined
+  }
+}
+
 function resolvableFrom(specifier: string, fromFile: string): boolean {
   try {
     createRequire(fromFile).resolve(specifier)
@@ -151,7 +174,7 @@ async function readNextConfig(projectDir: string): Promise<NextI18n | null> {
   const module = await executeConfig(path)
   if (!module) return null
 
-  const config = asObject(defaultExport(module))
+  const config = asObject(await resolveConfigExport(defaultExport(module), path))
   const i18n = config && asObject(config.i18n)
   if (!i18n) return null
 

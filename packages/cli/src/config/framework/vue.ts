@@ -116,7 +116,10 @@ function includeToDirs(include: unknown, configDir: string): string[] {
 
 /** Everything before the first glob segment: `src/locales/**\/*.json` → `src/locales`. */
 function globRoot(pattern: string): string | undefined {
-  const segments = pattern.split('/')
+  // `resolve()` in a vite.config produces backslashes on Windows, and a
+  // backslash path split on '/' is one segment containing the wildcard —
+  // which would discard the directory entirely.
+  const segments = pattern.replace(/\\/g, '/').split('/')
   const wildcard = segments.findIndex(s => s.includes('*') || s.includes('?') || s.includes('['))
   const kept = wildcard === -1 ? segments.slice(0, -1) : segments.slice(0, wildcard)
   return kept.length > 0 ? kept.join('/') : undefined

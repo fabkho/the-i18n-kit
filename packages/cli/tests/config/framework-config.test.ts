@@ -73,6 +73,30 @@ describe('readNextI18n', () => {
     expect((await readNextI18n(relative))?.defaultLocale).toBe('sv')
   })
 
+  it('calls a config exported as a function, as Next.js does', async () => {
+    await write('next.config.js', `
+      export default (phase, { defaultConfig }) => ({
+        ...defaultConfig,
+        i18n: { locales: ['en', 'da'], defaultLocale: 'da' },
+      })
+    `)
+
+    expect((await readNextI18n(project.dir))?.defaultLocale).toBe('da')
+  })
+
+  it('awaits an async config function', async () => {
+    await write('next.config.js', `
+      export default async () => ({ i18n: { locales: ['en', 'fi'], defaultLocale: 'fi' } })
+    `)
+
+    expect((await readNextI18n(project.dir))?.defaultLocale).toBe('fi')
+  })
+
+  it('warns and yields nothing when the config function throws', async () => {
+    await write('next.config.js', `export default () => { throw new Error('needs env') }`)
+    await expect(readNextI18n(project.dir)).resolves.toBeNull()
+  })
+
   it('ignores a config that declares no locales at all', async () => {
     await write('next.config.js', `export default { reactStrictMode: true }`)
     expect(await readNextI18n(project.dir)).toBeNull()
@@ -137,6 +161,40 @@ describe('readVueI18nLocaleDirs', () => {
     `)
 
     expect(await readVueI18nLocaleDirs(project.dir)).toBeNull()
+  })
+
+  it('keeps every directory in include, not just the first', async () => {
+    await mkdir(resolve(project.dir, 'src/messages'), { recursive: true })
+    await mkdir(resolve(project.dir, 'src/admin-messages'), { recursive: true })
+    await write('vite.config.ts', `
+      import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
+      export default {
+        plugins: [VueI18nPlugin({
+          include: ['./src/messages/**', './src/admin-messages/**'],
+        })],
+      }
+    `)
+
+    expect(await readVueI18nLocaleDirs(project.dir)).toEqual([
+      resolve(project.dir, 'src/messages'),
+      resolve(project.dir, 'src/admin-messages'),
+    ])
+  })
+
+  it('reads a Windows-style include, where resolve() yields backslashes', async () => {
+    await mkdir(resolve(project.dir, 'src/translations'), { recursive: true })
+    // What `resolve(__dirname, './src/translations/**')` produces on Windows.
+    const windowsStyle = `C:\\project\\src\\translations\\**`
+    await write('vite.config.ts', `
+      import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
+      export default { plugins: [VueI18nPlugin({ include: ['${windowsStyle}', './src/translations/**'] })] }
+    `)
+
+    // The absolute C:\ path does not exist here, so it drops out; the point is
+    // that splitting it no longer swallows the entry beside it.
+    expect(await readVueI18nLocaleDirs(project.dir)).toEqual([
+      resolve(project.dir, 'src/translations'),
+    ])
   })
 
   it('returns null when the config never uses the plugin', async () => {

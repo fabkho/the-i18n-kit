@@ -105,6 +105,20 @@ describe('findTypedConfigFile', () => {
     expect((await loadTypedConfig(relative))?.config.defaultLocale).toBe('en')
   })
 
+  it('finds a .cts config, the CommonJS TypeScript spelling', async () => {
+    await write('i18n-kit.config.cts', `module.exports = { defaultLocale: 'pt' }`)
+
+    expect(findTypedConfigFile(project.dir)).toBe(resolve(project.dir, 'i18n-kit.config.cts'))
+    expect((await loadTypedConfig(project.dir))?.config.defaultLocale).toBe('pt')
+  })
+
+  it('warns about a deprecated key rather than passing it through', async () => {
+    await write('i18n-kit.config.ts', `export default { defaultLocale: 'en', samplingPreferences: { model: 'x' } }`)
+
+    const loaded = await loadTypedConfig(project.dir)
+    expect(loaded?.config).toEqual({ defaultLocale: 'en' })
+  })
+
   it('prefers .ts when a directory has several', async () => {
     await write('i18n-kit.config.js', `export default { defaultLocale: 'js' }`)
     await write('i18n-kit.config.ts', `export default { defaultLocale: 'ts' }`)

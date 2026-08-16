@@ -293,6 +293,8 @@ These files are executed, so a `next.config.js` wrapped in `withNextIntl(...)` o
 A value you declare yourself always wins over both. To pin the reference locale regardless of what any framework config says:
 
 ```ts
+import { defineI18nKitConfig } from 'the-i18n-cli/config'
+
 export default defineI18nKitConfig({
   defaultLocale: 'en',
   localeDirs: ['src/locales'],
