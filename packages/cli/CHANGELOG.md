@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.8.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.8.0...the-i18n-cli-4.8.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **generic:** support flat PHP locale files end to end ([#331](https://github.com/fabkho/the-i18n-kit/issues/331)) ([1533453](https://github.com/fabkho/the-i18n-kit/commit/15334532d97f3e28538339baf3b136707f34e3b1)), closes [#308](https://github.com/fabkho/the-i18n-kit/issues/308)
+* **scanner:** scan files in a stable order ([#334](https://github.com/fabkho/the-i18n-kit/issues/334)) ([bcc46b0](https://github.com/fabkho/the-i18n-kit/commit/bcc46b0c47d82526314e3d84383c767153071c20))
+* **scanner:** stop offering a used single-segment key for deletion ([#330](https://github.com/fabkho/the-i18n-kit/issues/330)) ([794104b](https://github.com/fabkho/the-i18n-kit/commit/794104baec93ee23a9a2152fb67fad0012358593)), closes [#298](https://github.com/fabkho/the-i18n-kit/issues/298)
+
 ## [4.8.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.7.0...the-i18n-cli-4.8.0) (2026-08-16)
 
 
