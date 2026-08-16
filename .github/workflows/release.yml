@@ -61,9 +61,19 @@ jobs:
         id: targets
         run: |
           set -euo pipefail
-          for pkg in cli mcp nuxt; do
-            name=$(jq -r .name "packages/$pkg/package.json")
-            local_ver=$(jq -r .version "packages/$pkg/package.json")
+          # Each entry is <output key>:<package dir>:<name>. The scoped names
+          # are the rename in #315: the same source published a second time, so
+          # nobody has to choose between a package that stops moving and one
+          # they have not heard of.
+          targets="cli:cli:the-i18n-cli mcp:mcp:the-i18n-mcp nuxt:nuxt:@the-i18n-kit/nuxt"
+          targets="$targets cli_scoped:cli:@the-i18n-kit/cli mcp_scoped:mcp:@the-i18n-kit/mcp"
+
+          for target in $targets; do
+            pkg=${target%%:*}
+            rest=${target#*:}
+            dir=${rest%%:*}
+            name=${rest#*:}
+            local_ver=$(jq -r .version "packages/$dir/package.json")
 
             set +e
             found=$(npm view "$name@$local_ver" version 2>/tmp/npm-view.err)
@@ -95,6 +105,21 @@ jobs:
       - name: Publish the-i18n-mcp
         if: ${{ steps.targets.outputs.mcp == 'true' }}
         run: pnpm --filter the-i18n-mcp publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # The rename (#315). Published after their originals so that
+      # @the-i18n-kit/mcp, which depends on @the-i18n-kit/cli, never points at a
+      # version that is not on the registry yet.
+      - name: Publish @the-i18n-kit/cli
+        if: ${{ steps.targets.outputs.cli_scoped == 'true' }}
+        run: node scripts/mirror-package.mjs packages/cli @the-i18n-kit/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @the-i18n-kit/mcp
+        if: ${{ steps.targets.outputs.mcp_scoped == 'true' }}
+        run: node scripts/mirror-package.mjs packages/mcp @the-i18n-kit/mcp
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
