@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
-import { resolve } from 'node:path'
+import { relative as relativePath, resolve } from 'node:path'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { loadTypedConfig, findTypedConfigFile } from '../../src/config/typed-config.js'
 import { loadProjectConfig } from '../../src/config/project-config.js'
@@ -110,6 +110,16 @@ describe('findTypedConfigFile', () => {
     await write('i18n-kit.config.ts', `export default { defaultLocale: 'de' }`, child)
 
     expect(findTypedConfigFile(child)).toBe(resolve(child, 'i18n-kit.config.ts'))
+  })
+
+  it('resolves a relative start directory to an absolute config path', async () => {
+    // jiti reads a relative path as a bare module specifier, so a relative
+    // --projectDir used to make loading a typed config fail outright.
+    await write('i18n-kit.config.ts', `export default { defaultLocale: 'en' }`)
+    const relative = relativePath(process.cwd(), tmpDir)
+
+    expect(findTypedConfigFile(relative)).toBe(resolve(tmpDir, 'i18n-kit.config.ts'))
+    expect((await loadTypedConfig(relative))?.config.defaultLocale).toBe('en')
   })
 
   it('prefers .ts when a directory has several', async () => {

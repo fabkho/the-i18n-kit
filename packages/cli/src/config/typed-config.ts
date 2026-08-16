@@ -8,7 +8,7 @@
  * file as it sits on disk.
  */
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ProjectConfig } from './types.js'
 import { validateProjectConfig } from './schema.js'
@@ -35,7 +35,10 @@ const TYPED_CONFIG_FILENAMES = [
  * repository root rather than merging with it.
  */
 export function findTypedConfigFile(startDir: string): string | null {
-  let dir = startDir
+  // Absolute from the outset: a relative `--projectDir` would otherwise yield
+  // a relative config path, and jiti reads a relative path as a bare module
+  // specifier — resolved against node_modules, where it is never found.
+  let dir = resolve(startDir)
   while (true) {
     const found = TYPED_CONFIG_FILENAMES
       .map(name => join(dir, name))

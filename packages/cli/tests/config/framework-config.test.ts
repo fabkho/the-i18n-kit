@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
-import { resolve } from 'node:path'
+import { relative as relativePath, resolve } from 'node:path'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { readNextI18n } from '../../src/config/framework/next.js'
 import { readVueI18nLocaleDirs } from '../../src/config/framework/vue.js'
@@ -81,6 +81,13 @@ describe('readNextI18n', () => {
     `)
 
     await expect(readNextI18n(tmpDir)).resolves.toBeNull()
+  })
+
+  it('reads through a relative project directory', async () => {
+    await write('next.config.js', `export default { i18n: { locales: ['en', 'sv'], defaultLocale: 'sv' } }`)
+    const relative = relativePath(process.cwd(), tmpDir)
+
+    expect((await readNextI18n(relative))?.defaultLocale).toBe('sv')
   })
 
   it('ignores a config that declares no locales at all', async () => {

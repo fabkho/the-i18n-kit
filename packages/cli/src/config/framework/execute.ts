@@ -14,7 +14,7 @@
  * already follows for the Nuxt artifact, for the same reason.
  */
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { resolve } from 'node:path'
 import { toErrorMessage } from '../../utils/errors.js'
 import { log } from '../../utils/logger.js'
 
@@ -44,10 +44,17 @@ export async function executeConfig(
   }
 }
 
-/** The first of `candidates` that exists under `projectDir`, as a full path. */
+/**
+ * The first of `candidates` that exists under `projectDir`, as an absolute
+ * path.
+ *
+ * Absolute, not merely joined: `--projectDir playground/react` is a relative
+ * path, and a relative path handed to jiti is read as a bare module specifier
+ * and resolved against `node_modules`, where it is never found.
+ */
 export function firstExisting(projectDir: string, candidates: readonly string[]): string | null {
   for (const candidate of candidates) {
-    const path = join(projectDir, candidate)
+    const path = resolve(projectDir, candidate)
     if (existsSync(path)) return path
   }
   return null
