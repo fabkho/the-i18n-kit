@@ -103,6 +103,8 @@ interface LineExtraction {
   filePath: string
   usages: KeyUsage[]
   dynamicKeys: DynamicKeyUsage[]
+  /** Arguments to an ambiguous callee — see extractStaticMatches. */
+  bareCandidates: Set<string>
 }
 
 function extractStaticMatches(line: string, lineNumber: number, ctx: LineExtraction): void {
@@ -113,7 +115,15 @@ function extractStaticMatches(line: string, lineNumber: number, ctx: LineExtract
       const key = match[3]
       if (!key) continue
       if (key.includes('{$')) continue
-      if (ctx.pat.requiresDotForCallee?.(callee) && !key.includes('.')) continue
+      // A bare `t('word')` is ambiguous — `emit('save')` is not a translation —
+      // so it is not evidence of usage. Dropping it entirely was worse: a flat
+      // catalogue's keys then look unreferenced and remove-orphans offers a live
+      // key for deletion (#298). Kept as a candidate instead, which protects a
+      // key only when one of that exact name exists.
+      if (ctx.pat.requiresDotForCallee?.(callee) && !key.includes('.')) {
+        ctx.bareCandidates.add(key)
+        continue
+      }
       ctx.usages.push({ key, file: ctx.filePath, line: lineNumber, callee })
     }
   }
@@ -172,7 +182,7 @@ function extractConcatMatches(line: string, lineNumber: number, ctx: LineExtract
   }
 }
 
-export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet, constTable?: Map<string, string>): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[] } {
+export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet, constTable?: Map<string, string>): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[]; bareStringCandidates: Set<string> } {
   const pat = patterns ?? VUE_NUXT_PATTERNS
   const ctx: LineExtraction = {
     pat,
@@ -180,6 +190,7 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
     filePath,
     usages: [],
     dynamicKeys: [],
+    bareCandidates: new Set<string>(),
   }
 
   const lines = content.split('\n')
@@ -190,7 +201,7 @@ export function extractKeys(content: string, filePath: string, patterns?: ScanPa
     extractConcatMatches(line, lineNumber, ctx)
   }
 
-  return { usages: ctx.usages, dynamicKeys: ctx.dynamicKeys }
+  return { usages: ctx.usages, dynamicKeys: ctx.dynamicKeys, bareStringCandidates: ctx.bareCandidates }
 }
 
 // ─── Dynamic key pattern matching ───────────────────────────────
@@ -475,9 +486,10 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     }
 
     const constTable = pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()
-    const { usages, dynamicKeys } = extractKeys(content, filePath, pat, constTable)
+    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls } = extractKeys(content, filePath, pat, constTable)
     allUsages.push(...usages)
     allDynamicKeys.push(...dynamicKeys)
+    for (const candidate of bareFromCalls) bareStringCandidates.add(candidate)
 
     collectBareCandidates(content, constTable, bareStringCandidates, bareDynamicCandidates, pat.bareShapes)
 
