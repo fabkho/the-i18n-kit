@@ -132,6 +132,46 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(JSON.parse(content.text)).toMatchObject({ greeting: 'Hallo {name}' })
   })
 
+  // With the flag at module scope, two servers in one process raced for a
+  // single delivery: whichever called second never announced itself. Interleaved
+  // rather than sequential, because sequential passes either way.
+  it('gives each server its own notice, interleaved', async () => {
+    // Imported here for the same reason as the shared client above: the server
+    // reads its default project dir from the environment at module load.
+    const { createServer } = await import('../src/server.js')
+    const [a, b] = await Promise.all([
+      connectClient(await createServer()),
+      connectClient(await createServer()),
+    ])
+
+    try {
+      const firstA = await callToolOn(a, 'discover', { projectDir })
+      const firstB = await callToolOn(b, 'discover', { projectDir })
+      const secondA = await callToolOn(a, 'discover', { projectDir })
+      const secondB = await callToolOn(b, 'discover', { projectDir })
+
+      expect(firstA.json?._notice).toContain('@the-i18n-kit/mcp')
+      expect(firstB.json?._notice).toContain('@the-i18n-kit/mcp')
+      expect(secondA.json).not.toHaveProperty('_notice')
+      expect(secondB.json).not.toHaveProperty('_notice')
+    }
+    finally {
+      await Promise.all([a.close(), b.close()])
+    }
+  })
+
+  it('carries the rename notice on the first tool result and no later one', async () => {
+    // An editor spawns this server through npx, so an install-time deprecation
+    // is printed where nobody reads it. The notice has to reach the model at
+    // runtime — once, because repeating it on every call costs context on each
+    // one and teaches the model to skip it (#315).
+    const first = await callTool('discover', { projectDir })
+    const second = await callTool('discover', { projectDir })
+
+    expect(first.json?._notice).toContain('@the-i18n-kit/mcp')
+    expect(second.json).not.toHaveProperty('_notice')
+  })
+
   it('find_empty_translations reports a key that exists but has no value', async () => {
     // Empty values are not missing keys — they are present in the file and
     // render as nothing, which is why they need a report of their own.
