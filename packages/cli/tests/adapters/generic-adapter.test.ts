@@ -254,6 +254,58 @@ describe('GenericAdapter.resolve', () => {
   })
 })
 
+describe('GenericAdapter with flat PHP locale files (#308)', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = join(tmpdir(), `generic-php-test-${Date.now()}`)
+    mkdirSync(join(tempDir, 'lang'), { recursive: true })
+    writeFileSync(join(tempDir, 'lang', 'en.php'), '<?php\nreturn [\n  "save" => "Save",\n];\n')
+    writeFileSync(join(tempDir, 'lang', 'de.php'), '<?php\nreturn [\n  "save" => "Speichern",\n];\n')
+    writeFileSync(join(tempDir, '.i18n-mcp.json'), JSON.stringify({
+      localeDirs: ['lang'],
+      defaultLocale: 'en',
+    }))
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  // Detection only looked for .php inside per-locale directories, so a flat
+  // layout read as an empty directory and resolve threw "No locale files found".
+  it('detects the format from flat .php files', async () => {
+    const config = await new GenericAdapter().resolve(tempDir)
+
+    expect(config.localeFileFormat).toBe('php-array')
+  })
+
+  it('discovers the locales rather than failing', async () => {
+    const config = await new GenericAdapter().resolve(tempDir)
+
+    expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
+  })
+
+  // `file` is what tells the reader there is a single file per locale. A
+  // namespaced PHP layout has none, and leaves it unset.
+  it('names the flat file on each locale', async () => {
+    const config = await new GenericAdapter().resolve(tempDir)
+
+    expect(config.locales.map(l => l.file)).toEqual(['de.php', 'en.php'])
+  })
+
+  it('leaves a namespaced PHP layout without a file name', async () => {
+    rmSync(join(tempDir, 'lang'), { recursive: true, force: true })
+    mkdirSync(join(tempDir, 'lang', 'en'), { recursive: true })
+    writeFileSync(join(tempDir, 'lang', 'en', 'auth.php'), '<?php\nreturn [\n  "failed" => "Failed",\n];\n')
+
+    const config = await new GenericAdapter().resolve(tempDir)
+
+    expect(config.localeFileFormat).toBe('php-array')
+    expect(config.locales.map(l => l.file)).toEqual([undefined])
+  })
+})
+
 describe('Adapter registry: Generic vs others', () => {
   let tempDir: string
 

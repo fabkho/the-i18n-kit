@@ -637,3 +637,74 @@ describe('resolveLocaleEntries flat-layout misconfiguration', () => {
     }
   })
 })
+
+describe('flat PHP locale files (#308)', () => {
+  /**
+   * `php-array` meant Laravel's lang/<locale>/<namespace>.php, always. A flat
+   * lang/<locale>.php could not be resolved, and the write path would have
+   * restructured it into directories rather than editing it. What is on disk
+   * decides now; the format is only the fallback when there is nothing there
+   * yet to observe.
+   */
+  function makeFlatPhpConfig(overrides: Partial<I18nConfig> = {}): I18nConfig {
+    return {
+      rootDir: tempDir,
+      defaultLocale: 'en',
+      fallbackLocale: { default: ['en'] },
+      locales: [
+        { code: 'en', language: 'en', file: 'en.php' },
+        { code: 'de', language: 'de', file: 'de.php' },
+      ],
+      localeDirs: [{ path: join(tempDir, 'lang'), layer: 'default', layerRootDir: tempDir }],
+      layerRootDirs: [tempDir],
+      localeFileFormat: 'php-array',
+      apps: [{ name: 'default', rootDir: tempDir, layers: ['default'] }],
+      ...overrides,
+    }
+  }
+
+  const de: LocaleDefinition = { code: 'de', language: 'de', file: 'de.php' }
+
+  beforeEach(async () => {
+    await mkdir(join(tempDir, 'lang'), { recursive: true })
+    await writeFile(join(tempDir, 'lang', 'de.php'), '<?php\nreturn [\n  "save" => "Speichern",\n];\n')
+  })
+
+  it('resolves the flat file', async () => {
+    const entries = await resolveLocaleEntries(makeFlatPhpConfig(), 'default', de)
+
+    expect(entries).toEqual([{ path: join(tempDir, 'lang', 'de.php'), namespace: null }])
+  })
+
+  it('reads its keys unnamespaced', async () => {
+    const data = await readLocaleData(makeFlatPhpConfig(), 'default', de)
+
+    expect(data).toEqual({ save: 'Speichern' })
+  })
+
+  it('writes back into the same file instead of creating a directory', async () => {
+    const written = await mutateLocaleData(makeFlatPhpConfig(), 'default', de, (data) => {
+      data.cancel = 'Abbrechen'
+    })
+
+    expect([...written]).toEqual([join(tempDir, 'lang', 'de.php')])
+
+    const onDisk = await readFile(join(tempDir, 'lang', 'de.php'), 'utf-8')
+    expect(onDisk).toContain('"cancel" => "Abbrechen"')
+    expect(onDisk).toContain('"save" => "Speichern"')
+  })
+
+  // The Laravel layout must keep working: entries carry a namespace, so the
+  // namespaced write path still applies.
+  it('still treats a namespaced PHP layout as namespaced', async () => {
+    await mkdir(join(tempDir, 'lang', 'de'), { recursive: true })
+    await writeFile(join(tempDir, 'lang', 'de', 'auth.php'), '<?php\nreturn [\n  "failed" => "Fehlgeschlagen",\n];\n')
+
+    const config = makeFlatPhpConfig({
+      locales: [{ code: 'de', language: 'de' }],
+    })
+    const entries = await resolveLocaleEntries(config, 'default', { code: 'de', language: 'de' })
+
+    expect(entries.map(e => e.namespace)).toEqual(['auth'])
+  })
+})
