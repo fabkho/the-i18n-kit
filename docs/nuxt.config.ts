@@ -22,25 +22,25 @@ const baseURL = process.env.NUXT_APP_BASE_URL || '/the-i18n-kit/'
  * Mirrors Nuxt Content's path mapping: numeric ordering prefixes are stripped
  * from each segment, and index.md maps to its directory.
  */
+function routeForPage(slug: string, prefix: string): string[] {
+  if (!slug.endsWith('.md')) {
+    return []
+  }
+  const name = slug.replace(/\.md$/, '')
+  // index.md maps to its directory. At the root that is the landing page, which
+  // the crawler reaches on its own.
+  if (name === 'index') {
+    return prefix ? [prefix] : []
+  }
+  return [`${prefix}/${name}`]
+}
+
 function contentRoutes(dir: string, prefix = ''): string[] {
-  const entries = readdirSync(dir, { withFileTypes: true })
-
-  return entries.flatMap((entry) => {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const slug = entry.name.replace(/^\d+\./, '')
-
-    if (entry.isDirectory()) {
-      return contentRoutes(join(dir, entry.name), `${prefix}/${slug}`)
-    }
-    if (!slug.endsWith('.md')) {
-      return []
-    }
-
-    const name = slug.replace(/\.md$/, '')
-    // The root index.md is the landing page, which the crawler already reaches.
-    if (name === 'index') {
-      return prefix ? [prefix] : []
-    }
-    return [`${prefix}/${name}`]
+    return entry.isDirectory()
+      ? contentRoutes(join(dir, entry.name), `${prefix}/${slug}`)
+      : routeForPage(slug, prefix)
   })
 }
 

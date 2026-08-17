@@ -9,9 +9,6 @@
     "preview": "nuxt preview"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.114",
-    "@iconify-json/simple-icons": "^1.2.87",
-    "@iconify-json/vscode-icons": "^1.2.59",
     "docus": "^5.12.3",
     "nuxt": "^4.4.8"
   }
