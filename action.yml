@@ -70,6 +70,9 @@ inputs:
     default: 'latest'
 
 outputs:
+  gate_tripped:
+    description: 'Names of any CI gates that tripped. The job fails after the translations are committed.'
+    value: ${{ steps.translate.outputs.gate_tripped }}
   translated_count:
     description: 'Number of keys translated'
     value: ${{ steps.translate.outputs.translated_count }}
@@ -172,12 +175,16 @@ runs:
         echo "translated_count=$count" >> "$GITHUB_OUTPUT"
         echo "failed_count=$failed" >> "$GITHUB_OUTPUT"
 
+        # A tripped gate is recorded, not acted on here. Failing this step would
+        # skip the PR step below, throwing away the translations the run did
+        # produce — reported red and lost, with the next run redoing all of it.
+        # The gate fails the job in a later step, once the work is safe.
         case "$status" in
           0) ;;
           2)
             gates=$(echo "$output" | jq -rc '[.gatesTripped[]?.name] | join(", ")' 2>/dev/null || echo "unknown")
-            echo "::error::CI gate tripped: ${gates}. The run itself succeeded — this is a findings gate, not a failure."
-            exit 2
+            echo "::warning::CI gate tripped: ${gates}. The run itself succeeded — the job fails after the translations are committed."
+            echo "gate_tripped=${gates}" >> "$GITHUB_OUTPUT"
             ;;
           *)
             echo "::error::translate failed (exit ${status}) — check provider, model, and API key."
@@ -270,3 +277,11 @@ runs:
       shell: bash
       run: |
         echo "::notice::Dry run complete. ${{ steps.translate.outputs.translated_count }} keys would be translated."
+
+    # Last, so the gate reddens the job without costing the run its work.
+    - name: Fail on tripped gate
+      if: steps.translate.outputs.gate_tripped != ''
+      shell: bash
+      run: |
+        echo "::error::CI gate tripped: ${{ steps.translate.outputs.gate_tripped }}. Findings exist; the translations that succeeded were still committed."
+        exit 2
