@@ -465,7 +465,7 @@ This context is automatically loaded on `discover` before any translation work, 
 
 | Field | Purpose |
 |-------|---------|
-| `framework` | Force framework detection: `"nuxt"`, `"laravel"`, or `"generic"` |
+| `framework` | Force framework detection: any adapter name — `"nuxt"`, `"laravel"`, `"vue"`, `"react"` or `"generic"` |
 | `context` | Free-form project background for the agent |
 | `layerRules` | Rules for which layer a new key belongs to |
 | `glossary` | Term dictionary for consistent translations |
