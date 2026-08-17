@@ -17,11 +17,12 @@ import { commands } from '../../../packages/cli/src/commands/index.js'
 import { GATE_MARKER, buildCliModel } from '../../generate/reference/cli-model.js'
 import { buildReference } from '../../generate/reference/build.js'
 import { loadCliSource } from '../../generate/sources/cli.js'
+import { loadConfigSource } from '../../generate/sources/config.js'
 import type { CliSource } from '../../generate/reference/types.js'
 import { commandPage, documentedFlags, overview, pagedCommands } from './helpers.js'
 
 const source: CliSource = await loadCliSource()
-const output = buildReference({ cli: source })
+const output = buildReference({ cli: source, config: await loadConfigSource() })
 const model = buildCliModel(source)
 
 /** Registry names that fold into another command's page rather than getting one. */

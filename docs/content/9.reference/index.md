@@ -12,3 +12,4 @@ Everything on these pages is generated from the source it documents, so it canno
 | Reference | Covers |
 | --- | --- |
 | [CLI Commands](/reference/cli) | Every command, its flags, its exit codes and its CI gates, generated from the command definitions. |
+| [Configuration Fields](/configuration/reference) | Every field a config file accepts, its type, its constraints and where it may be declared, generated from the schema that validates it. |

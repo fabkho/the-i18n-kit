@@ -62,9 +62,59 @@ export interface CliSource {
   exitCodes: ExitCodeValues
 }
 
+/**
+ * A JSON Schema node, narrowed to the keywords the configuration reference
+ * reads.
+ *
+ * Structural rather than a dependency on a JSON Schema type package: the
+ * document comes from `z.toJSONSchema()` over the kit's own config schema, which
+ * uses a small, known subset of the vocabulary, and a fixture has to stay
+ * hand-writable.
+ */
+export interface JsonSchemaNode {
+  type?: string | string[]
+  description?: string
+  deprecated?: boolean
+  enum?: unknown[]
+  const?: unknown
+  /** Suggested values. `framework` carries the registered adapter names here. */
+  examples?: unknown[]
+  minLength?: number
+  items?: JsonSchemaNode
+  anyOf?: JsonSchemaNode[]
+  properties?: Record<string, JsonSchemaNode>
+  required?: string[]
+  /** A schema for unlisted properties, or `false` when there may be none. */
+  additionalProperties?: JsonSchemaNode | boolean | undefined
+}
+
+/** The published JSON Schema document, whose root is always an object schema. */
+export interface ConfigJsonSchema extends JsonSchemaNode {
+  properties: Record<string, JsonSchemaNode>
+}
+
+export interface ConfigSource {
+  /** The document `renderConfigJsonSchema()` publishes, already parsed. */
+  schema: ConfigJsonSchema
+  /**
+   * Keys `@the-i18n-kit/nuxt` rejects in a hand-written config because Nuxt
+   * resolves them itself — its `MODULE_OWNED_KEYS`.
+   */
+  moduleOwnedKeys: readonly string[]
+  /**
+   * Schema keys deliberately absent from the typed `ProjectConfig` interface, so
+   * declaring one in `i18n-kit.config.ts` is a type error even though the schema
+   * accepts the value at runtime.
+   */
+  untypedKeys: readonly string[]
+  /** The options the `i18nKit` block in `nuxt.config.ts` accepts. */
+  nuxtModuleOptions: readonly string[]
+}
+
 /** Every loaded source the builder renders from. */
 export interface ReferenceSources {
   cli: CliSource
+  config: ConfigSource
 }
 
 /**
@@ -103,4 +153,53 @@ export interface CommandDoc {
   args: ArgDoc[]
   /** False when the registry holds the command but the CLI does not expose it. */
   aliases: AliasDoc[]
+}
+
+/** Where a field may be declared, as the reference states it. */
+export type DeclarationSites = 'both' | 'json-only' | 'derived-by-nuxt'
+
+/** One property of a nested object shape. */
+export interface PropertyDoc {
+  name: string
+  type: string
+  required: boolean
+  constraints: string[]
+  description: string
+}
+
+/** One accepted form of a field, or of its entries, that accepts several. */
+export interface FormDoc {
+  type: string
+  constraints: string[]
+  description: string
+  /** The properties of this form, when it is an object. */
+  properties: PropertyDoc[]
+}
+
+/**
+ * The shape inside a field, when its type string does not already say it.
+ *
+ * `scope` distinguishes a shape the field itself has — `reportOutput` is either
+ * `true` or a path — from one each entry of an array or record has.
+ */
+export interface ShapeDoc {
+  scope: 'field' | 'entry'
+  properties: PropertyDoc[]
+  forms: FormDoc[]
+  /** True when properties beyond the listed ones still validate. */
+  open: boolean
+  /** The description declared on the inner node, where it carries one. */
+  entryDescription: string | undefined
+}
+
+/** One configuration field, as the reference renders it. */
+export interface ConfigFieldDoc {
+  name: string
+  type: string
+  required: boolean
+  constraints: string[]
+  description: string
+  deprecated: boolean
+  sites: DeclarationSites
+  shape: ShapeDoc | undefined
 }

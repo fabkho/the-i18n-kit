@@ -6,12 +6,18 @@
  * the sources and writes the map lives in `docs/generate/index.ts`.
  *
  * The split exists so the generation logic is testable without a repository on
- * disk, and so further sources — the MCP tool listing, the config schema, the
- * action manifest — become another field on `ReferenceSources` and another
- * entry in `SECTIONS` rather than another script.
+ * disk, and so further sources — the MCP tool listing, the action manifest —
+ * become another field on `ReferenceSources` and another entry in `SECTIONS`
+ * rather than another script.
+ *
+ * A section's page need not live under `DIR`: the configuration reference is
+ * emitted into the hand-written configuration section, because its route is part
+ * of the site's structure and three concept pages link it there. `SECTIONS`
+ * stays the one list of what is generated either way.
  */
 
 import { renderCliReference } from './cli-pages.js'
+import { CONFIG_REFERENCE_ROUTE, renderConfigReference } from './config-pages.js'
 import { GENERATED_NOTICE, frontmatter, page, table } from './markdown.js'
 import type { ReferenceOutput, ReferenceSources } from './types.js'
 
@@ -32,6 +38,12 @@ const SECTIONS: Section[] = [
     route: '/reference/cli',
     summary: 'Every command, its flags, its exit codes and its CI gates, generated from the command definitions.',
     render: sources => renderCliReference(sources.cli),
+  },
+  {
+    title: 'Configuration Fields',
+    route: CONFIG_REFERENCE_ROUTE,
+    summary: 'Every field a config file accepts, its type, its constraints and where it may be declared, generated from the schema that validates it.',
+    render: sources => renderConfigReference(sources.config),
   },
 ]
 

@@ -9,6 +9,20 @@ export function cell(value: string): string {
   return value.replace(/\|/g, '\\|')
 }
 
+/**
+ * Escape a source description for use as table prose.
+ *
+ * Beyond the pipe, `<` opens an inline HTML tag, so a description containing
+ * `<reportOutput>/<toolName>.json` renders as a pair of unknown elements with the
+ * text between them gone. The entity renders as the character it names, so the
+ * page still carries the description the schema declares — which is why this is
+ * separate from `cell`: entities are not decoded inside a code span, where
+ * `Record<string, string>` has to stay as written.
+ */
+export function prose(value: string): string {
+  return cell(value).replace(/</g, '&lt;')
+}
+
 export function code(value: string): string {
   return `\`${value}\``
 }
