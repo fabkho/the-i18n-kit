@@ -31,10 +31,14 @@ on:
       - pnpm-lock.yaml
   workflow_dispatch:
 
-# Allow one concurrent deployment, and let a newer push supersede a running one.
+# Per ref, so a new push supersedes its own in-flight build. This must NOT be a
+# single shared group: GitHub keeps one pending run per group, so a workflow-wide
+# "pages" group means five stacked pull requests fight over one slot and four of
+# them are cancelled rather than built. Deployment serialisation belongs on the
+# deploy job, which is the part that genuinely cannot run twice at once.
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -87,6 +91,13 @@ jobs:
     # Pull requests build to prove the site still generates; only main deploys.
     if: github.event_name != 'pull_request'
     needs: build
+
+    # Two deployments to the same Pages site cannot run at once, so this is the
+    # one place a single shared group is correct. Queue rather than cancel: a
+    # superseded deploy would leave the site on an older commit.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     runs-on: ubuntu-latest
 
     permissions:
