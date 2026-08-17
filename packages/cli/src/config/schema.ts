@@ -6,6 +6,11 @@
  * `nuxt.config.ts` all accept this same shape, and all validate against this
  * same schema. The `ProjectConfig` interface in `./types.ts` documents it;
  * the guard at the bottom of this file fails the build if the two drift.
+ *
+ * The `.describe()` text on each field is the published documentation of that
+ * field: `./schema-json.ts` converts this schema into `packages/mcp/schema.json`,
+ * which editors read for validation and tooltips. Write it for a user looking
+ * at their own config file, not for a reader of this module.
  */
 import { z } from 'zod'
 import type { ProjectConfig } from './types.js'
@@ -14,41 +19,152 @@ import { log } from '../utils/logger.js'
 const nonEmptyString = z.string().min(1).refine(s => s.trim().length > 0, 'Must not be empty or whitespace-only')
 
 const layerRuleSchema = z.object({
-  layer: z.string(),
-  description: z.string(),
-  when: z.string(),
+  layer: z.string()
+    .describe('Layer name (e.g., \'root\', \'app-admin\', \'app-shop\', \'lang\').'),
+  description: z.string()
+    .describe('What this layer contains — key namespaces, domain scope, etc.'),
+  when: z.string()
+    .describe('Natural-language rule describing when a key should go in this layer.'),
 })
 
 const localeDirEntrySchema = z.union([
-  nonEmptyString,
+  nonEmptyString
+    .describe('Relative path to a locale directory. Layer name defaults to \'default\'.'),
   z.object({
-    path: nonEmptyString,
-    layer: nonEmptyString,
+    path: nonEmptyString.describe('Relative path to a locale directory.'),
+    layer: nonEmptyString.describe('Layer name for this locale directory.'),
   }),
 ])
 
-const projectConfigSchema = z.object({
-  $schema: z.string().optional(),
-  framework: z.string().optional(),
-  context: z.string().optional(),
-  layerRules: z.array(layerRuleSchema).optional(),
-  glossary: z.record(z.string(), z.string()).optional(),
-  translationPrompt: z.string().optional(),
-  localeNotes: z.record(z.string(), z.string()).optional(),
-  examples: z.array(z.record(z.string(), z.string())).optional(),
+export const projectConfigSchema = z.object({
+  $schema: z.string()
+    .describe('Path or URL to the JSON schema for IDE autocompletion.')
+    .optional(),
+  framework: z.string()
+    .describe(
+      'Force framework detection instead of auto-detecting from project structure. '
+      + 'Any registered adapter name is accepted — the suggestions are the adapters '
+      + 'that ship today, not the only permitted values.',
+    )
+    .optional(),
+  context: z.string()
+    .describe(
+      'Free-form project background for the agent — business domain, user base, brand '
+      + 'voice, anything that helps the agent understand the project.',
+    )
+    .optional(),
+  layerRules: z.array(layerRuleSchema)
+    .describe(
+      'Rules that help the agent decide which layer a new translation key belongs to. '
+      + 'The agent interprets the natural-language \'when\' field.',
+    )
+    .optional(),
+  glossary: z.record(z.string(), z.string())
+    .describe(
+      'Term dictionary for consistent translations. Keys are source terms, values '
+      + 'describe the required translation or usage note.',
+    )
+    .optional(),
+  translationPrompt: z.string()
+    .describe(
+      'System prompt prepended to all translation requests (provider mode and agent-mode '
+      + 'fallback contexts). Sets tone, style, and constraints.',
+    )
+    .optional(),
+  localeNotes: z.record(z.string(), z.string())
+    .describe(
+      'Per-locale context included in translation prompts. Keys are locale codes (e.g., '
+      + '\'de-DE\', \'en-US\', \'de-DE-formal\'), values describe register, regional '
+      + 'conventions, or other locale-specific guidance.',
+    )
+    .optional(),
+  examples: z.array(
+    z.record(z.string(), z.string())
+      .describe(
+        'A single translation example. \'key\' holds the dot-path translation key (e.g., '
+        + '\'common.actions.save\'), \'note\' an optional style comment, and every other '
+        + 'property is a locale code (e.g., \'de-DE\', \'en-US\') mapped to its translated value.',
+      ),
+  )
+    .describe(
+      'Few-shot translation examples that demonstrate the project\'s style. The agent uses '
+      + 'these as reference when generating translations.',
+    )
+    .optional(),
   orphanScan: z.record(z.string(), z.object({
-    ignorePatterns: z.array(z.string()).optional(),
-  }).passthrough()).optional(), // passthrough for backwards-compat with deprecated keys like includeParentLayer
-  localeDirs: z.array(localeDirEntrySchema).optional(),
-  defaultLocale: nonEmptyString.optional(),
-  locales: z.array(nonEmptyString).optional(),
-  protectedLocales: z.array(nonEmptyString).optional(),
-  reportOutput: z.union([z.literal(true), nonEmptyString]).optional(),
-  localeFileFormat: z.enum(['json', 'php-array']).optional(),
-  providerBaseUrl: nonEmptyString.optional(),
+    ignorePatterns: z.array(z.string())
+      .describe(
+        'Glob patterns for translation keys to exclude from orphan detection (e.g., '
+        + '"common.datetime.months.*"). Use * to match a single key segment, ** to match any depth.',
+      )
+      .optional(),
+  // passthrough for backwards-compat with deprecated keys like includeParentLayer
+  }).passthrough())
+    .describe(
+      'Per-layer configuration for orphan key detection. Map each layer name to its settings. '
+      + 'Scan directories are automatically determined from each layer\'s root directory.',
+    )
+    .optional(),
+  localeDirs: z.array(localeDirEntrySchema)
+    .describe(
+      'Locale directories for the generic adapter. Each entry is a path string (layer defaults '
+      + 'to \'default\') or an object with \'path\' and \'layer\' properties.',
+    )
+    .optional(),
+  defaultLocale: nonEmptyString
+    .describe('Default locale code. Required for generic adapter activation.')
+    .optional(),
+  locales: z.array(nonEmptyString)
+    .describe(
+      'Explicit list of locale codes to operate on. If absent, locales are auto-discovered '
+      + 'from files on disk.',
+    )
+    .optional(),
+  protectedLocales: z.array(nonEmptyString)
+    .describe(
+      'Human-maintained locales excluded from automatic translation. Entries may be any locale '
+      + 'ref (code, language tag, or file name); entries that do not match a known locale are '
+      + 'ignored with a warning. Explicitly naming a protected locale in targetLocales overrides '
+      + 'the protection (with a warning).',
+    )
+    .optional(),
+  reportOutput: z.union([
+    z.literal(true)
+      .describe('Set to true to write reports to the default \'.i18n-reports/\' directory.'),
+    nonEmptyString
+      .describe('Custom directory path (relative to project root) where diagnostic tool reports are written.'),
+  ])
+    .describe(
+      'Enable file output for diagnostic tools (get_missing_translations, search_translations, '
+      + 'find_orphan_keys, remove_orphan_keys). When set, each tool writes its full JSON report to '
+      + '<reportOutput>/<toolName>.json and returns only a summary in the MCP response. Set to true '
+      + 'for the default \'.i18n-reports/\' directory, or a string for a custom path.',
+    )
+    .optional(),
+  localeFileFormat: z.enum(['json', 'php-array'])
+    .describe(
+      'Override the auto-detected locale file format. Useful when both formats exist or '
+      + 'auto-detection picks wrong.',
+    )
+    .optional(),
+  providerBaseUrl: nonEmptyString
+    .describe(
+      'Base URL for the LLM provider — gateways, self-hosted model servers and corporate proxies '
+      + 'that speak the provider\'s own protocol. Overrides the endpoint only, not the request shape '
+      + 'or auth header. Overridden by the I18N_BASE_URL environment variable and by --baseUrl. '
+      + 'Not supported by the "google" provider, which rejects it rather than ignoring it.',
+    )
+    .optional(),
   // Deprecated with the removal of MCP sampling: accepted so existing config
   // files keep validating (the schema is strict), warned about, and ignored.
-  samplingPreferences: z.unknown().optional(),
+  samplingPreferences: z.unknown()
+    .meta({
+      deprecated: true,
+      description:
+        'Deprecated and ignored — MCP sampling was removed. Still accepted so existing config '
+        + 'files keep validating. Configure a provider instead (e.g., I18N_PROVIDER/I18N_MODEL).',
+    })
+    .optional(),
 }).strict()
 
 /**
