@@ -1,21 +1,51 @@
+import { readdirSync } from 'node:fs'
+import { join } from 'node:path'
+
 // Deployed to GitHub Pages at a repository subpath. Moving to a custom domain
 // later means setting this to '/'; the reverse means auditing every internal
 // link, so the subpath is the safer default to start from.
 const baseURL = process.env.NUXT_APP_BASE_URL || '/the-i18n-kit/'
 
-// The prerender crawler starts at / and follows links. The landing page does
-// not link into the sections, so without a seed per section it prerenders the
-// landing page alone and every docs page is missing from the static output —
-// the site builds green and ships three HTML files. One seed per section is
-// enough: it renders inside the docs layout, whose sidebar links the rest, and
-// crawlLinks follows from there. These can go once the home page links the
-// sections. Seeds carry the base path, since they are not resolved through it.
-const sectionSeeds = [
-  'introduction/why',
-  'monorepos/layers',
-  'frameworks/detection',
-  'configuration/where-config-lives',
-].map(path => baseURL + path)
+/**
+ * Every content page, as a prerender route.
+ *
+ * The crawler starts at / and follows links. The landing page does not link
+ * into the sections, so on its own it prerenders the landing page and nothing
+ * else — the site builds green and ships three HTML files while every docs page
+ * is absent from the deploy.
+ *
+ * Enumerating the content tree rather than listing seeds by hand matters for
+ * more than tidiness: a hand-written list is a claim about which pages exist,
+ * and it was wrong the moment the content lived on a different branch than the
+ * config. Deriving it means any branch prerenders exactly its own pages.
+ *
+ * Mirrors Nuxt Content's path mapping: numeric ordering prefixes are stripped
+ * from each segment, and index.md maps to its directory.
+ */
+function contentRoutes(dir: string, prefix = ''): string[] {
+  const entries = readdirSync(dir, { withFileTypes: true })
+
+  return entries.flatMap((entry) => {
+    const slug = entry.name.replace(/^\d+\./, '')
+
+    if (entry.isDirectory()) {
+      return contentRoutes(join(dir, entry.name), `${prefix}/${slug}`)
+    }
+    if (!slug.endsWith('.md')) {
+      return []
+    }
+
+    const name = slug.replace(/\.md$/, '')
+    // The root index.md is the landing page, which the crawler already reaches.
+    if (name === 'index') {
+      return prefix ? [prefix] : []
+    }
+    return [`${prefix}/${name}`]
+  })
+}
+
+const prerenderRoutes = contentRoutes(join(import.meta.dirname, 'content'))
+  .map(route => baseURL.replace(/\/$/, '') + route)
 
 export default defineNuxtConfig({
   extends: ['docus'],
@@ -29,9 +59,10 @@ export default defineNuxtConfig({
 
     prerender: {
       crawlLinks: true,
-      routes: sectionSeeds,
-      // A seed pointing at a page that no longer exists should fail the build
-      // rather than quietly shrink the site back to a landing page.
+      routes: prerenderRoutes,
+      // A route that fails to render, or an internal link pointing at a page
+      // that does not exist, should fail the build rather than quietly shrink
+      // the site back to a landing page.
       failOnError: true,
     },
   },
