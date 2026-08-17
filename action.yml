@@ -183,6 +183,11 @@ runs:
           0) ;;
           2)
             gates=$(echo "$output" | jq -rc '[.gatesTripped[]?.name] | join(", ")' 2>/dev/null || echo "unknown")
+            # An absent or empty gatesTripped joins to "", which the final step
+            # reads as "no gate" and skips — turning exit 2 into a green job.
+            # The exit code is the authority on whether a gate tripped; the
+            # names only shape the message.
+            gates=${gates:-unnamed gate}
             echo "::warning::CI gate tripped: ${gates}. The run itself succeeded — the job fails after the translations are committed."
             echo "gate_tripped=${gates}" >> "$GITHUB_OUTPUT"
             ;;

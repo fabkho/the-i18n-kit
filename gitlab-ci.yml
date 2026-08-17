@@ -251,6 +251,9 @@
         2)
           GATE_TRIPPED=1
           GATE_NAMES=$(jq -rc '[.gatesTripped[]?.name] | join(", ")' .i18n-reports/translate-output.json 2>/dev/null || echo "unknown")
+          # The exit code decides; the names only shape the message, and an
+          # absent or empty gatesTripped joins to "".
+          GATE_NAMES=${GATE_NAMES:-unnamed gate}
           ;;
         *)
           echo "ERROR: translate failed (exit ${STATUS}) — check provider, model, and API key."
