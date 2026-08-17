@@ -434,12 +434,12 @@ All tools work immediately.
 
 Drop a `.i18n-mcp.json` at your project root to give agents (and the CLI) project context:
 
-> **Nuxt:** install [`@the-i18n-kit/nuxt`](./packages/nuxt) and this file becomes optional.
-> The module publishes the locale table and layer graph Nuxt already resolved, so
-> `locales`, `localeDirs` and `defaultLocale` stop being restated by hand, and the rest —
-> glossary, tone notes, protected locales — can be declared under `i18nKit` in
-> `nuxt.config.ts`, typed and checked at build time. `protectedLocales` entries that match
-> nothing, or match several locales, fail the build instead of failing quietly.
+> **Nuxt:** install [`@the-i18n-kit/nuxt`](./packages/nuxt) and the derived half of this
+> file goes away — the module publishes the locale table and layer graph Nuxt already
+> resolved, so `locales`, `localeDirs` and `defaultLocale` stop being restated by hand.
+> It also validates `protectedLocales` against the real locale table at build time: an
+> entry matching nothing, or matching several locales, fails the build instead of failing
+> quietly. Everything else stays in this file, which is read with no build required.
 
 ```json
 {
