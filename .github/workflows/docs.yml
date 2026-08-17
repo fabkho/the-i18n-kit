@@ -64,6 +64,25 @@ jobs:
       - name: Build packages
         run: pnpm build
 
+      # Generated reference pages are committed, so a command definition that
+      # changed without a regenerated page is a stale reference. Regenerating
+      # here and failing on a difference makes that a red check on the pull
+      # request that caused it rather than something a reader discovers.
+      - name: Regenerate the reference
+        run: pnpm docs:generate
+
+      - name: Fail on a stale generated reference
+        run: |
+          # --porcelain rather than `git diff`: a newly registered command
+          # produces an untracked file, which `git diff` does not report at all.
+          drift=$(git status --porcelain -- docs/content)
+          if [ -n "$drift" ]; then
+            echo "$drift"
+            git --no-pager diff -- docs/content
+            echo "::error::The generated reference is stale. Run 'pnpm docs:generate' and commit the result."
+            exit 1
+          fi
+
       - name: Generate site
         run: pnpm --filter @the-i18n-kit/docs generate
 

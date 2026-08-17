@@ -1,0 +1,11 @@
+{
+  "// ": "Typechecks the reference generator and its tests only. Nuxt's own app types come from .nuxt/tsconfig.json, which needs a prepare step and has nothing to do with the generator.",
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node"]
+  },
+  "include": ["generate/**/*.ts", "tests/**/*.ts"]
+}

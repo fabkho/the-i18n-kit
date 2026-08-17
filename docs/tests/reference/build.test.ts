@@ -1,0 +1,142 @@
+/**
+ * Contract tests for the reference builder, driven entirely by fixture sources.
+ *
+ * Nothing here touches the filesystem: the builder takes already-loaded sources
+ * and returns a map of output path to page content, so a fixture is a plain
+ * object. These tests cover the rules the builder applies — the shared/specific
+ * flag split, alias folding, the unexposed notice — independently of what the
+ * CLI happens to register today.
+ */
+
+import { describe, expect, it } from 'vitest'
+import { buildReference } from '../../generate/reference/build.js'
+import type { CliCommandEntry } from '../../generate/reference/types.js'
+import {
+  HIDDEN_ENTRY,
+  SCAN_ENTRY,
+  TRANSLATE_ALIAS_ENTRY,
+  TRANSLATE_ENTRY,
+  fixtureCliSource,
+} from './fixtures.js'
+import { CLI_DIR, commandPage, documentedFlags, overview, pagedCommands } from './helpers.js'
+
+function build(cli = fixtureCliSource()) {
+  return buildReference({ cli })
+}
+
+describe('buildReference', () => {
+  it('returns page content keyed by content-relative path and touches no disk', () => {
+    const output = build()
+    for (const [path, content] of output) {
+      expect(path).toMatch(/^[\w.\-/]+\.md$/)
+      expect(path.startsWith('/')).toBe(false)
+      expect(content.endsWith('\n')).toBe(true)
+    }
+  })
+
+  it('gives every exposed command a page, and every page a title and description', () => {
+    const output = build()
+    expect(pagedCommands(output)).toEqual(new Set(['scan', 'translate']))
+
+    for (const entry of [SCAN_ENTRY, TRANSLATE_ENTRY]) {
+      const markdown = commandPage(output, entry.name)
+      expect(markdown).toContain(`title: '${entry.name}'`)
+      expect(markdown).toContain(entry.def.meta?.description)
+    }
+  })
+
+  it('documents each command-specific flag on its own command page', () => {
+    const output = build()
+    expect(documentedFlags(commandPage(output, 'scan'))).toEqual(
+      new Set(['keys', 'outputFile']),
+    )
+    expect(documentedFlags(commandPage(output, 'translate'))).toEqual(
+      new Set(['layer', 'provider', 'failOnFailed']),
+    )
+  })
+
+  it('renders flags shared by every command once on the overview, never per command', () => {
+    const output = build()
+    expect(documentedFlags(overview(output))).toContain('json')
+    expect(documentedFlags(overview(output))).toContain('projectDir')
+
+    for (const name of pagedCommands(output)) {
+      const flags = documentedFlags(commandPage(output, name))
+      expect(flags).not.toContain('json')
+      expect(flags).not.toContain('projectDir')
+    }
+  })
+
+  it('carries each command description into the overview table verbatim', () => {
+    const markdown = overview(build())
+    for (const entry of [SCAN_ENTRY, TRANSLATE_ENTRY]) {
+      expect(markdown).toContain(entry.def.meta?.description)
+    }
+  })
+
+  it('folds an alias into the command it aliases instead of emitting a second page', () => {
+    const output = build()
+    expect(output.has(`${CLI_DIR}/${TRANSLATE_ALIAS_ENTRY.name}.md`)).toBe(false)
+
+    const markdown = commandPage(output, 'translate')
+    expect(markdown).toContain(TRANSLATE_ALIAS_ENTRY.name)
+    expect(markdown).toContain(TRANSLATE_ALIAS_ENTRY.def.meta?.description)
+    expect(overview(output)).toContain(TRANSLATE_ALIAS_ENTRY.name)
+  })
+
+  it('omits a command the CLI does not expose, and never mentions it', () => {
+    // The CLI filters these out of its own registry, so running one prints
+    // "Unknown command". Documenting an uninvokable command — even behind a
+    // warning — advertises an internal decision as a gap in the tool.
+    const output = build()
+    expect(output.has(`${CLI_DIR}/${HIDDEN_ENTRY.name}.md`)).toBe(false)
+    expect(overview(output)).not.toContain(HIDDEN_ENTRY.name)
+  })
+
+  it('documents every exit code the CLI can set, and the gate flags that reach code 2', () => {
+    const cli = fixtureCliSource({ exitCodes: { success: 0, runFailed: 3, gateTripped: 4 } })
+    const markdown = overview(buildReference({ cli }))
+
+    // Read from the source rather than hard-coded, so a renumbering shows up as
+    // a documentation change rather than a passing test.
+    expect(markdown).toMatch(/\|\s*3\s*\|/)
+    expect(markdown).toMatch(/\|\s*4\s*\|/)
+    expect(documentedFlags(markdown)).toContain('failOnFailed')
+  })
+
+  it('escapes a pipe inside a flag description so the table row survives', () => {
+    const markdown = commandPage(build(), 'translate')
+    expect(markdown).not.toMatch(/openai\|anthropic\|google/)
+    expect(markdown).toContain('openai\\|anthropic\\|google')
+  })
+
+  it('produces a complete page for a newly registered command with no other change', () => {
+    const added: CliCommandEntry = {
+      name: 'find-unused',
+      def: {
+        meta: { name: 'find-unused', description: 'Report keys with no usage evidence' },
+        args: {
+          ...(SCAN_ENTRY.def.args ?? {}),
+          strict: { type: 'boolean', description: 'Treat uncertain keys as unused', default: false },
+        },
+        run: () => Promise.resolve(),
+      },
+    }
+    const cli = fixtureCliSource({
+      entries: [...fixtureCliSource().entries, added],
+      exposed: [...fixtureCliSource().exposed, 'find-unused'],
+    })
+    const output = buildReference({ cli })
+
+    const markdown = commandPage(output, 'find-unused')
+    expect(markdown).toContain('Report keys with no usage evidence')
+    expect(documentedFlags(markdown)).toContain('strict')
+    expect(overview(output)).toContain('find-unused')
+  })
+
+  it('lists every generated reference on the section landing page', () => {
+    const markdown = build().get('9.reference/index.md')
+    expect(markdown).toBeDefined()
+    expect(markdown).toContain('/reference/cli')
+  })
+})
