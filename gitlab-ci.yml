@@ -238,12 +238,22 @@
       # as summary.message in the payload printed above, naming the affected
       # locales. Branching on a parsed count is what this template stopped doing.
 
+      # A tripped gate is recorded, not acted on yet. Exiting here would throw
+      # away the translations the run did produce: the commit is further down,
+      # so a partial success would be reported red AND lost, and the next run
+      # would redo all of it. The gate still fails the job — after the work is
+      # safe. A failed run (exit 1) translated nothing, so there is nothing to
+      # keep and it exits immediately.
+      GATE_TRIPPED=0
+      GATE_NAMES=""
       case "$STATUS" in
         0) ;;
         2)
-          GATES=$(jq -rc '[.gatesTripped[]?.name] | join(", ")' .i18n-reports/translate-output.json 2>/dev/null || echo "unknown")
-          echo "GATE: ${GATES} tripped. The run itself succeeded — this is a findings gate, not a failure."
-          exit 2
+          GATE_TRIPPED=1
+          GATE_NAMES=$(jq -rc '[.gatesTripped[]?.name] | join(", ")' .i18n-reports/translate-output.json 2>/dev/null || echo "unknown")
+          # The exit code decides; the names only shape the message, and an
+          # absent or empty gatesTripped joins to "".
+          GATE_NAMES=${GATE_NAMES:-unnamed gate}
           ;;
         *)
           echo "ERROR: translate failed (exit ${STATUS}) — check provider, model, and API key."
@@ -251,15 +261,24 @@
           ;;
       esac
 
+      # Every exit below goes through this, so no path can drop the gate.
+      finish() {
+        if [ "$GATE_TRIPPED" = "1" ]; then
+          echo "GATE: ${GATE_NAMES} tripped. The run itself succeeded and anything it translated has been committed — this is a findings gate, not a failure."
+          exit 2
+        fi
+        exit 0
+      }
+
       if [ "$I18N_DRY_RUN" = "true" ]; then
         echo "Dry run complete. No files written."
-        exit 0
+        finish
       fi
 
       # Check if there are locale file changes (configurable path pattern)
       if git diff --quiet -- $I18N_LOCALE_PATHS && git diff --cached --quiet -- $I18N_LOCALE_PATHS; then
         echo "No translation changes to commit."
-        exit 0
+        finish
       fi
 
       CHANGED_FILES=$(git status --porcelain -- $I18N_LOCALE_PATHS | wc -l | tr -d ' ')
@@ -313,6 +332,8 @@
           echo "Fix: give I18N_PUSH_TOKEN the api scope (the job then auto-triggers a follow-up MR pipeline), or press 'Run pipeline' on the MR."
         fi
       fi
+
+      finish
 
   artifacts:
     paths:

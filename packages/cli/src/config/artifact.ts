@@ -24,14 +24,6 @@ const layerSchema = z.object({
   localeDir: z.string().min(1).optional(),
 })
 
-/**
- * Authoring policy declared in nuxt.config.ts. Deliberately permissive: the
- * shape is owned by ProjectConfig's own schema, which validates it once the two
- * sources are merged. Re-stating it here would be a second definition to keep
- * in step.
- */
-const policySchema = z.record(z.string(), z.unknown())
-
 const artifactSchema = z.object({
   version: z.literal(1),
   generator: z.string(),
@@ -48,7 +40,6 @@ const artifactSchema = z.object({
   localeFileFormat: z.literal('json'),
   locales: z.array(localeSchema).min(1),
   layers: z.array(layerSchema).min(1),
-  policy: policySchema.optional(),
 })
 
 export type I18nKitArtifact = z.infer<typeof artifactSchema>
@@ -149,7 +140,6 @@ export async function artifactToConfig(
   discoveryRoot: string,
   projectConfig: ProjectConfig | null,
 ): Promise<I18nConfig> {
-  const merged = mergePolicy(artifact.policy, projectConfig)
   const localeDirs: LocaleDir[] = []
   const claimed = new Map<string, { layer: string, layerRootDir: string }>()
   const usedLayerNames = new Set<string>()
@@ -193,35 +183,10 @@ export async function artifactToConfig(
     rootDir: appDir,
     defaultLocale: artifact.defaultLocale,
     fallbackLocale: normalizeFallbackLocale(artifact.fallbackLocale, artifact.defaultLocale),
-    locales: applyLocaleOverride(locales, merged?.locales),
+    locales: applyLocaleOverride(locales, projectConfig?.locales),
     localeDirs,
     layerRootDirs,
-    projectConfig: merged,
+    projectConfig: projectConfig ?? undefined,
     apps: [app],
   }
-}
-
-/**
- * Fold the policy declared in nuxt.config.ts into the policy read from
- * .i18n-mcp.json.
- *
- * The file wins on a collision, which should never happen: the module fails the
- * build when a key is declared in both. This is the belt to that braces — an
- * artifact generated before the check existed, or by a newer module, cannot
- * quietly override a value someone can see in their repository.
- */
-function mergePolicy(
-  policy: Record<string, unknown> | undefined,
-  projectConfig: ProjectConfig | null,
-): ProjectConfig | undefined {
-  if (!policy || Object.keys(policy).length === 0) return projectConfig ?? undefined
-
-  const declared = Object.keys(policy).filter(key => (projectConfig as Record<string, unknown> | null)?.[key] !== undefined)
-  if (declared.length > 0) {
-    log.warn(
-      `Ignoring ${declared.join(', ')} from the Nuxt artifact: also declared in .i18n-mcp.json, which wins.`,
-    )
-  }
-
-  return { ...policy, ...projectConfig } as ProjectConfig
 }
