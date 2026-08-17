@@ -6,10 +6,18 @@
     "dev": "nuxt dev",
     "build": "nuxt build",
     "generate": "nuxt generate",
-    "preview": "nuxt preview"
+    "generate:reference": "tsx generate/index.ts",
+    "preview": "nuxt preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.generate.json"
   },
   "dependencies": {
     "docus": "^5.12.3",
     "nuxt": "^4.4.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.6",
+    "vitest": "^3.2.0"
   }
 }
