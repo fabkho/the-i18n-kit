@@ -1,0 +1,113 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    # GitHub Actions does not expand YAML anchors, so this list is repeated
+    # below rather than shared.
+    paths:
+      - docs/**
+      - packages/**
+      - action.yml
+      - .github/workflows/docs.yml
+      # Dependency resolution decides whether the site renders at all — a
+      # duplicate Vue in the bundle once made every page 500. A change here
+      # must rebuild, or the deployed site outlives the graph it was built on.
+      - package.json
+      - pnpm-workspace.yaml
+      - pnpm-lock.yaml
+  pull_request:
+    # Also the stacked docs branches. Without them a pull request into
+    # docs/scaffold gets no build at all, which is how a site that generated
+    # three HTML files stayed green for a day.
+    branches: [main, 'docs/**']
+    paths:
+      - docs/**
+      - packages/**
+      - action.yml
+      - .github/workflows/docs.yml
+      - package.json
+      - pnpm-workspace.yaml
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+# Per ref, so a new push supersedes its own in-flight build. This must NOT be a
+# single shared group: GitHub keeps one pending run per group, so a workflow-wide
+# "pages" group means five stacked pull requests fight over one slot and four of
+# them are cancelled rather than built. Deployment serialisation belongs on the
+# deploy job, which is the part that genuinely cannot run twice at once.
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The reference generators import from the built packages, so the
+      # packages have to exist before the site is generated.
+      - name: Build packages
+        run: pnpm build
+
+      - name: Generate site
+        run: pnpm --filter @the-i18n-kit/docs generate
+
+      # A site whose crawler never reaches the sections still generates
+      # successfully — it just emits the landing page and two error pages, and
+      # every content page is silently absent from the deploy. That failure is
+      # invisible in a green build, so assert the page count instead of
+      # trusting it. Self-maintaining: the bar is the number of source files.
+      - name: Assert every content page was generated
+        run: |
+          pages=$(find docs/content -name '*.md' | wc -l | tr -d ' ')
+          html=$(find docs/.output/public -name '*.html' | wc -l | tr -d ' ')
+          echo "content sources: $pages, generated html: $html"
+          if [ "$html" -lt "$pages" ]; then
+            echo "::error::Generated $html HTML files for $pages content sources."
+            echo "::error::Pages are missing from the static output — check the prerender seeds in docs/nuxt.config.ts."
+            exit 1
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.output/public
+
+  deploy:
+    # Pull requests build to prove the site still generates; only main deploys.
+    if: github.event_name != 'pull_request'
+    needs: build
+
+    # Two deployments to the same Pages site cannot run at once, so this is the
+    # one place a single shared group is correct. Queue rather than cancel: a
+    # superseded deploy would leave the site on an older commit.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
