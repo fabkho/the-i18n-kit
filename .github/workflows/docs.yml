@@ -3,18 +3,32 @@ name: Docs
 on:
   push:
     branches: [main]
+    # GitHub Actions does not expand YAML anchors, so this list is repeated
+    # below rather than shared.
     paths:
       - docs/**
       - packages/**
       - action.yml
       - .github/workflows/docs.yml
+      # Dependency resolution decides whether the site renders at all — a
+      # duplicate Vue in the bundle once made every page 500. A change here
+      # must rebuild, or the deployed site outlives the graph it was built on.
+      - package.json
+      - pnpm-workspace.yaml
+      - pnpm-lock.yaml
   pull_request:
-    branches: [main]
+    # Also the stacked docs branches. Without them a pull request into
+    # docs/scaffold gets no build at all, which is how a site that generated
+    # three HTML files stayed green for a day.
+    branches: [main, 'docs/**']
     paths:
       - docs/**
       - packages/**
       - action.yml
       - .github/workflows/docs.yml
+      - package.json
+      - pnpm-workspace.yaml
+      - pnpm-lock.yaml
   workflow_dispatch:
 
 # Allow one concurrent deployment, and let a newer push supersede a running one.

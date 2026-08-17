@@ -9,6 +9,10 @@ reviews:
     drafts: false
     base_branches:
       - main
+      # Stacked branches. Without a pattern here, every pull request into
+      # docs/scaffold or docs/positioning is skipped and lands unreviewed.
+      # These are regular expressions, not globs.
+      - docs/.*
 
   # High-level review profile
   profile: chill
@@ -22,39 +26,65 @@ reviews:
     eslint:
       enabled: false
 
+  # Paths are matched from the repository root. This is a pnpm workspace, so
+  # source lives under packages/<name>/src — a bare "src/**" pattern matches
+  # nothing and the instruction is silently never applied.
   path_instructions:
-    - path: "src/server.ts"
+    - path: "packages/mcp/src/server.ts"
       instructions: |
-        This is an MCP (Model Context Protocol) server. All 13 tools, 2 prompts, and 1 resource
-        template are registered here. Key constraints:
+        This is an MCP (Model Context Protocol) server. Every tool, prompt and resource
+        template is registered here — count them in the file rather than trusting a number
+        written down anywhere. Key constraints:
         - NEVER use console.log/stdout — it corrupts the JSON-RPC stdio transport.
-        - All logging goes to stderr via src/utils/logger.ts.
-        - add_translations and update_translations share logic via applyTranslations().
+        - All logging goes to stderr via the CLI package's logger.
+        - The server depends on the CLI package and calls its operations directly, so tool
+          behaviour should match the equivalent command rather than reimplement it.
         - Tool errors use ToolError with structured codes (LOCALE_NOT_FOUND, LAYER_NOT_FOUND, etc.).
-    - path: "src/config/detector.ts"
+    - path: "packages/cli/src/config/**"
       instructions: |
         Config detection uses @nuxt/kit loadNuxt() dynamically imported from the target project's
         node_modules. Results are cached by projectDir. The retry-without-modules pattern is
         intentional — some Nuxt modules fail outside a full build context.
-    - path: "src/io/**"
+
+        Two hand-written config sources exist: the typed i18n-kit.config.ts and the older
+        .i18n-mcp.json. A key declared in both is an error naming both, never a silent merge.
+        A broken kit config throws; a broken framework config warns and falls back to directory
+        probing. That asymmetry is deliberate — do not suggest making them consistent.
+    - path: "packages/cli/src/io/**"
       instructions: |
-        JSON I/O layer. json-writer.ts uses atomic writes (temp file + rename).
-        Format preservation (indentation detection) is critical — don't suggest changes that
-        would break it. mutateLocaleFile() is the primary write entry point.
-    - path: "src/scanner/code-scanner.ts"
+        Locale file I/O. Writes are atomic (temp file + rename). Format preservation
+        (indentation detection) is critical — don't suggest changes that would break it.
+    - path: "packages/cli/src/scanner/**"
       instructions: |
-        Uses regex, not AST, intentionally — keeps dependencies minimal and is fast enough
-        for the use case. Bare t('word') without a dot prefix is filtered to avoid false
-        positives from emit(), import(), etc.
-    - path: "tests/**"
+        Extraction of translation key usage from source. Bare t('word') without a dot prefix
+        is filtered deliberately, to avoid false positives from emit(), import() and similar.
+
+        Key invariant regardless of how extraction is implemented: only orphanKeys are ever
+        removed. Keys with ambiguous evidence, keys reachable through a dynamic pattern, and
+        keys used only from a non-consuming app are reported in their own buckets and never
+        deleted. Treat any change that could move a key into the removable bucket as
+        data-loss-adjacent and review it accordingly.
+    - path: "packages/*/tests/**"
       instructions: |
-        Integration tests run against the playground/ directory which is a real Nuxt 4 project.
+        Integration tests run against the playground/ directory, which is a real Nuxt 4 project.
         es-ES is intentionally missing admin.users.* keys and fr-FR has admin.users.edit set
         to "" for testing empty-as-missing detection. Don't suggest "fixing" these.
+    - path: "docs/content/**"
+      instructions: |
+        Documentation site pages. The house style guide is docs/agents/docs-style.md and it is
+        binding — in particular: no "simply"/"just"/"obviously", no capability adjective without
+        the mechanism that delivers it, scoped package names (@the-i18n-kit/*), and "layer"
+        defined framework-neutrally rather than as Nuxt vocabulary.
+
+        Reference material (commands, MCP tools, config fields, action inputs) is generated from
+        source. Flag any hand-written restatement of it — duplication between pages is the exact
+        failure this site was built to end.
     - path: ".github/workflows/**"
       instructions: |
-        CI runs on Node 18 and 22 (matrix). Release uses google-github-actions/release-please-action.
-        The publish job requires NPM_TOKEN secret. pnpm version is read from packageManager field.
+        CI runs on Node 20 and 22 (matrix); package.json requires node >=20, so do not suggest
+        adding Node 18. Release uses release-please. The publish job requires NPM_TOKEN and
+        mirror-publishes each package under both its unscoped name and @the-i18n-kit/*.
+        pnpm version is read from the packageManager field.
 
 chat:
   auto_reply: true
