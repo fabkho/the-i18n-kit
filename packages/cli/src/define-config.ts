@@ -2,7 +2,7 @@
  * The entry point a project's own `i18n-kit.config.ts` imports:
  *
  * ```ts
- * import { defineI18nKitConfig } from 'the-i18n-cli/config'
+ * import { defineI18nKitConfig } from '@the-i18n-kit/cli/config'
  *
  * export default defineI18nKitConfig({ defaultLocale: 'en' })
  * ```

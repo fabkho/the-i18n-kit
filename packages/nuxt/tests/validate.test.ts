@@ -68,18 +68,37 @@ describe('protectedLocales against the real locale table', () => {
 })
 
 describe('keys the module derives', () => {
-  it.each(['locales', 'localeDirs', 'defaultLocale'])('errors when .i18n-mcp.json declares %s', (key) => {
-    const [diagnostic, ...rest] = checkOwnedKeys({ [key]: 'anything' })
+  const json = (config: Record<string, unknown>) => ({ path: '/app/.i18n-mcp.json', config })
+  const typed = (config: Record<string, unknown>) => ({ path: '/app/i18n-kit.config.ts', config })
+
+  // Both files, because the typed one is what the docs recommend — checking
+  // only the JSON config left the declaration site people are steered towards
+  // as the one that could conflict in silence (#362).
+  it.each([
+    ['.i18n-mcp.json', json],
+    ['i18n-kit.config.ts', typed],
+  ])('errors when %s declares a derived key', (filename, source) => {
+    const [diagnostic, ...rest] = checkOwnedKeys([source({ locales: ['en'] })])
 
     expect(rest).toEqual([])
     expect(diagnostic?.level).toBe('error')
-    expect(diagnostic?.message).toContain(`declares "${key}"`)
+    expect(diagnostic?.message).toContain(`declares "locales"`)
+    // Naming the file is the point: with two of them, "remove it" is otherwise
+    // an instruction you cannot act on.
+    expect(diagnostic?.message).toContain(filename)
   })
 
   it('reports every conflict rather than only the first', () => {
-    const diagnostics = checkOwnedKeys({ locales: [], defaultLocale: 'de', glossary: {} })
+    const diagnostics = checkOwnedKeys([json({ locales: [], defaultLocale: 'de', glossary: {} })])
 
     expect(diagnostics).toHaveLength(2)
+  })
+
+  it('reports the same key declared in both files once per file', () => {
+    const diagnostics = checkOwnedKeys([json({ defaultLocale: 'en' }), typed({ defaultLocale: 'de' })])
+
+    expect(diagnostics).toHaveLength(2)
+    expect(diagnostics.map(d => d.message).join('\n')).toContain('i18n-kit.config.ts')
   })
 
   it('leaves the keys Nuxt cannot know alone', () => {
@@ -91,10 +110,10 @@ describe('keys the module derives', () => {
       context: 'a booking platform',
     }
 
-    expect(checkOwnedKeys(config)).toEqual([])
+    expect(checkOwnedKeys([typed(config)])).toEqual([])
   })
 
   it('has nothing to say when there is no config file', () => {
-    expect(checkOwnedKeys(null)).toEqual([])
+    expect(checkOwnedKeys([])).toEqual([])
   })
 })

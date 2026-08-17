@@ -1,4 +1,5 @@
 import type { ArtifactLocale } from './artifact'
+import type { ConfigSource } from './project-config'
 
 /**
  * Same precedence the CLI resolves with (#301): an exact `code` outranks a
@@ -87,15 +88,20 @@ export function checkProtectedLocales(
 /**
  * Keys the module derives must not also be declared by hand. Silent precedence
  * between the two is how the drift this module exists to remove began.
+ *
+ * Every hand-written source is checked, not just the JSON one: the typed config
+ * is the recommended place to declare things, so checking only `.i18n-mcp.json`
+ * left the file people are steered towards as the one that could conflict in
+ * silence (#362).
  */
-export function checkOwnedKeys(projectConfig: Record<string, unknown> | null): Diagnostic[] {
-  if (!projectConfig) return []
-
-  return MODULE_OWNED_KEYS
-    .filter(key => projectConfig[key] !== undefined)
-    .map(key => ({
-      level: 'error' as const,
-      message: `.i18n-mcp.json declares "${key}", which this module derives from your Nuxt config. `
-        + `Remove it from .i18n-mcp.json — keeping both means two sources of truth and no way to tell which won.`,
-    }))
+export function checkOwnedKeys(sources: ConfigSource[]): Diagnostic[] {
+  return sources.flatMap(source =>
+    MODULE_OWNED_KEYS
+      .filter(key => source.config[key] !== undefined)
+      .map(key => ({
+        level: 'error' as const,
+        message: `${source.path} declares "${key}", which this module derives from your Nuxt config. `
+          + `Remove it — keeping both means two sources of truth and no way to tell which won.`,
+      })),
+  )
 }

@@ -1,4 +1,4 @@
-import { defineI18nKitConfig } from 'the-i18n-cli/config'
+import { defineI18nKitConfig } from '@the-i18n-kit/cli/config'
 
 /**
  * The half no config file of Vue's can state: which locale is the source of
