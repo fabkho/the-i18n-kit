@@ -50,50 +50,19 @@ A ref that resolves by language tag or file name rather than by code is a warnin
 it works today, but a locale added later with the same tag would make it ambiguous
 without anyone touching the line that wrote it.
 
-## Configuring the kit from `nuxt.config.ts`
+## What it does not do
 
-Everything Nuxt *cannot* derive — your glossary, tone notes, protected locales —
-can be declared under `i18nKit`, typed and autocompleted, next to the i18n config
-it talks about:
+The kit's own settings — glossary, tone notes, protected locales, orphan-scan
+patterns — live in `i18n-kit.config.ts` (or `.i18n-mcp.json`), not here.
 
-```ts
-export default defineNuxtConfig({
-  modules: ['@nuxtjs/i18n', '@the-i18n-kit/nuxt'],
+They were briefly accepted under `i18nKit` in `nuxt.config.ts`. That is removed,
+because the CLI reads them from the generated artifact, so anything declared
+there does not apply until something has built — and a pipeline that installs
+the CLI and runs it against a checkout never builds. `protectedLocales` would
+have stopped protecting with nothing failing.
 
-  i18nKit: {
-    context: 'A B2B booking platform.',
-    glossary: { anny: 'Brand name. NEVER translate.' },
-    localeNotes: { 'de-formal': 'Formal German (Sie).' },
-    protectedLocales: ['de-formal'],
-  },
-})
-```
-
-The module publishes it in the artifact and the CLI reads it, so `.i18n-mcp.json`
-becomes optional for Nuxt projects. Declaring the same key in both places is an
-error rather than a merge — silent precedence between two sources is the drift
-this module exists to end.
-
-Accepted keys: `context`, `glossary`, `translationPrompt`, `localeNotes`,
-`examples`, `layerRules`, `protectedLocales`, `orphanScan`, `reportOutput`,
-`localeFileFormat`, `providerBaseUrl`.
-
-> **Why not under `i18n`?** `@nuxtjs/i18n` types that key through a type alias
-> rather than an interface, so no other module can add to it —
-> [nuxt-modules/i18n#4138](https://github.com/nuxt-modules/i18n/issues/4138).
-> Unknown keys survive at runtime, but they do not type-check. If that is ever
-> fixed, reading them from `i18n` too is additive.
-
-### One thing to know about `protectedLocales`
-
-The CLI reads policy from the generated artifact, so policy declared **only** in
-`nuxt.config.ts` does not apply until something has built. For most keys that
-costs a little context. For `protectedLocales` and `orphanScan` — the ones that
-*suppress* work — it means an unbuilt checkout would translate locales you marked
-protected. The module warns when you declare either there and nowhere else.
-
-If that matters for your pipeline, keep those two in `.i18n-mcp.json`, which the
-CLI reads directly with no build required.
+`i18n-kit.config.ts` is typed, checked by the editor, and read directly with no
+build. This module supplies what Nuxt knows; that file supplies what it cannot.
 
 ## Module options
 
