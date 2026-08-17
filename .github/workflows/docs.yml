@@ -49,6 +49,22 @@ jobs:
       - name: Generate site
         run: pnpm --filter @the-i18n-kit/docs generate
 
+      # A site whose crawler never reaches the sections still generates
+      # successfully — it just emits the landing page and two error pages, and
+      # every content page is silently absent from the deploy. That failure is
+      # invisible in a green build, so assert the page count instead of
+      # trusting it. Self-maintaining: the bar is the number of source files.
+      - name: Assert every content page was generated
+        run: |
+          pages=$(find docs/content -name '*.md' | wc -l | tr -d ' ')
+          html=$(find docs/.output/public -name '*.html' | wc -l | tr -d ' ')
+          echo "content sources: $pages, generated html: $html"
+          if [ "$html" -lt "$pages" ]; then
+            echo "::error::Generated $html HTML files for $pages content sources."
+            echo "::error::Pages are missing from the static output — check the prerender seeds in docs/nuxt.config.ts."
+            exit 1
+          fi
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/.output/public
