@@ -11,7 +11,9 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildReference } from './reference/build.js'
+import { loadActionSource } from './sources/action.js'
 import { loadCliSource } from './sources/cli.js'
+import { loadMcpSource } from './sources/mcp.js'
 import type { ReferenceOutput } from './reference/types.js'
 
 const CONTENT_DIR = fileURLToPath(new URL('../content', import.meta.url))
@@ -26,7 +28,15 @@ const CONTENT_DIR = fileURLToPath(new URL('../content', import.meta.url))
 const OWNED_DIRS = ['9.reference']
 
 async function main(): Promise<void> {
-  const output = buildReference({ cli: await loadCliSource() })
+  // Loaded in parallel: the MCP listing spawns the built server and waits on a
+  // protocol round trip, which is the slowest of the three by an order of
+  // magnitude and has nothing to wait for from the others.
+  const [cli, mcp, action] = await Promise.all([
+    loadCliSource(),
+    loadMcpSource(),
+    loadActionSource(),
+  ])
+  const output = buildReference({ cli, mcp, action })
 
   for (const dir of OWNED_DIRS) {
     await rm(join(CONTENT_DIR, dir), { recursive: true, force: true })

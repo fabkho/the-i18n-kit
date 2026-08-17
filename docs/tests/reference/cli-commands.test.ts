@@ -17,11 +17,14 @@ import { commands } from '../../../packages/cli/src/commands/index.js'
 import { GATE_MARKER, buildCliModel } from '../../generate/reference/cli-model.js'
 import { buildReference } from '../../generate/reference/build.js'
 import { loadCliSource } from '../../generate/sources/cli.js'
+import { fixtureSources } from './fixtures.js'
 import type { CliSource } from '../../generate/reference/types.js'
 import { commandPage, documentedFlags, overview, pagedCommands } from './helpers.js'
 
 const source: CliSource = await loadCliSource()
-const output = buildReference({ cli: source })
+// The other sources are fixtures: this file is about the CLI reference, and
+// each of the others has a contract file of its own.
+const output = buildReference(fixtureSources({ cli: source }))
 const model = buildCliModel(source)
 
 /** Registry names that fold into another command's page rather than getting one. */

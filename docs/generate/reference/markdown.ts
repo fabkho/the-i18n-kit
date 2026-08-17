@@ -9,6 +9,24 @@ export function cell(value: string): string {
   return value.replace(/\|/g, '\\|')
 }
 
+/**
+ * Escape a source-supplied string for use as rendered prose.
+ *
+ * `<` starts an HTML tag as far as the markdown renderer is concerned, so a
+ * default of `i18n/translate-missing-<timestamp>` renders as
+ * `i18n/translate-missing-` with the rest swallowed as an unknown element. Never
+ * apply this to a value going inside a code span, where `<` is already literal —
+ * a type of `Record<string, string>` must not become `Record&lt;string, string>`.
+ */
+export function prose(value: string): string {
+  return value.replace(/</g, '&lt;')
+}
+
+/** Prose inside a table cell: both escapes apply. */
+export function textCell(value: string): string {
+  return prose(cell(value))
+}
+
 export function code(value: string): string {
   return `\`${value}\``
 }
