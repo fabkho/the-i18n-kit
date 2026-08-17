@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.4.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.4.0...the-i18n-mcp-7.4.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **config:** generate the published JSON Schema from the zod schema ([#346](https://github.com/fabkho/the-i18n-kit/issues/346)) ([#368](https://github.com/fabkho/the-i18n-kit/issues/368)) ([9bfcbc5](https://github.com/fabkho/the-i18n-kit/commit/9bfcbc5f788610dac079855ef0ee6f02746ec0a0))
+
 ## [7.4.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-mcp-7.3.0...the-i18n-mcp-7.4.0) (2026-08-16)
 
 
