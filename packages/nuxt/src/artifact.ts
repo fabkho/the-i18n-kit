@@ -2,7 +2,6 @@ import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
-import type { I18nKitPolicy } from './policy'
 
 /** One locale, addressable by any of the three ref forms the kit accepts. */
 export interface ArtifactLocale {
@@ -49,12 +48,6 @@ export interface I18nKitArtifact {
   locales: ArtifactLocale[]
   /** Ordered as Nuxt resolved them: the app's own layer first, then what it extends. */
   layers: ArtifactLayer[]
-  /**
-   * Authoring policy declared in `nuxt.config.ts` under `i18nKit`. Absent when
-   * none was declared, so the CLI can tell "nothing declared here" from
-   * "declared as empty".
-   */
-  policy?: I18nKitPolicy
 }
 
 interface NuxtLayerLike {
@@ -69,7 +62,6 @@ export interface ArtifactInput {
   i18n: Record<string, unknown>
   layers: NuxtLayerLike[]
   generator: string
-  policy?: I18nKitPolicy
 }
 
 export async function buildArtifact(input: ArtifactInput): Promise<I18nKitArtifact> {
@@ -82,7 +74,6 @@ export async function buildArtifact(input: ArtifactInput): Promise<I18nKitArtifa
     localeFileFormat: 'json',
     locales: readLocales(input.i18n),
     layers: await readLayers(input.layers, input.i18n),
-    ...(input.policy && Object.keys(input.policy).length > 0 ? { policy: input.policy } : {}),
   }
 }
 
