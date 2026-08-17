@@ -12,6 +12,15 @@ export function resetRegistry(): void {
   adapters.length = 0
 }
 
+/**
+ * The names of every registered adapter, in registration order. The published
+ * JSON Schema advertises these as `framework` suggestions, so an adapter added
+ * later shows up in editors without anyone editing a list by hand.
+ */
+export function listAdapterNames(): string[] {
+  return adapters.map(a => a.name)
+}
+
 export interface FrameworkMatch {
   adapter: FrameworkAdapter
   /** Detection score. 0 when the adapter was forced by hint rather than detected. */

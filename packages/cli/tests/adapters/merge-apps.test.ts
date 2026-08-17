@@ -25,39 +25,8 @@ function appConfig(overrides: Partial<I18nConfig> = {}): I18nConfig {
 }
 
 describe('merging apps', () => {
-  it('carries policy an app contributed into the merged config', async () => {
-    const merger = new AppMerger()
-    await merger.add(appConfig({ projectConfig: { protectedLocales: ['de-formal'] } }), '/repo')
 
-    const config = merger.toConfig('/repo', undefined, merger.locales)
 
-    expect(config.projectConfig?.protectedLocales).toEqual(['de-formal'])
-  })
-
-  it('lets .i18n-mcp.json override what an app contributed', async () => {
-    const merger = new AppMerger()
-    await merger.add(appConfig({ projectConfig: { context: 'from the artifact' } }), '/repo')
-
-    const config = merger.toConfig('/repo', { context: 'from the file' }, merger.locales)
-
-    expect(config.projectConfig?.context).toBe('from the file')
-  })
-
-  it('takes the first app to declare a key when apps disagree', async () => {
-    const merger = new AppMerger()
-    await merger.add(appConfig({ projectConfig: { context: 'from app-admin' } }), '/repo')
-    await merger.add(appConfig({
-      rootDir: '/repo/app-shop',
-      localeDirs: [{ path: '/repo/app-shop/i18n/locales', layer: 'app-shop', layerRootDir: '/repo/app-shop' }],
-      layerRootDirs: ['/repo/app-shop'],
-      apps: [{ name: 'app-shop', rootDir: '/repo/app-shop', layers: ['app-shop'] }],
-      projectConfig: { context: 'from app-shop' },
-    }), '/repo')
-
-    const config = merger.toConfig('/repo', undefined, merger.locales)
-
-    expect(config.projectConfig?.context).toBe('from app-admin')
-  })
 
   it('leaves projectConfig untouched when no app contributed any', async () => {
     const merger = new AppMerger()

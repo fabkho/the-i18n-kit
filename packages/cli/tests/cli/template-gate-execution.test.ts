@@ -54,12 +54,30 @@ async function runScript(
   }
 }
 
-async function jobScript(name: string): Promise<string> {
+interface Job { script: string[], variables?: Record<string, string>, extends?: string }
+
+async function readJob(name: string): Promise<Job> {
   const raw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
-  const doc = parse(raw) as Record<string, { script: string[] }>
+  const doc = parse(raw) as Record<string, Job>
   const job = doc[name]
   if (!job) throw new Error(`job ${name} not found in gitlab-ci.yml`)
-  return job.script.join('\n')
+  return job
+}
+
+async function jobScript(name: string): Promise<string> {
+  return (await readJob(name)).script.join('\n')
+}
+
+/**
+ * The `variables:` block, which GitLab exports into the job. Taken from the
+ * template rather than restated here: the scripts run under `set -u`, so a
+ * variable declared there but missing from a test aborts the script silently
+ * mid-run, which reads as a template bug rather than a fixture gap.
+ */
+async function jobVariables(name: string): Promise<Record<string, string>> {
+  const job = await readJob(name)
+  const inherited = job.extends ? await jobVariables(job.extends) : {}
+  return { ...inherited, ...(job.variables ?? {}) }
 }
 
 describe('gitlab-ci.yml job scripts, executed', () => {
@@ -139,15 +157,40 @@ describe('gitlab-ci.yml job scripts, executed', () => {
   /**
    * The translate job needs a real provider, so its CLI call is stubbed. Its
    * STATUS branching is the part under test, and I18N_DRY_RUN keeps the run
-   * short of the git and push stages that follow it.
+   * short of the git and push stages that follow it — except in the commit-path
+   * test, which needs those stages to prove the gate outlives them.
    */
   describe('.i18n-translate STATUS branching', () => {
+    /**
+     * Stands the job up on a repo whose locale file has uncommitted changes,
+     * as it would be after a real translate wrote to it. `git push` is shimmed
+     * to succeed (there is no remote) while everything before it stays real, so
+     * the commit is genuinely made rather than simulated.
+     */
+    async function seedRepoWithTranslations(dir: string, stubBin: string): Promise<void> {
+      const git = { cwd: dir, env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }
+      await execFileAsync('git', ['init', '-q'], git)
+      await mkdir(join(dir, 'i18n/locales'), { recursive: true })
+      await writeFile(join(dir, 'i18n/locales/de.json'), '{}\n')
+      await execFileAsync('git', ['add', 'i18n/locales/de.json'], git)
+      await execFileAsync('git', ['commit', '-q', '-m', 'root'], git)
+      await writeFile(join(dir, 'i18n/locales/de.json'), '{"a":"Hallo"}\n')
+
+      const realGit = (await execFileAsync('sh', ['-c', 'command -v git'])).stdout.trim()
+      await writeFile(
+        join(stubBin, 'git'),
+        `#!/bin/sh\nif [ "$1" = push ]; then echo "push $2 $3"; exit 0; fi\nexec '${realGit}' "$@"\n`,
+      )
+      await chmod(join(stubBin, 'git'), 0o755)
+    }
+
     /** The stub records the args it was handed, so flag wiring is observable. */
     async function runTranslate(
       stubResult: string,
       stubExit: number,
       env: Record<string, string> = {},
-    ): Promise<Run & { args: string }> {
+      seedRepo = false,
+    ): Promise<Run & { args: string, log: string }> {
       const dir = await mkdtemp(join(tmpdir(), 'i18n-tpl-translate-'))
       const stubBin = join(dir, '.bin')
       await mkdir(stubBin, { recursive: true })
@@ -158,8 +201,14 @@ describe('gitlab-ci.yml job scripts, executed', () => {
         `#!/bin/sh\nprintf '%s ' "$@" > '${argsFile}'\ncat <<'JSON'\n${stubResult}\nJSON\nexit ${stubExit}\n`,
       )
       await chmod(shim, 0o755)
+      if (seedRepo) await seedRepoWithTranslations(dir, stubBin)
 
       const run = await runScript(await jobScript('.i18n-translate'), dir, {
+        ...await jobVariables('.i18n-translate'),
+        CI_COMMIT_REF_NAME: 'feat/translate',
+        CI_SERVER_HOST: 'gitlab.test',
+        CI_PROJECT_PATH: 'group/project',
+        CI_JOB_TOKEN: 'stub',
         I18N_PROVIDER: 'openai',
         I18N_MODEL: 'stub-model',
         I18N_API_KEY: 'stub',
@@ -173,8 +222,11 @@ describe('gitlab-ci.yml job scripts, executed', () => {
       }, stubBin)
 
       const args = existsSync(argsFile) ? await readFile(argsFile, 'utf-8') : ''
+      const log = seedRepo
+        ? (await execFileAsync('git', ['log', '--format=%s'], { cwd: dir })).stdout
+        : ''
       await rm(dir, { recursive: true, force: true })
-      return { ...run, args }
+      return { ...run, args, log }
     }
 
     it('exits 0 on a successful run', async () => {
@@ -206,6 +258,38 @@ describe('gitlab-ci.yml job scripts, executed', () => {
       const failLooking = JSON.stringify({ summary: { totalTranslated: 0, totalFailed: 9 } })
 
       expect((await runTranslate(failLooking, 0)).code).toBe(0)
+    })
+
+    // The gate must outlive the steps that follow it rather than short-circuit
+    // them. Exiting at the status check threw away whatever the run did
+    // translate — 54 keys discarded because 3 failed, seen on a real project.
+    // Proven here by the gate message arriving after a later step's output.
+    it('reports the gate after continuing, not at the status check', async () => {
+      const partial = JSON.stringify({
+        summary: { totalTranslated: 54, totalFailed: 3 },
+        gatesTripped: [{ name: 'fail-on-failed', observed: 3, threshold: 0 }],
+      })
+      const run = await runTranslate(partial, 2)
+
+      expect(run.code).toBe(2)
+      expect(run.stdout.indexOf('Dry run complete'))
+        .toBeLessThan(run.stdout.indexOf('GATE: fail-on-failed tripped'))
+    })
+
+    // The case the dry run cannot reach: with a gate tripped, the work the run
+    // did produce must still be committed and pushed before the job goes red.
+    it('commits and pushes the partial result, then exits 2', async () => {
+      const partial = JSON.stringify({
+        summary: { totalTranslated: 54, totalFailed: 3 },
+        gatesTripped: [{ name: 'fail-on-failed', observed: 3, threshold: 0 }],
+      })
+      const run = await runTranslate(partial, 2, { I18N_DRY_RUN: 'false' }, true)
+
+      expect(run.code).toBe(2)
+      expect(run.log).toContain('i18n: auto-translate missing keys')
+      expect(run.stdout).toContain('Pushed 1 locale file(s) to feat/translate')
+      expect(run.stdout.indexOf('Pushed 1 locale file(s)'))
+        .toBeLessThan(run.stdout.indexOf('GATE: fail-on-failed tripped'))
     })
 
     it('requests the partial-failure gate only when asked', async () => {
@@ -302,15 +386,31 @@ describe('action.yml translate step, executed against a stub CLI', () => {
     expect(run.stdout).toContain('translate failed (exit 1)')
   })
 
-  it('propagates exit 2 as a gate, named and distinct from a failure', async () => {
+  // The gate is recorded here and acted on in a later step. Failing this one
+  // would skip the PR step, so a partial success would be reported red AND
+  // lost — 54 good translations discarded because 3 failed, observed on a real
+  // project before this changed.
+  it('records a tripped gate for a later step instead of failing here', async () => {
     const run = await runStep(JSON.stringify({
       summary: { totalTranslated: 5, totalFailed: 0 },
       gatesTripped: [{ name: 'fail-on-missing', observed: 12, threshold: 0 }],
     }), 2)
 
-    expect(run.code).toBe(2)
+    expect(run.code).toBe(0)
     expect(run.stdout).toContain('CI gate tripped: fail-on-missing')
     expect(run.stdout).not.toContain('translate failed')
+  })
+
+  // The later step keys off gate_tripped being non-empty, so a gate the CLI
+  // did not name would leave it blank and quietly turn exit 2 into a green job.
+  it('records an unnamed gate under a placeholder rather than an empty output', async () => {
+    const run = await runStep(JSON.stringify({
+      summary: { totalTranslated: 5, totalFailed: 0 },
+      gatesTripped: [],
+    }), 2)
+
+    expect(run.code).toBe(0)
+    expect(run.outputs).toContain('gate_tripped=unnamed gate')
   })
 
   // The old implementation decided from these counts, so a payload whose

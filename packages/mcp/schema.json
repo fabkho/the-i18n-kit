@@ -2,9 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/fabkho/the-i18n-kit/main/packages/mcp/schema.json",
   "title": "the-i18n-mcp project configuration",
-  "description": "Configuration file for the-i18n-mcp MCP server. Place as .i18n-mcp.json at your project root (next to nuxt.config.ts or artisan). All fields are optional — the server passes them to the AI agent as context for translation workflows.",
+  "description": "Configuration for the-i18n-kit. Declare it as .i18n-mcp.json or i18n-kit.config.ts at your project root, or as the i18nKit block in nuxt.config.ts — all three accept this same shape. Every field is optional.",
   "type": "object",
-  "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
@@ -12,8 +11,14 @@
     },
     "framework": {
       "type": "string",
-      "enum": ["nuxt", "laravel", "generic"],
-      "description": "Force framework detection instead of auto-detecting from project structure."
+      "description": "Force framework detection instead of auto-detecting from project structure. Any registered adapter name is accepted — the suggestions are the adapters that ship today, not the only permitted values.",
+      "examples": [
+        "nuxt",
+        "laravel",
+        "generic",
+        "vue",
+        "react"
+      ]
     },
     "context": {
       "type": "string",
@@ -21,15 +26,8 @@
     },
     "layerRules": {
       "type": "array",
-      "description": "Rules that help the agent decide which layer a new translation key belongs to. The agent interprets the natural-language 'when' field.",
       "items": {
         "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "layer",
-          "description",
-          "when"
-        ],
         "properties": {
           "layer": {
             "type": "string",
@@ -43,15 +41,25 @@
             "type": "string",
             "description": "Natural-language rule describing when a key should go in this layer."
           }
-        }
-      }
+        },
+        "required": [
+          "layer",
+          "description",
+          "when"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Rules that help the agent decide which layer a new translation key belongs to. The agent interprets the natural-language 'when' field."
     },
     "glossary": {
       "type": "object",
-      "description": "Term dictionary for consistent translations. Keys are source terms, values describe the required translation or usage note.",
+      "propertyNames": {
+        "type": "string"
+      },
       "additionalProperties": {
         "type": "string"
-      }
+      },
+      "description": "Term dictionary for consistent translations. Keys are source terms, values describe the required translation or usage note."
     },
     "translationPrompt": {
       "type": "string",
@@ -59,120 +67,134 @@
     },
     "localeNotes": {
       "type": "object",
-      "description": "Per-locale context included in translation prompts. Keys are locale codes (e.g., 'de-DE', 'en-US', 'de-DE-formal'), values describe register, regional conventions, or other locale-specific guidance.",
+      "propertyNames": {
+        "type": "string"
+      },
       "additionalProperties": {
         "type": "string"
-      }
+      },
+      "description": "Per-locale context included in translation prompts. Keys are locale codes (e.g., 'de-DE', 'en-US', 'de-DE-formal'), values describe register, regional conventions, or other locale-specific guidance."
     },
     "examples": {
       "type": "array",
-      "description": "Few-shot translation examples that demonstrate the project's style. The agent uses these as reference when generating translations.",
       "items": {
         "type": "object",
-        "description": "A single translation example. Must have a 'key' property. All other properties are locale codes (e.g., 'de-DE', 'en-US') mapped to their translated value, or 'note' with a style comment.",
-        "required": [
-          "key"
-        ],
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "The dot-path translation key (e.g., 'common.actions.save')."
-          },
-          "note": {
-            "type": "string",
-            "description": "Optional style or context note about this example."
-          }
+        "propertyNames": {
+          "type": "string"
         },
         "additionalProperties": {
           "type": "string"
-        }
-      }
+        },
+        "description": "A single translation example. 'key' holds the dot-path translation key (e.g., 'common.actions.save'), 'note' an optional style comment, and every other property is a locale code (e.g., 'de-DE', 'en-US') mapped to its translated value."
+      },
+      "description": "Few-shot translation examples that demonstrate the project's style. The agent uses these as reference when generating translations."
     },
     "orphanScan": {
       "type": "object",
-      "description": "Per-layer configuration for orphan key detection. Map each layer name to its settings. Scan directories are automatically determined from each layer's root directory.",
+      "propertyNames": {
+        "type": "string"
+      },
       "additionalProperties": {
         "type": "object",
         "properties": {
           "ignorePatterns": {
             "type": "array",
-            "description": "Glob patterns for translation keys to exclude from orphan detection (e.g., \"common.datetime.months.*\"). Use * to match a single key segment, ** to match any depth.",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Glob patterns for translation keys to exclude from orphan detection (e.g., \"common.datetime.months.*\"). Use * to match a single key segment, ** to match any depth."
           }
         },
-        "additionalProperties": false
-      }
-    },
-    "protectedLocales": {
-      "type": "array",
-      "description": "Human-maintained locales excluded from automatic translation. Entries may be any locale ref (code, language tag, or file name); entries that do not match a known locale are ignored with a warning. Explicitly naming a protected locale in targetLocales overrides the protection (with a warning).",
-      "items": {
-        "type": "string"
-      }
-    },
-    "reportOutput": {
-      "oneOf": [
-        {
-          "type": "string",
-          "description": "Custom directory path (relative to project root) where diagnostic tool reports are written."
-        },
-        {
-          "type": "boolean",
-          "const": true,
-          "description": "Set to true to write reports to the default '.i18n-reports/' directory."
-        }
-      ],
-      "description": "Enable file output for diagnostic tools (get_missing_translations, search_translations, find_orphan_keys, remove_orphan_keys). When set, each tool writes its full JSON report to <reportOutput>/<toolName>.json and returns only a summary in the MCP response. Set to true for the default '.i18n-reports/' directory, or a string for a custom path."
+        "additionalProperties": {}
+      },
+      "description": "Per-layer configuration for orphan key detection. Map each layer name to its settings. Scan directories are automatically determined from each layer's root directory."
     },
     "localeDirs": {
       "type": "array",
-      "description": "Locale directories for the generic adapter. Each entry is a path string (layer defaults to 'default') or an object with 'path' and 'layer' properties.",
       "items": {
-        "oneOf": [
+        "anyOf": [
           {
             "type": "string",
+            "minLength": 1,
             "description": "Relative path to a locale directory. Layer name defaults to 'default'."
           },
           {
             "type": "object",
-            "required": ["path", "layer"],
-            "additionalProperties": false,
             "properties": {
               "path": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Relative path to a locale directory."
               },
               "layer": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Layer name for this locale directory."
               }
-            }
+            },
+            "required": [
+              "path",
+              "layer"
+            ],
+            "additionalProperties": false
           }
         ]
-      }
+      },
+      "description": "Locale directories for the generic adapter. Each entry is a path string (layer defaults to 'default') or an object with 'path' and 'layer' properties."
     },
     "defaultLocale": {
       "type": "string",
+      "minLength": 1,
       "description": "Default locale code. Required for generic adapter activation."
     },
     "locales": {
       "type": "array",
-      "description": "Explicit list of locale codes to operate on. If absent, locales are auto-discovered from files on disk.",
       "items": {
-        "type": "string"
-      }
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Explicit list of locale codes to operate on. If absent, locales are auto-discovered from files on disk."
+    },
+    "protectedLocales": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Human-maintained locales excluded from automatic translation. Entries may be any locale ref (code, language tag, or file name); entries that do not match a known locale are ignored with a warning. Explicitly naming a protected locale in targetLocales overrides the protection (with a warning)."
+    },
+    "reportOutput": {
+      "anyOf": [
+        {
+          "type": "boolean",
+          "const": true,
+          "description": "Set to true to write reports to the default '.i18n-reports/' directory."
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "Custom directory path (relative to project root) where diagnostic tool reports are written."
+        }
+      ],
+      "description": "Enable file output for diagnostic tools (get_missing_translations, search_translations, find_orphan_keys, remove_orphan_keys). When set, each tool writes its full JSON report to <reportOutput>/<toolName>.json and returns only a summary in the MCP response. Set to true for the default '.i18n-reports/' directory, or a string for a custom path."
     },
     "localeFileFormat": {
       "type": "string",
-      "enum": ["json", "php-array"],
+      "enum": [
+        "json",
+        "php-array"
+      ],
       "description": "Override the auto-detected locale file format. Useful when both formats exist or auto-detection picks wrong."
     },
     "providerBaseUrl": {
       "type": "string",
       "minLength": 1,
       "description": "Base URL for the LLM provider — gateways, self-hosted model servers and corporate proxies that speak the provider's own protocol. Overrides the endpoint only, not the request shape or auth header. Overridden by the I18N_BASE_URL environment variable and by --baseUrl. Not supported by the \"google\" provider, which rejects it rather than ignoring it."
+    },
+    "samplingPreferences": {
+      "deprecated": true,
+      "description": "Deprecated and ignored — MCP sampling was removed. Still accepted so existing config files keep validating. Configure a provider instead (e.g., I18N_PROVIDER/I18N_MODEL)."
     }
-  }
+  },
+  "additionalProperties": false
 }
