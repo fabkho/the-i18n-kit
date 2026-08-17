@@ -33,4 +33,4 @@ Each also has locales that are deliberately incomplete, so `missing`, `status` a
 
 It needs a real install: its config loads `@the-i18n-kit/nuxt`, and the E2E translate workflow builds and runs it.
 
-The rest are fixtures with no `node_modules`, which is why adding four of them costs CI nothing. They still contain the imports a real project would (`next-intl/routing`, `@intlify/unplugin-vue-i18n/vite`, `the-i18n-cli/config`), because the CLI substitutes what it cannot resolve — and prefers the real package wherever one is installed. Run `pnpm install` inside any of them and the output does not change.
+The rest are fixtures with no `node_modules`, which is why adding four of them costs CI nothing. They still contain the imports a real project would (`next-intl/routing`, `@intlify/unplugin-vue-i18n/vite`, `@the-i18n-kit/cli/config`), because the CLI substitutes what it cannot resolve — and prefers the real package wherever one is installed. Run `pnpm install` inside any of them and the output does not change.

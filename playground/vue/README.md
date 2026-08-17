@@ -27,7 +27,7 @@ $ the-i18n-cli status --projectDir playground/vue --json | jq .summary.protected
 
 ## No install required
 
-There is no `node_modules` here — this is a fixture, not a workspace member, so it costs CI nothing. The plugin is substituted rather than imported, and `the-i18n-cli/config` resolves to the running CLI, so both files are read as they are.
+There is no `node_modules` here — this is a fixture, not a workspace member, so it costs CI nothing. The plugin is substituted rather than imported, and `@the-i18n-kit/cli/config` resolves to the running CLI, so both files are read as they are.
 
 ## Deliberately incomplete
 

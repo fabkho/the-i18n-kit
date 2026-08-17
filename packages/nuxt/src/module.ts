@@ -1,15 +1,13 @@
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { addTemplate, defineNuxtModule, useLogger } from '@nuxt/kit'
 import type { NuxtModule } from '@nuxt/schema'
 
 import { version } from '../package.json'
 import { buildArtifact } from './artifact'
+import { protectedLocalesFrom, readConfigSources } from './project-config'
+import type { LoggerLike } from './project-config'
 import { checkOwnedKeys, checkProtectedLocales } from './validate'
 import type { Diagnostic } from './validate'
-
-const CONFIG_FILENAME = '.i18n-mcp.json'
 
 /**
  * Fixed, not configurable. The CLI looks for `<app>/.nuxt/i18n-kit.json` without
@@ -72,7 +70,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
         return
       }
 
-      const projectConfig = await readProjectConfig(nuxt.options.rootDir, logger)
+      const configSources = await readConfigSources(nuxt.options.rootDir, logger)
 
       const artifact = await buildArtifact({
         appDir: nuxt.options.rootDir,
@@ -84,8 +82,8 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
       // Checked against the locale table Nuxt actually resolved — the point of
       // validating here rather than at translate time.
       const diagnostics = [
-        ...checkOwnedKeys(projectConfig),
-        ...checkProtectedLocales(projectConfig?.protectedLocales as string[] | undefined, artifact.locales),
+        ...checkOwnedKeys(configSources),
+        ...checkProtectedLocales(protectedLocalesFrom(configSources), artifact.locales),
       ]
 
       report(diagnostics, logger, options.failOnInvalidConfig ?? true)
@@ -119,12 +117,6 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
 
 export default module
 
-interface LoggerLike {
-  warn: (message: string) => void
-  error: (message: string) => void
-  success: (message: string) => void
-}
-
 function report(diagnostics: Diagnostic[], logger: LoggerLike, failOnInvalidConfig: boolean): void {
   const errors = diagnostics.filter(d => d.level === 'error')
 
@@ -137,35 +129,8 @@ function report(diagnostics: Diagnostic[], logger: LoggerLike, failOnInvalidConf
   // to stderr is what let de-DE-formal protect nothing for months.
   if (errors.length > 0 && failOnInvalidConfig) {
     throw new Error(
-      `${CONFIG_FILENAME} does not agree with your Nuxt config (${errors.length} problem(s), listed above). `
+      `Your i18n-kit configuration does not agree with your Nuxt config (${errors.length} problem(s), listed above). `
       + 'Set i18nKit.failOnInvalidConfig to false to report without failing.',
     )
-  }
-}
-
-/**
- * Nearest `.i18n-mcp.json` walking up from the app, the same way the CLI finds
- * it — in a layered repo the config sits at the root while each app builds from
- * its own directory.
- */
-async function readProjectConfig(
-  startDir: string,
-  logger: LoggerLike,
-): Promise<Record<string, unknown> | null> {
-  let dir = startDir
-  for (;;) {
-    const candidate = join(dir, CONFIG_FILENAME)
-    if (existsSync(candidate)) {
-      try {
-        return JSON.parse(await readFile(candidate, 'utf-8')) as Record<string, unknown>
-      }
-      catch (error) {
-        logger.warn(`Could not read ${candidate}: ${error instanceof Error ? error.message : String(error)}`)
-        return null
-      }
-    }
-    const parent = dirname(dir)
-    if (parent === dir) return null
-    dir = parent
   }
 }

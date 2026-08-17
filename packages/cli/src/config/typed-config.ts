@@ -125,7 +125,7 @@ export async function loadTypedConfig(
   if (exported === null || typeof exported !== 'object' || Array.isArray(exported)) {
     throw new ConfigError(
       `${path} must export a config object as its default export — got ${describe(exported)}. `
-      + 'Wrap it in defineI18nKitConfig() from "the-i18n-cli/config".',
+      + `Wrap it in defineI18nKitConfig() from "${CONFIG_SPECIFIER}".`,
     )
   }
 
@@ -138,7 +138,16 @@ export async function loadTypedConfig(
 }
 
 /**
- * Point `the-i18n-cli/config` at the copy of `defineI18nKitConfig` that is
+ * The specifier the documentation tells you to import from. Both spellings
+ * publish the same code at the same versions (#315), so a config file may
+ * legitimately name either — but only one of them belongs in a message that
+ * tells someone what to write.
+ */
+const CONFIG_SPECIFIER = '@the-i18n-kit/cli/config'
+const DEPRECATED_CONFIG_SPECIFIER = 'the-i18n-cli/config'
+
+/**
+ * Point the `/config` specifiers at the copy of `defineI18nKitConfig` that is
  * already running.
  *
  * A config file imports it for the types, and types only need the package
@@ -146,6 +155,10 @@ export async function loadTypedConfig(
  * project that never added it as a dependency, where a bare import would be
  * unresolvable and take the whole config down with it. Resolving it to
  * ourselves costs nothing and is the same function either way: identity.
+ *
+ * Both spellings are aliased: the rescue path is worth nothing if it covers a
+ * name the docs no longer recommend, and the deprecated one has to keep working
+ * until the window in #344 closes.
  *
  * Returns no alias when the entry cannot be located, which leaves normal
  * resolution to find the installed package.
@@ -155,7 +168,9 @@ function selfAlias(): Record<string, string> {
   // chunk this code ends up in; `../` when running from source, as tests do.
   for (const candidate of ['./define-config.js', '../define-config.js', '../define-config.ts']) {
     const path = fileURLToPath(new URL(candidate, import.meta.url))
-    if (existsSync(path)) return { 'the-i18n-cli/config': path }
+    if (existsSync(path)) {
+      return { [CONFIG_SPECIFIER]: path, [DEPRECATED_CONFIG_SPECIFIER]: path }
+    }
   }
   return {}
 }

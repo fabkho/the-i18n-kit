@@ -1,4 +1,4 @@
-import { defineI18nKitConfig } from 'the-i18n-cli/config'
+import { defineI18nKitConfig } from '@the-i18n-kit/cli/config'
 
 /**
  * There is no framework here to ask, so everything is declared. `localeDirs`

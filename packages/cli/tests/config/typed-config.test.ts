@@ -32,16 +32,27 @@ describe('loadTypedConfig', () => {
     expect(loaded?.path).toBe(resolve(project.dir, 'i18n-kit.config.ts'))
   })
 
-  it('resolves defineI18nKitConfig without the package being installed', async () => {
-    // What a project written against the docs actually contains. jiti resolves
-    // the import to the running CLI, so an npx invocation works too.
+  // What a project written against the docs actually contains. jiti resolves
+  // the import to the running CLI, so an npx invocation works too. Both
+  // spellings publish the same code, and the rescue path is worth nothing if
+  // it covers a name the docs no longer recommend.
+  it.each([
+    ['@the-i18n-kit/cli/config', 'fr'],
+    ['the-i18n-cli/config', 'it'],
+  ])('resolves defineI18nKitConfig from %s without the package being installed', async (specifier, locale) => {
     await write('i18n-kit.config.ts', `
-      import { defineI18nKitConfig } from 'the-i18n-cli/config'
-      export default defineI18nKitConfig({ defaultLocale: 'fr' })
+      import { defineI18nKitConfig } from '${specifier}'
+      export default defineI18nKitConfig({ defaultLocale: '${locale}' })
     `)
 
     const loaded = await loadTypedConfig(project.dir)
-    expect(loaded?.config.defaultLocale).toBe('fr')
+    expect(loaded?.config.defaultLocale).toBe(locale)
+  })
+
+  it('names the current package when telling you what to wrap the config in', async () => {
+    await write('i18n-kit.config.ts', `export default 'nope'`)
+
+    await expect(loadTypedConfig(project.dir)).rejects.toThrow(/@the-i18n-kit\/cli\/config/)
   })
 
   it('accepts a plain .js config', async () => {
