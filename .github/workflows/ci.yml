@@ -50,3 +50,56 @@ jobs:
 
       - name: Fallow audit
         run: npx fallow audit
+
+  # The generated reference derives from the CLI command definitions, the MCP
+  # tool listing, the action manifest and the config schema — all of which live
+  # in packages/. A change to any of them can leave the committed pages stale.
+  #
+  # This check lives here rather than only in the Docs workflow because of how
+  # it failed once: a schema change merged green, because on its own branch the
+  # committed pages still matched the schema as of that branch. The stale pages
+  # and the new schema only met on main, which reddened main and stopped the
+  # site deploying. Running it on every pull request puts the failure on the
+  # change that caused it.
+  #
+  # One job, no matrix: drift is a property of the repository, not of a Node
+  # version.
+  docs-drift:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The generators import from the built packages, and the MCP source spawns
+      # the built server.
+      - name: Build packages
+        run: pnpm build
+
+      - name: Regenerate the reference
+        run: pnpm docs:generate
+
+      - name: Fail on a stale generated reference
+        run: |
+          # --porcelain rather than `git diff`: a newly registered command or a
+          # newly advertised tool produces an untracked file, which `git diff`
+          # does not report at all.
+          drift=$(git status --porcelain -- docs/content)
+          if [ -n "$drift" ]; then
+            echo "$drift"
+            git --no-pager diff -- docs/content
+            echo "::error::The generated reference is stale. Run 'pnpm docs:generate' and commit the result."
+            exit 1
+          fi
