@@ -123,7 +123,12 @@ describe('the CLI reference against the command registry', () => {
 
     const markdown = overview(output)
     for (const command of alwaysOn) {
-      expect(markdown).toMatch(new RegExp(`\\[\`${command.name}\`\\][^|]*\\|\\s*always on\\s*\\|`))
+      const gate = command.gates.find(g => g.flag === undefined)!
+      // The whole row, not just the command name: the reader needs the counter
+      // and the threshold to know what trips it, since there is no flag to read.
+      expect(markdown).toContain(
+        `| [\`${command.name}\`](/reference/cli/${command.name}) | always on | \`summary.${gate.counter}\` is above \`${gate.threshold}\` |`,
+      )
     }
   })
 

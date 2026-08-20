@@ -58,7 +58,7 @@ function renderOverview(
     exitCodeTable(exitCodes),
     `A gate tripping is not a run failing. Exit ${exitCodes.gateTripped} means the command did its job and found something you asked it to fail on — missing keys, orphans, coverage below a floor. Exit ${exitCodes.runFailed} means the run itself fell over, and its counters say nothing about your project. A failed run outranks a tripped gate: gates are not consulted at all when the run failed.`,
     '## CI Gates',
-    `Gates are opt-in. Without one of these flags a command reports its findings and exits ${exitCodes.success}, so failing a build on findings is something you ask for rather than something you discover.`,
+    `Gates are opt-in, with one exception. Without one of these flags a command reports its findings and exits ${exitCodes.success}, so failing a build on findings is something you ask for rather than something you discover. The exception is a gate marked "always on": its findings are a defect rather than a threshold, so there is nothing to opt into.`,
     gateTable(commands),
     ...gateReportNote(exitCodes),
   ])
@@ -93,7 +93,7 @@ function exitCodeTable(exitCodes: ExitCodeValues): string {
   const rows = [
     [String(exitCodes.success), 'The run succeeded and no gate tripped.'],
     [String(exitCodes.runFailed), 'The run itself failed — an unusable API key, an unreadable project, a translate call that produced nothing.'],
-    [String(exitCodes.gateTripped), 'The run succeeded and a gate you requested tripped. The findings are real; the tool worked.'],
+    [String(exitCodes.gateTripped), 'The run succeeded and a gate tripped — one you requested, or one the command always evaluates. The findings are real; the tool worked.'],
   ]
   return table(['Code', 'Means'], rows)
 }
@@ -116,7 +116,7 @@ function gateTable(commands: CommandDoc[]): string {
 
 function gateReportNote(exitCodes: ExitCodeValues): string[] {
   return [
-    `When a gate trips, the result gains a ${code('gatesTripped')} array naming each gate, the counter it read and the value it observed. A run where nothing tripped is byte-for-byte what it was before gates existed, so a consumer parsing the result needs no change to tolerate them.`,
+    `When a gate trips, the result gains a ${code('gatesTripped')} array naming each gate, the counter it read, the threshold it was held to and the value it observed. A run where nothing tripped is byte-for-byte what it was before gates existed, so a consumer parsing the result needs no change to tolerate them.`,
     ['::note',
       `A gate marked "always on" needs no flag: its findings are a defect rather `
       + `than a threshold you opt into caring about. It still reports as a gate — `

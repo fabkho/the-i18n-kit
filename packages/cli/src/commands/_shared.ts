@@ -72,25 +72,44 @@ export const EXIT_RUN_FAILED = 1
 export const EXIT_GATE_TRIPPED = 2
 
 /**
- * A CI gate a command accepts. `counter` is the field of `result.summary`
- * carrying the observed value. Omitting `threshold` takes it from the flag's
- * own value, so a boolean flag pairs with `threshold: 0` and a numeric one
- * (`--fail-under 90`) omits it.
+ * A CI gate a command evaluates. `counter` is the field of `result.summary`
+ * carrying the observed value.
  *
- * `flag` is the arg that requests the gate. Omitting it makes the gate always
- * evaluated, for the findings that are a defect rather than a threshold — a
- * key that renders raw in production is not something you opt into caring
- * about. An always-on gate needs its own `name` and an explicit `threshold`,
- * since there is no flag to derive either from.
+ * The two shapes are a union rather than one type with optional halves so the
+ * invariants hold at compile time: a flagged gate always has a flag to read
+ * its name and threshold from, and a flagless one always carries both itself.
+ * Stated as options, `{ counter, threshold }` type-checks and then has no name
+ * to report the gate under.
  */
-export interface GateSpec {
-  flag?: string
-  /** Defaults to the kebab-cased flag; required when there is no flag. */
-  name?: string
+export type GateSpec = FlaggedGateSpec | AlwaysOnGateSpec
+
+interface GateSpecBase {
   counter: string
   /** 'above' trips when observed > threshold (default); 'below' when observed < threshold. */
   direction?: 'above' | 'below'
+}
+
+/**
+ * Requested by a flag, and evaluated only when that flag is passed. Omitting
+ * `threshold` takes it from the flag's own value, so a boolean flag pairs with
+ * `threshold: 0` and a numeric one (`--fail-under 90`) omits it.
+ */
+export interface FlaggedGateSpec extends GateSpecBase {
+  flag: string
+  name?: never
   threshold?: number
+}
+
+/**
+ * Always evaluated, for findings that are a defect rather than a threshold — a
+ * key that renders raw in production is not something you opt into caring
+ * about. It still reports as a gate: the run succeeded, and what it found is
+ * what you are being told about.
+ */
+export interface AlwaysOnGateSpec extends GateSpecBase {
+  flag?: never
+  name: string
+  threshold: number
 }
 
 /** A gate the caller asked for, with its threshold already resolved. */
@@ -158,21 +177,23 @@ function trips(gate: RequestedGate, observed: number): boolean {
 function requestedGates(specs: GateSpec[], args: Record<string, unknown>): RequestedGate[] {
   const requested: RequestedGate[] = []
   for (const spec of specs) {
-    const threshold = spec.flag === undefined ? spec.threshold : thresholdFromFlag(spec, args)
-    if (threshold === undefined || !Number.isFinite(threshold)) continue
+    const resolved = spec.flag === undefined
+      ? { name: spec.name, threshold: spec.threshold }
+      : { name: kebabCase(spec.flag), threshold: thresholdFromFlag(spec, args) }
+    if (resolved.threshold === undefined || !Number.isFinite(resolved.threshold)) continue
     requested.push({
-      name: gateName(spec),
+      name: resolved.name,
       counter: spec.counter,
       direction: spec.direction ?? 'above',
-      threshold,
+      threshold: resolved.threshold,
     })
   }
   return requested
 }
 
 /** The gate's threshold, or undefined when this invocation did not ask for it. */
-function thresholdFromFlag(spec: GateSpec, args: Record<string, unknown>): number | undefined {
-  const raw = args[spec.flag!]
+function thresholdFromFlag(spec: FlaggedGateSpec, args: Record<string, unknown>): number | undefined {
+  const raw = args[spec.flag]
   if (raw === undefined || raw === null || raw === false || raw === '') return undefined
   return spec.threshold ?? Number(raw)
 }
@@ -180,10 +201,9 @@ function thresholdFromFlag(spec: GateSpec, args: Record<string, unknown>): numbe
 /**
  * Name a tripped gate by the flag that requested it, so the JSON says
  * "fail-on-missing" — what the user typed — rather than "failOnMissing".
- * A gate with no flag carries its own name.
  */
-function gateName(spec: GateSpec): string {
-  return spec.name ?? spec.flag!.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)
+function kebabCase(flag: string): string {
+  return flag.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)
 }
 
 /**

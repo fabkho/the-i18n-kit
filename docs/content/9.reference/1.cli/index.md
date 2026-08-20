@@ -28,7 +28,7 @@ The command pages are generated from the command definitions, so a flag that no 
 | [`translate`](/reference/cli/translate) | Find missing translations and translate them via LLM. Requires --provider and --model for auto-translation. |
 | [`translate-key`](/reference/cli/translate-key) | Translate a single key from a source locale into target locales. Supports LLM translation with --provider. |
 | [`scan`](/reference/cli/scan) | Scan source code for translation key usage (file paths + line numbers) |
-| [`check`](/reference/cli/check) | Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); exits 2 when any are found |
+| [`check`](/reference/cli/check) | Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); findings trip an always-on gate and exit 2, distinct from exit 1 for a run that failed |
 | [`find-duplicates`](/reference/cli/find-duplicates) | Find keys defined in both a shared layer and a consuming child layer (with divergence detection) |
 | [`remove-orphans`](/reference/cli/remove-orphans) | Find and remove orphan translation keys not referenced in source code |
 | [`scaffold`](/reference/cli/scaffold) | Create empty locale files for new languages |
@@ -60,13 +60,13 @@ Flags are declared in camel case and print that way in `the-i18n-cli <command> -
 | --- | --- |
 | 0 | The run succeeded and no gate tripped. |
 | 1 | The run itself failed — an unusable API key, an unreadable project, a translate call that produced nothing. |
-| 2 | The run succeeded and a gate you requested tripped. The findings are real; the tool worked. |
+| 2 | The run succeeded and a gate tripped — one you requested, or one the command always evaluates. The findings are real; the tool worked. |
 
 A gate tripping is not a run failing. Exit 2 means the command did its job and found something you asked it to fail on — missing keys, orphans, coverage below a floor. Exit 1 means the run itself fell over, and its counters say nothing about your project. A failed run outranks a tripped gate: gates are not consulted at all when the run failed.
 
 ## CI Gates
 
-Gates are opt-in. Without one of these flags a command reports its findings and exits 0, so failing a build on findings is something you ask for rather than something you discover.
+Gates are opt-in, with one exception. Without one of these flags a command reports its findings and exits 0, so failing a build on findings is something you ask for rather than something you discover. The exception is a gate marked "always on": its findings are a defect rather than a threshold, so there is nothing to opt into.
 
 | Command | Flag | Trips when |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ Gates are opt-in. Without one of these flags a command reports its findings and 
 | [`check`](/reference/cli/check) | always on | `summary.undefinedCount` is above `0` |
 | [`remove-orphans`](/reference/cli/remove-orphans) | `--failOnOrphans` | Exit 2 when any orphan key is found (CI gate) |
 
-When a gate trips, the result gains a `gatesTripped` array naming each gate, the counter it read and the value it observed. A run where nothing tripped is byte-for-byte what it was before gates existed, so a consumer parsing the result needs no change to tolerate them.
+When a gate trips, the result gains a `gatesTripped` array naming each gate, the counter it read, the threshold it was held to and the value it observed. A run where nothing tripped is byte-for-byte what it was before gates existed, so a consumer parsing the result needs no change to tolerate them.
 
 ::note
 A gate marked "always on" needs no flag: its findings are a defect rather than a threshold you opt into caring about. It still reports as a gate — exit 2 with a `gatesTripped` entry — so a finding stays distinguishable from the run itself failing with exit 1.

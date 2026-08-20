@@ -3,7 +3,7 @@ import { checkUndefinedKeys } from '../core/operations.js'
 
 export default createCommand({
   name: 'check',
-  description: 'Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); exits 2 when any are found',
+  description: 'Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); findings trip an always-on gate and exit 2, distinct from exit 1 for a run that failed',
   args: {
     locale: { type: 'string', description: 'Reference locale to resolve definitions in (default: project default)' },
     outputFile: { type: 'string', description: 'Write full output to this file path and return only a summary (useful for large outputs)' },

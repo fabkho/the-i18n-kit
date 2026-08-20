@@ -27,8 +27,8 @@ export interface ArgDefLike {
 
 /**
  * A gate the shared command factory evaluates, as retained on the definition.
- * A spec with no `flag` is always evaluated — the command fails on those
- * findings without being asked.
+ * A spec with no `flag` is always evaluated: the run still succeeds, and the
+ * gate trips on what it found without having been asked to.
  */
 export interface GateSpecLike {
   flag?: string
