@@ -1,20 +1,15 @@
 import { createRequire } from 'node:module'
 import { defineCommand, runCommand, runMain } from 'citty'
 import { commands as allCommands } from './commands/index.js'
+import type { CommandEntry } from './commands/index.js'
 import { emitErrorResult } from './commands/_shared.js'
 
-/**
- * Diagnostic commands kept out of the public CLI surface.
- *
- * Note this removes them from the *executed* map, not just from `--help`, so a
- * name listed here cannot be invoked at all. `scan` is deliberately absent:
- * key-usage scanning has no other route on either surface — `discover` covers
- * `detect` and `list-dirs`, but nothing covers this — so filtering it made a
- * documented command unreachable (#307). The remaining three are #252.
- */
-const hiddenCommands = new Set(['detect', 'list-dirs', 'empty'])
+// Which commands are hidden is declared on the registry entries themselves, so
+// there is no second list here to fall out of step with it (#370).
 const commands = Object.fromEntries(
-  Object.entries(allCommands).filter(([key]) => !hiddenCommands.has(key)),
+  Object.entries(allCommands as Record<string, CommandEntry>)
+    .filter(([, entry]) => !entry.hidden)
+    .map(([name, entry]) => [name, entry.load]),
 )
 
 const require = createRequire(import.meta.url)
