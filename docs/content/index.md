@@ -19,20 +19,20 @@ integrations — so your terminal and your agent give the same answers.
   ---
   color: neutral
   size: xl
-  to: /introduction/why
+  to: /getting-started/agent-setup
   trailing-icon: i-lucide-arrow-right
   ---
-  Why this toolkit
+  Set up the MCP server
   :::
 
   :::u-button
   ---
   color: neutral
   size: xl
-  to: /reference/cli
+  to: /getting-started/cold-start
   variant: outline
   ---
-  CLI reference
+  Start from an unconfigured repo
   :::
 ::
 
