@@ -1,23 +1,37 @@
-# the-i18n-mcp
+# @the-i18n-kit/mcp
 
 [![npm version](https://img.shields.io/npm/v/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/mcp)
 [![npm downloads](https://img.shields.io/npm/dm/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/mcp)
 [![License](https://img.shields.io/npm/l/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
 
-MCP server for managing i18n translation files — gives your AI agent full control over your app's translations without dumping entire locale files into context.
+MCP server for managing i18n translation files. Gives your agent 17 purpose-built
+tools so it can touch the keys it needs without reading whole locale files into
+context.
 
-13 purpose-built tools that let the agent work surgically — touching only the keys it needs. Auto-detects Nuxt, Laravel, Vue, React/Next.js, or any project with JSON/PHP locale files.
+Built on [`@the-i18n-kit/cli`](https://www.npmjs.com/package/@the-i18n-kit/cli),
+so a tool and its command produce the same result. Part of
+[the-i18n-kit](https://github.com/fabkho/the-i18n-kit).
 
-Part of [the-i18n-kit](https://github.com/fabkho/the-i18n-kit) monorepo. For CLI usage, see [@the-i18n-kit/cli](https://www.npmjs.com/package/@the-i18n-kit/cli).
+### 📖 [Documentation](https://fabkho.github.io/the-i18n-kit/)
 
 ## Quick Start
 
-No install needed — your MCP host runs the server via `npx`.
+No install needed — your MCP host runs the server with `npx`.
 
-<details>
-<summary><strong>VS Code</strong></summary>
+**Cursor** — `.cursor/mcp.json`:
 
-Add to `.vscode/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "the-i18n-mcp": {
+      "command": "npx",
+      "args": ["@the-i18n-kit/mcp@latest"]
+    }
+  }
+}
+```
+
+**VS Code** — `.vscode/mcp.json`, which uses a different key:
 
 ```json
 {
@@ -31,279 +45,27 @@ Add to `.vscode/mcp.json`:
 }
 ```
 
-</details>
+→ [Zed, Claude Desktop and the rest](https://fabkho.github.io/the-i18n-kit/getting-started/agent-setup)
 
-<details>
-<summary><strong>Cursor</strong></summary>
+## Documentation
 
-Add to `.cursor/mcp.json`. Cursor uses its own path and its own key — a
-`.vscode/mcp.json` with a `servers` block is not read:
+| | |
+|---|---|
+| [Set up the server](https://fabkho.github.io/the-i18n-kit/getting-started/agent-setup) | Every host, and how to check it is working |
+| [Tools](https://fabkho.github.io/the-i18n-kit/reference/mcp) | Generated from the listing a host receives |
+| [Built for agents](https://fabkho.github.io/the-i18n-kit/introduction/built-for-agents) | Context discipline, classified failures, safe defaults |
+| [Configuration](https://fabkho.github.io/the-i18n-kit/configuration/where-config-lives) | Glossary, tone, protected locales — [every field](https://fabkho.github.io/the-i18n-kit/configuration/reference) |
+| [Monorepos and layers](https://fabkho.github.io/the-i18n-kit/monorepos/layers) | What the agent needs to know before deleting a key |
 
-```json
-{
-  "mcpServers": {
-    "the-i18n-mcp": {
-      "command": "npx",
-      "args": ["@the-i18n-kit/mcp@latest"]
-    }
-  }
-}
-```
+Translation modes — what happens with and without a provider configured — are
+documented in the [CLI readme](https://github.com/fabkho/the-i18n-kit/tree/main/packages/cli#translation-modes)
+until [#358](https://github.com/fabkho/the-i18n-kit/issues/358) moves them to the site.
 
-</details>
+## Migrating
 
-<details>
-<summary><strong>Zed</strong></summary>
-
-Add to `.zed/settings.json`:
-
-```json
-{
-  "context_servers": {
-    "the-i18n-mcp": {
-      "command": "npx",
-      "args": ["@the-i18n-kit/mcp@latest"]
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>Claude Desktop</strong></summary>
-
-Add to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "the-i18n-mcp": {
-      "command": "npx",
-      "args": ["@the-i18n-kit/mcp@latest"]
-    }
-  }
-}
-```
-
-</details>
-
-Then just ask your agent:
-
-> *"Add a 'save changes' button translation in all locales"*
->
-> *"Find and fix all missing translations in the admin layer"*
->
-> *"Add Swedish as a new language and translate everything"*
-
-## What You Get
-
-- **Auto-translate entire locales** — `translate_missing` fills every missing key: with an env-configured provider the server batches keys to the LLM and writes validated results back (with progress notifications); without one it returns fallback contexts your agent translates inline (see [Translation Modes](#translation-modes))
-- **Refresh one existing key** — `translate_key` updates a source locale and translates target locales, optionally overwriting stale existing values
-- **Add a new language in one shot** — the `add-language` prompt walks your agent through config updates, file scaffolding, and bulk translation
-- **Safe, atomic writes** — temp file + rename cycle, indentation preserved, keys sorted alphabetically, `{placeholders}` validated
-- **Smart caching** — config detection and file reads are mtime-cached, writes invalidate automatically
-- **Monorepo & layer-aware** — discovers all Nuxt apps and layers under a project root
-- **Dead key cleanup** — find orphan keys not referenced in source code and bulk-remove them
-
-## Supported Frameworks
-
-| Framework | Locale Format | Auto-Detection | Locale Directories Probed |
-|-----------|--------------|----------------|---------------------------|
-| **Nuxt** (v3+) | JSON | `nuxt.config.ts` with `@nuxtjs/i18n` | `i18n/locales/` per app and per layer; honours each layer's `langDir` (default `locales`) |
-| **Laravel** (9+) | PHP arrays or JSON | `artisan`, `composer.json`, `lang/` | `lang/` or `resources/lang/` — PHP subdirectories (`lang/en/*.php`) or flat JSON (`lang/en.json`) |
-| **Vue** (SPA, v3) | JSON | `vue` in dependencies without Nuxt; `vue-i18n` raises confidence | `src/locales`, `locales`, `src/i18n/locales`, `i18n/locales`, `src/plugins/i18n/locales`, `src/i18n` — or a `localeDir`/`messages` path read out of `src/i18n/index.{ts,js}`, `src/plugins/i18n.{ts,js}`, `src/i18n.{ts,js}`, `i18n.{ts,js}` |
-| **React / Next.js** | JSON | `next`, or `react` + `react-dom`, without Vue/Nuxt; `next-intl`, `next-translate`, `next-i18next`, `react-i18next` or `react-intl` raises confidence | `messages`, `public/locales`, `locales`, `src/i18n`, `src/locales`, `i18n` — namespaced (`messages/en/common.json`) or flat (`locales/en.json`). A `next.config.{ts,js,mjs}` using `createNextIntlPlugin` or `next-translate` pins the directory directly |
-| **Generic** | JSON or PHP | `localeDirs` + `defaultLocale` in `.i18n-mcp.json` | Exactly the paths listed in `localeDirs` |
-
-Detection is confidence-scored: the highest-scoring adapter wins, and a `.i18n-mcp.json` carrying both `localeDirs` and `defaultLocale` outscores framework inference. Set `"framework": "vue"` (or any adapter name) to force one adapter.
-
-The Vue and React/Next adapters resolve a single locale directory and take the alphabetically first discovered locale as the default. To pin a different reference locale, use `localeDirs` + `defaultLocale`.
-
-## Tools
-
-| Tool | Description |
-|------|-------------|
-| `discover` | Auto-detect framework, locales, layers, protected locales, and the active translation mode + list locale dirs by layer with file counts and namespaces. **Call first.** |
-| `list_namespaces` | List the translation key tree grouped by namespace prefix, with counts per node |
-| `get_translations` | Cross-locale view of keys with `locale: "*"` (add `compact: true` for a per-key summary) — or read a single locale |
-| `write_translations` | Write key-value pairs. Mode: `upsert` (default), `add`, or `update`. Supports `dryRun`. Locale keys may be a code, language tag or file name — prefer the code (see [Referring to locales](#referring-to-locales)) |
-| `remove_translations` | Remove keys from all locale files in a layer |
-| `rename_translation_key` | Rename/move a key across all locales |
-| `get_missing_translations` | Find keys missing in target locales |
-| `find_empty_translations` | Find keys whose value is an empty string — present in the file, so not missing, but rendering as nothing |
-| `get_translation_status` | Coverage in one call: per-locale and per-layer counts plus an overall completion percentage. Use instead of calling `get_missing_translations` per layer |
-| `search_translations` | Search by key or value (case-insensitive substring, not fuzzy) |
-| `translate_missing` | Find and translate missing keys — provider mode translates directly, agent mode returns fallback contexts |
-| `translate_key` | Translate one source key into target locales; can overwrite stale values |
-| `find_orphan_keys` | Find keys not referenced in source code |
-| `find_undefined_keys` | Find keys referenced in code but defined in no consumed locale layer — the inverse of `find_orphan_keys` (this direction ships raw keys to production). Dynamic keys are reported as uncertain |
-| `remove_orphan_keys` | Find + remove orphan keys. **Dry-run by default** |
-| `scaffold_locale` | Create empty locale files for new languages |
-
-### Prompts
-
-| Prompt | Description |
-|--------|-------------|
-| `add-feature-translations` | Guided workflow for adding translations for a new feature |
-| `add-language` | Add a new language end-to-end: config, scaffold, translate, verify |
-
-## Examples
-
-### Referring to locales
-
-A locale may be named by its **code**, its **language tag**, or its **file name** (extension included), resolved in that order. **Prefer the code** — codes are unique, language tags need not be. A project with an informal and a formal German that both declare `language: "de-DE"` makes `de-DE` ambiguous, and it resolves by config order.
-
-A ref that matches nothing does not fail the call, it is reported:
-
-```json
-{
-  "written": ["common.save"],
-  "filesWritten": 2,
-  "unresolvedLocales": [
-    { "ref": "de-DE-formal", "keys": ["common.save"], "suggestion": "Did you mean \"de-formal\" …?" }
-  ]
-}
-```
-
-Check `unresolvedLocales` after a write. The key still appears in `written` because the other locales succeeded, so it is the only signal that one locale was dropped — `filesWritten` will also be short. Ambiguous refs appear under `ambiguousLocales` with every candidate and the one used. Neither field is present when all refs resolve uniquely.
-
-### `write_translations` — Hand-crafted translations
-
-Add a key to two locales (upsert mode never fails if key exists):
-```json
-{
-  "layer": "root",
-  "mode": "upsert",
-  "translations": {
-    "auth.login.title": {
-      "en-US": "Welcome back",
-      "de-DE": "Willkommen zurück"
-    }
-  }
-}
-```
-
-Strict add (fails if key already exists):
-```json
-{
-  "layer": "root",
-  "mode": "add",
-  "translations": {
-    "common.actions.save": {
-      "en-US": "Save",
-      "de-DE": "Speichern",
-      "fr-FR": "Enregistrer"
-    }
-  }
-}
-```
-
-### `translate_key` — Single-key LLM translation
-
-Source value provided inline, writes to source locale + translates to others:
-```json
-{
-  "layer": "root",
-  "key": "bookingCreator.options.removeSubResource",
-  "sourceLocale": "en-US",
-  "sourceValue": "Remove sub-resource",
-  "targetLocales": ["de-DE", "fr-FR", "es-ES"],
-  "overwrite": true
-}
-```
-
-Source value read from existing locale file, only fill missing targets:
-```json
-{
-  "layer": "root",
-  "key": "auth.errors.sessionExpired",
-  "sourceLocale": "en-US",
-  "targetLocales": "all",
-  "overwrite": false
-}
-```
-
-## Project Config
-
-Drop a `.i18n-mcp.json` at your project root:
-
-```json
-{
-  "$schema": "node_modules/the-i18n-mcp/schema.json",
-  "context": "B2B SaaS booking platform",
-  "glossary": {
-    "Booking": "Core concept. Dutch: 'Boeking'.",
-    "Resource": "A bookable entity (room, desk, person)"
-  },
-  "translationPrompt": "Professional but approachable tone. Keep translations concise.",
-  "localeNotes": {
-    "de": "Informal German (du)",
-    "de-formal": "Formal German (Sie)"
-  },
-  "protectedLocales": ["en-US", "de-DE-formal"]
-}
-```
-
-See the [full config reference](https://github.com/fabkho/the-i18n-kit#project-config) for all options including `layerRules`, `examples`, `orphanScan`, `protectedLocales`. `samplingPreferences` is deprecated and ignored (accepted for backward compatibility) — configure a provider via env instead (see below).
-
-## Translation Modes
-
-`translate_missing` and `translate_key` run in one of two modes, resolved once at server startup. Every result reports which mode ran (`mode: "provider" | "agent" | "dry-run"`), and `discover` reports the active mode as `translationMode` (plus `translationProvider` / `translationModel` in provider mode) so you can verify the configuration without triggering a translation.
-
-### Provider mode
-
-Set environment variables on the server process and the server calls the LLM provider directly, writes validated results, and streams progress notifications:
-
-```json
-{
-  "servers": {
-    "the-i18n-mcp": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["@the-i18n-kit/mcp@latest"],
-      "env": {
-        "I18N_PROVIDER": "google",
-        "I18N_MODEL": "gemini-2.5-flash",
-        "GEMINI_API_KEY": "..."
-      }
-    }
-  }
-}
-```
-
-| Variable | Value |
-|----------|-------|
-| `I18N_PROVIDER` | `openai`, `anthropic`, or `google` |
-| `I18N_MODEL` | Model name (e.g. `gemini-2.5-flash`, `gpt-4o-mini`) |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | API key matching the provider |
-| `I18N_BASE_URL` | Optional provider base URL — protocol-compatible gateways, self-hosted models, proxies. Falls back to `providerBaseUrl` in `.i18n-mcp.json`. Not supported by `google` |
-
-Partial configuration logs a warning to stderr and falls back to agent mode — a misconfigured server never surprises callers per-request.
-
-### Agent mode (default)
-
-With no provider configured, the translate tools return per-locale `fallbackContexts` — the source values plus glossary, translation prompt, locale notes, and examples from `.i18n-mcp.json`. The host agent translates them inline (using its own model) and persists the results via `write_translations` (mode `upsert`). This is the default in MCP hosts and needs zero configuration.
-
-### Result contract
-
-Translate results account for every key:
-
-- `translated` — keys written
-- `wouldTranslate` — dry runs only: keys that would be translated
-- `failed` — with a reason: `provider-error`, `omitted-by-model`, `truncated`, `placeholder-mismatch`, `plural-mismatch`, `write-error`
-- `skipped` — with a reason: `no-provider`, `already-translated`, `protected-locale`
-- Invariant: `missing = translated + wouldTranslate + failed + skipped`
-
-Provider translations are validated before writing: placeholder parity per vue-i18n plural variant (`{placeholders}`, `@:linked.refs`; `:params` for PHP) and plural variant-count parity with the source. Failing values are rejected into `failed` instead of written.
-
-Locales listed in `protectedLocales` are excluded from default translate targets and reported as `skipped` with reason `protected-locale`; explicitly naming one in `targetLocales` overrides the protection with a warning.
-
-## Migrating from older versions
-
-> `npx the-i18n-mcp` and `npx nuxt-i18n-mcp` still work — both bin names point to the same server.
-
-MCP sampling was removed: `translate_missing` no longer asks the host to pick a model, and `samplingPreferences` in `.i18n-mcp.json` is ignored (still accepted for backward compatibility). To keep server-side translation, configure provider mode via the env variables above; otherwise the tools run in agent mode and your agent translates the returned fallback contexts itself. The core logic lives in [@the-i18n-kit/cli](https://www.npmjs.com/package/@the-i18n-kit/cli).
+`the-i18n-mcp` was renamed to `@the-i18n-kit/mcp`. The old name still publishes
+during the deprecation window and the binary is unchanged; see
+[#344](https://github.com/fabkho/the-i18n-kit/issues/344).
 
 ## License
 
