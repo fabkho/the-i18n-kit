@@ -16,8 +16,10 @@
     "nuxt": "^4.4.8"
   },
   "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
     "@types/node": "^22.0.0",
     "tsx": "^4.20.6",
-    "vitest": "^3.2.0"
+    "vitest": "^3.2.0",
+    "yaml": "2.8.2"
   }
 }

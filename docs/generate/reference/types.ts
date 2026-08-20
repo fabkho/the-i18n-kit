@@ -25,10 +25,25 @@ export interface ArgDefLike {
   valueHint?: string
 }
 
+/**
+ * A gate the shared command factory evaluates, as retained on the definition.
+ * A spec with no `flag` is always evaluated: the run still succeeds, and the
+ * gate trips on what it found without having been asked to.
+ */
+export interface GateSpecLike {
+  flag?: string
+  name?: string
+  counter: string
+  direction?: string
+  threshold?: number
+}
+
 /** A citty `CommandDef`, narrowed to the fields the reference reads. */
 export interface CommandDefLike {
   meta?: { name?: string, description?: string }
   args?: Record<string, ArgDefLike>
+  /** Retained by `createCommand`. Absent on hand-written definitions. */
+  gates?: GateSpecLike[]
   /**
    * The handler. Never called — its identity is what distinguishes a genuine
    * command from an alias of one.
@@ -62,6 +77,75 @@ export interface CliSource {
   exitCodes: ExitCodeValues
 }
 
+/**
+ * A JSON Schema, narrowed to the keywords the MCP tool reference reads.
+ *
+ * The server advertises its input schemas as JSON Schema draft 2020-12, which is
+ * what the protocol carries and what a host validates a call against.
+ * Recursive, because a parameter can be an array of strings or a map of maps.
+ */
+export interface JsonSchemaLike {
+  type?: string
+  description?: string
+  enum?: unknown[]
+  const?: unknown
+  items?: JsonSchemaLike
+  anyOf?: JsonSchemaLike[]
+  properties?: Record<string, JsonSchemaLike>
+  required?: string[]
+  additionalProperties?: JsonSchemaLike | boolean
+  propertyNames?: JsonSchemaLike
+}
+
+/** One tool exactly as `tools/list` advertises it. */
+export interface McpToolListing {
+  name: string
+  /** The human-readable name a host may show in place of `name`. */
+  title?: string
+  description?: string
+  inputSchema: JsonSchemaLike
+  /**
+   * Behaviour hints a host uses to decide how much ceremony a call needs — a
+   * read-only tool can be called without confirmation.
+   */
+  annotations?: {
+    title?: string
+    readOnlyHint?: boolean
+    destructiveHint?: boolean
+    idempotentHint?: boolean
+    openWorldHint?: boolean
+  }
+}
+
+export interface McpSource {
+  /** Listing order, as the server advertises it. */
+  tools: McpToolListing[]
+}
+
+/** One `inputs` entry of the action manifest. */
+export interface ActionInput {
+  name: string
+  description: string
+  required: boolean
+  /** Absent when the manifest declares no default. */
+  default?: string
+}
+
+/** One `outputs` entry of the action manifest. */
+export interface ActionOutput {
+  name: string
+  description: string
+}
+
+export interface ActionSource {
+  name: string
+  description: string
+  /** Manifest order, which groups related inputs together. */
+  inputs: ActionInput[]
+  outputs: ActionOutput[]
+}
+
+/** Every loaded source the builder renders from. */
 /**
  * A JSON Schema node, narrowed to the keywords the configuration reference
  * reads.
@@ -112,8 +196,11 @@ export interface ConfigSource {
 }
 
 /** Every loaded source the builder renders from. */
+
 export interface ReferenceSources {
   cli: CliSource
+  mcp: McpSource
+  action: ActionSource
   config: ConfigSource
 }
 
@@ -153,6 +240,8 @@ export interface CommandDoc {
   args: ArgDoc[]
   /** False when the registry holds the command but the CLI does not expose it. */
   aliases: AliasDoc[]
+  /** The gates the factory evaluates for this command, flagged or always on. */
+  gates: GateSpecLike[]
 }
 
 /** Where a field may be declared, as the reference states it. */

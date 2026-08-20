@@ -22,10 +22,13 @@ import { buildReference } from '../../generate/reference/build.js'
 import { loadCliSource } from '../../generate/sources/cli.js'
 import { loadConfigSource } from '../../generate/sources/config.js'
 import type { ConfigSource, JsonSchemaNode } from '../../generate/reference/types.js'
+import { fixtureSources } from './fixtures.js'
 import { configPage, documentedFields, documentedNames, renderedText, section } from './helpers.js'
 
 const source: ConfigSource = await loadConfigSource()
-const output = buildReference({ cli: await loadCliSource(), config: source })
+// The other sources are fixtures: this file is about the configuration
+// reference, and each of the others has a contract file of its own.
+const output = buildReference(fixtureSources({ cli: await loadCliSource(), config: source }))
 const markdown = configPage(output)
 const model = buildConfigModel(source)
 

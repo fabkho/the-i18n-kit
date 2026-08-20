@@ -33,14 +33,13 @@ afterEach(() => {
 
 /** Run a command double and return what it wrote to stdout. */
 async function runFake(
-  opts: { gates?: typeof missingGate[], failWhen?: (r: unknown) => boolean, result: unknown },
+  opts: { gates?: typeof missingGate[], result: unknown },
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const cmd = createCommand({
     name: 'fake',
     description: 'test double',
     gates: opts.gates,
-    failWhen: opts.failWhen,
     run: async () => opts.result,
   }) as unknown as { run: (ctx: { args: Record<string, unknown> }) => Promise<void> }
 
@@ -109,14 +108,14 @@ describe('gate flags', () => {
       .toEqual(['fail-on-orphans'])
   })
 
-  // A gate says "the project has findings"; failWhen and isTotalFailure say
-  // "the run fell over". CI must be able to tell those apart.
+  // A gate says "the project has findings"; isTotalFailure says "the run fell
+  // over". CI must be able to tell those apart, so the failed run outranks the
+  // gate and the counters it would have read are not reported at all.
   it('reports a failed run as exit 1 even when a gate would also trip', async () => {
     const output = await runFake(
       {
         gates: [missingGate],
-        failWhen: () => true,
-        result: { summary: { totalMissingKeys: 12 } },
+        result: { summary: { totalMissingKeys: 12, totalTranslated: 0, totalFailed: 4 } },
       },
       { failOnMissing: true },
     )

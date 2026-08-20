@@ -15,7 +15,7 @@
  */
 
 import { buildConfigModel, shapedFields } from './config-model.js'
-import { GENERATED_NOTICE, cell, code, frontmatter, page, prose, table } from './markdown.js'
+import { GENERATED_NOTICE, cell, code, frontmatter, page, prose, table, textCell } from './markdown.js'
 import type {
   ConfigFieldDoc,
   ConfigSource,
@@ -142,12 +142,12 @@ function fieldName(field: ConfigFieldDoc, linked: boolean): string {
 }
 
 function constraints(field: { constraints: string[] }): string {
-  return field.constraints.length === 0 ? EMPTY : prose(field.constraints.join('; '))
+  return field.constraints.length === 0 ? EMPTY : textCell(field.constraints.join('; '))
 }
 
 /** A description the schema does not declare leaves a cell that reads as unfinished. */
 function description(text: string): string {
-  return text === '' ? EMPTY : prose(text)
+  return text === '' ? EMPTY : textCell(text)
 }
 
 /** The heading id Nuxt Content derives from a heading whose text is the field name. */

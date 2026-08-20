@@ -12,8 +12,10 @@ import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildReference } from './reference/build.js'
 import { GENERATED_NOTICE } from './reference/markdown.js'
+import { loadActionSource } from './sources/action.js'
 import { loadCliSource } from './sources/cli.js'
 import { loadConfigSource } from './sources/config.js'
+import { loadMcpSource } from './sources/mcp.js'
 import type { ReferenceOutput } from './reference/types.js'
 
 const CONTENT_DIR = fileURLToPath(new URL('../content', import.meta.url))
@@ -28,8 +30,16 @@ const CONTENT_DIR = fileURLToPath(new URL('../content', import.meta.url))
 const OWNED_DIRS = ['9.reference']
 
 async function main(): Promise<void> {
-  const [cli, config] = await Promise.all([loadCliSource(), loadConfigSource()])
-  const output = buildReference({ cli, config })
+  // Loaded in parallel: the MCP listing spawns the built server and waits on a
+  // protocol round trip, which is the slowest by an order of magnitude and has
+  // nothing to wait for from the others.
+  const [cli, mcp, action, config] = await Promise.all([
+    loadCliSource(),
+    loadMcpSource(),
+    loadActionSource(),
+    loadConfigSource(),
+  ])
+  const output = buildReference({ cli, mcp, action, config })
 
   for (const dir of OWNED_DIRS) {
     await rm(join(CONTENT_DIR, dir), { recursive: true, force: true })

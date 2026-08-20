@@ -10,17 +10,21 @@ export function cell(value: string): string {
 }
 
 /**
- * Escape a source description for use as table prose.
+ * Escape a source-supplied string for use as rendered prose.
  *
- * Beyond the pipe, `<` opens an inline HTML tag, so a description containing
- * `<reportOutput>/<toolName>.json` renders as a pair of unknown elements with the
- * text between them gone. The entity renders as the character it names, so the
- * page still carries the description the schema declares — which is why this is
- * separate from `cell`: entities are not decoded inside a code span, where
- * `Record<string, string>` has to stay as written.
+ * `<` starts an HTML tag as far as the markdown renderer is concerned, so a
+ * default of `i18n/translate-missing-<timestamp>` renders as
+ * `i18n/translate-missing-` with the rest swallowed as an unknown element. Never
+ * apply this to a value going inside a code span, where `<` is already literal —
+ * a type of `Record<string, string>` must not become `Record&lt;string, string>`.
  */
 export function prose(value: string): string {
-  return cell(value).replace(/</g, '&lt;')
+  return value.replace(/</g, '&lt;')
+}
+
+/** Prose inside a table cell: both escapes apply. */
+export function textCell(value: string): string {
+  return prose(cell(value))
 }
 
 export function code(value: string): string {
