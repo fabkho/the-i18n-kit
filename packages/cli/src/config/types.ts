@@ -58,8 +58,12 @@ export interface ProjectConfig {
   translationPrompt?: string
   /** Per-locale context (formal register, regional differences, etc.) */
   localeNotes?: Record<string, string>
-  /** Few-shot translation examples */
-  examples?: Array<Record<string, string>>
+  /**
+   * Few-shot translation examples. `key` is required — the prompt names it, so
+   * an entry without one reaches the provider as the word "undefined" (#367).
+   * Every other property is a locale code mapped to its translated value.
+   */
+  examples?: Array<{ key: string, note?: string } & Record<string, string>>
   /** Per-layer scan directories and ignore patterns for orphan key detection. Keys are layer names. */
   orphanScan?: Record<string, {
     /** Glob patterns for translation keys to exclude from orphan detection (e.g., "common.datetime.months.*"). */
