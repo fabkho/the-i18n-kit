@@ -27,7 +27,6 @@ const CONTENT_DIR = fileURLToPath(new URL('../content', import.meta.url))
  * drift check passes on a reference that documents something that no longer
  * exists. Nothing hand-written may live under these paths.
  */
-const OWNED_DIRS = ['9.reference']
 
 async function main(): Promise<void> {
   // Loaded in parallel: the MCP listing spawns the built server and waits on a
@@ -41,9 +40,6 @@ async function main(): Promise<void> {
   ])
   const output = buildReference({ cli, mcp, action, config })
 
-  for (const dir of OWNED_DIRS) {
-    await rm(join(CONTENT_DIR, dir), { recursive: true, force: true })
-  }
   await removeStaleGeneratedPages(output)
   await writeOutput(output)
 
@@ -55,12 +51,19 @@ async function main(): Promise<void> {
 /**
  * Delete generated pages this run did not produce.
  *
- * The reference directories above are owned outright and emptied wholesale. The
- * configuration reference is not in one: it sits among hand-written pages
- * because its route is part of the site's structure, so the directory around it
- * cannot be wiped. Ownership is decided by the generated notice inside the file
- * instead, which also survives renaming the page — the case a path list misses,
- * leaving a stale reference published under its old route.
+ * Ownership is decided by the generated notice inside the file, never by which
+ * directory it sits in. Two reasons it has to work that way:
+ *
+ * - The configuration reference sits among hand-written pages, because its
+ *   route is part of the site's structure, so the directory around it cannot be
+ *   wiped.
+ * - A hand-written page inside a reference directory is legitimate — the
+ *   programmatic API is one — and emptying that directory wholesale deleted it
+ *   silently. The page vanished from the deploy while the readmes still linked
+ *   to it.
+ *
+ * The notice also survives renaming a page, which a path list misses — leaving
+ * a stale reference published under its old route.
  */
 async function removeStaleGeneratedPages(output: ReferenceOutput): Promise<void> {
   const entries = await readdir(CONTENT_DIR, { recursive: true })
