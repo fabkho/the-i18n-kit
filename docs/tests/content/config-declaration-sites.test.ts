@@ -14,12 +14,12 @@
  */
 
 import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ModuleOptions } from '../../../packages/nuxt/src/module.js'
 import { renderConfigJsonSchema } from '../../../packages/cli/src/config/schema-json.js'
 
-const CONFIG_DIR = join(import.meta.dirname, '../../content/5.configuration')
+const CONTENT_DIR = join(import.meta.dirname, '../../content')
 
 /**
  * Options the Nuxt module accepts. Declared as a type-level assertion so this
@@ -33,9 +33,31 @@ type Unlisted = Exclude<keyof ModuleOptions, typeof MODULE_OPTIONS[number]>
 export type ModuleOptionsAreFullyListed = Unlisted extends never ? true : Unlisted
 
 function configPages(): { name: string, text: string }[] {
-  return readdirSync(CONFIG_DIR)
-    .filter(name => name.endsWith('.md'))
-    .map(name => ({ name, text: readFileSync(join(CONFIG_DIR, name), 'utf-8') }))
+  return readdirSync(CONTENT_DIR, { recursive: true, withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
+    .map((entry) => {
+      const path = join(entry.parentPath, entry.name)
+      return { name: relative(CONTENT_DIR, path), text: readFileSync(path, 'utf-8') }
+    })
+}
+
+/**
+ * The property names an `i18nKit: { … }` block in the page sets.
+ *
+ * Parsed rather than pattern-matched. The first version of this test used a
+ * negative lookahead inside the block, which a greedy prefix defeats: it finds
+ * some position where the lookahead passes, so `i18nKit: { enabled: false }` —
+ * a correct example — was reported as declaring policy.
+ */
+function i18nKitKeys(text: string): string[] {
+  const keys: string[] = []
+  for (const block of text.matchAll(/i18nKit:\s*\{([^}]*)\}/gs)) {
+    const body = block[1] ?? ''
+    for (const key of body.matchAll(/(?:^|[,{\n])\s*([A-Za-z_$][\w$]*)\s*:/g)) {
+      keys.push(key[1] as string)
+    }
+  }
+  return keys
 }
 
 describe('the configuration pages against the module the kit ships', () => {
@@ -46,10 +68,12 @@ describe('the configuration pages against the module the kit ships', () => {
   })
 
   it('never presents an i18nKit block as a place policy is declared', () => {
+    const allowed = new Set<string>(MODULE_OPTIONS)
     for (const { name, text } of configPages()) {
-      // The module's own options may be named; a policy block may not.
-      const declaresPolicy = /i18nKit:\s*\{[^}]*\b(?!enabled|failOnInvalidConfig)[a-z]/is.test(text)
-      expect(declaresPolicy, `${name} shows policy inside an i18nKit block`).toBe(false)
+      // The module's own options may be named; anything else in that block is
+      // policy the module stopped reading in #372.
+      const policyKeys = i18nKitKeys(text).filter(key => !allowed.has(key))
+      expect(policyKeys, `${name} shows policy inside an i18nKit block`).toEqual([])
     }
   })
 
