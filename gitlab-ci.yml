@@ -75,8 +75,10 @@
 # informational while a genuinely broken scan still fails the job red. Setting
 # `allow_failure: false` turns findings into a hard gate.
 #
-# .i18n-check has no opt-in flag: it always exits 1 on findings, because a key
-# that renders raw in production is a defect rather than a threshold.
+# .i18n-check has no opt-in flag: its gate is always evaluated, because a key
+# that renders raw in production is a defect rather than a threshold. It is
+# still a gate — findings exit 2, a scan that fell over exits 1 — so the job
+# below allows 2 only.
 #
 # ── Code Quality widget (MR findings) ────────────────────────────────────────
 # .i18n-cleanup and .i18n-check emit `gl-codequality.json` declared as
