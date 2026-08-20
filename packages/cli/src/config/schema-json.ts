@@ -27,9 +27,8 @@ const documentMeta = {
   $id: 'https://raw.githubusercontent.com/fabkho/the-i18n-kit/main/packages/mcp/schema.json',
   title: 'the-i18n-mcp project configuration',
   description:
-    'Configuration for the-i18n-kit. Declare it as .i18n-mcp.json or i18n-kit.config.ts at '
-    + 'your project root, or as the i18nKit block in nuxt.config.ts — all three accept this '
-    + 'same shape. Every field is optional.',
+    'Configuration for the-i18n-kit. Declare it as i18n-kit.config.ts or .i18n-mcp.json at '
+    + 'your project root — both accept this same shape. Every field is optional.',
 } as const
 
 function buildConfigJsonSchema(): Record<string, unknown> {
