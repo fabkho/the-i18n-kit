@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.10.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.10.0...the-i18n-cli-4.10.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **ci:** let a tripped gate redden the job without discarding the work ([#373](https://github.com/fabkho/the-i18n-kit/issues/373)) ([9b60261](https://github.com/fabkho/the-i18n-kit/commit/9b602616a9625b84ddd19df59a3db4f25354954a))
+* **config:** check every declaration site, and alias the name the docs use ([#375](https://github.com/fabkho/the-i18n-kit/issues/375)) ([ab1a268](https://github.com/fabkho/the-i18n-kit/commit/ab1a268a308baa7a7acf5a6354004243432f2a47)), closes [#362](https://github.com/fabkho/the-i18n-kit/issues/362) [#361](https://github.com/fabkho/the-i18n-kit/issues/361)
+* **config:** generate the published JSON Schema from the zod schema ([#346](https://github.com/fabkho/the-i18n-kit/issues/346)) ([#368](https://github.com/fabkho/the-i18n-kit/issues/368)) ([9bfcbc5](https://github.com/fabkho/the-i18n-kit/commit/9bfcbc5f788610dac079855ef0ee6f02746ec0a0))
+
 ## [4.10.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.9.0...the-i18n-cli-4.10.0) (2026-08-16)
 
 
