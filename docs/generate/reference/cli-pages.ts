@@ -5,7 +5,7 @@
  */
 
 import { alwaysOnGates, buildCliModel, gateArgs, specificArgs } from './cli-model.js'
-import { GENERATED_NOTICE, cell, code, frontmatter, page, table } from './markdown.js'
+import { GENERATED_NOTICE, cell, code, frontmatter, page, prose, table, textCell } from './markdown.js'
 import type { ArgDoc, CliSource, CommandDoc, ExitCodeValues, ReferenceOutput } from './types.js'
 
 /** Directory under `docs/content`. The numeric prefixes are stripped from routes. */
@@ -67,7 +67,7 @@ function renderOverview(
 function commandTable(commands: CommandDoc[]): string {
   const rows = commands.map(command => [
     `[${code(command.name)}](${ROUTE}/${command.name})`,
-    cell(command.description),
+    textCell(command.description),
   ])
   return table(['Command', 'What it does'], rows)
 }
@@ -77,7 +77,7 @@ function aliasSection(commands: CommandDoc[]): string[] {
     command.aliases.map(alias => [
       code(alias.name),
       `[${code(command.name)}](${ROUTE}/${command.name})`,
-      cell(alias.description),
+      textCell(alias.description),
     ]),
   )
   if (rows.length === 0) return []
@@ -102,7 +102,9 @@ function gateTable(commands: CommandDoc[]): string {
   const rows = commands.flatMap((command) => {
     const link = `[${code(command.name)}](${ROUTE}/${command.name})`
     return [
-      ...gateArgs(command).map(arg => [link, code(`--${arg.name}`), cell(arg.description)]),
+      // textCell, not cell: a description containing <angle brackets> is parsed
+      // as an HTML tag otherwise, and the rest of the cell disappears.
+      ...gateArgs(command).map(arg => [link, code(`--${arg.name}`), textCell(arg.description)]),
       // No flag to name, so the trip condition is stated from the spec itself.
       ...alwaysOnGates(command).map(gate => [
         link,
@@ -137,7 +139,7 @@ function renderCommand(command: CommandDoc, shared: ArgDoc[]): string {
     frontmatter({ title: command.name, description: command.description }),
     GENERATED_NOTICE,
     `# ${code(`${BINARY} ${command.name}`)}`,
-    command.description,
+    prose(command.description),
     '## Synopsis',
     synopsis(command),
     '## Flags',
@@ -166,7 +168,7 @@ function flagsSection(command: CommandDoc, specific: ArgDoc[]): string[] {
 function commandAliasNote(command: CommandDoc): string[] {
   if (command.aliases.length === 0) return []
   const names = command.aliases.map(alias => code(`${BINARY} ${alias.name}`)).join(', ')
-  const reasons = command.aliases.map(alias => cell(alias.description)).join(' ')
+  const reasons = command.aliases.map(alias => prose(alias.description)).join(' ')
   return ['## Other Names', `${names} runs this same command with the same flags. ${reasons}`]
 }
 
@@ -186,7 +188,7 @@ function argTable(args: ArgDoc[]): string {
     code(arg.type),
     arg.required ? 'yes' : 'no',
     formatDefault(arg),
-    cell(arg.description),
+    textCell(arg.description),
   ])
   return table(['Flag', 'Type', 'Required', 'Default', 'Description'], rows)
 }

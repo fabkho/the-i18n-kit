@@ -6,12 +6,14 @@
  * the sources and writes the map lives in `docs/generate/index.ts`.
  *
  * The split exists so the generation logic is testable without a repository on
- * disk, and so further sources — the MCP tool listing, the config schema, the
- * action manifest — become another field on `ReferenceSources` and another
- * entry in `SECTIONS` rather than another script.
+ * disk, and so a further source — the config schema — becomes another field on
+ * `ReferenceSources` and another entry in `SECTIONS` rather than another script,
+ * as the MCP tool listing and the action manifest already did.
  */
 
+import { renderActionReference } from './action-pages.js'
 import { renderCliReference } from './cli-pages.js'
+import { renderMcpReference } from './mcp-pages.js'
 import { GENERATED_NOTICE, frontmatter, page, table } from './markdown.js'
 import type { ReferenceOutput, ReferenceSources } from './types.js'
 
@@ -32,6 +34,20 @@ const SECTIONS: Section[] = [
     route: '/reference/cli',
     summary: 'Every command, its flags, its exit codes and its CI gates, generated from the command definitions.',
     render: sources => renderCliReference(sources.cli),
+  },
+  {
+    title: 'MCP Tools',
+    route: '/reference/mcp',
+    summary: 'Every tool the MCP server advertises and the parameters it accepts, generated from the listing a host receives over stdio.',
+    // The CLI's exposed commands come along so a tool paired with a command
+    // links to a page that exists.
+    render: sources => renderMcpReference(sources.mcp, sources.cli.exposed),
+  },
+  {
+    title: 'GitHub Action',
+    route: '/reference/action',
+    summary: 'Every input, with its required status and default, and every output, generated from the action manifest.',
+    render: sources => renderActionReference(sources.action),
   },
 ]
 
