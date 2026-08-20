@@ -25,10 +25,25 @@ export interface ArgDefLike {
   valueHint?: string
 }
 
+/**
+ * A gate the shared command factory evaluates, as retained on the definition.
+ * A spec with no `flag` is always evaluated: the run still succeeds, and the
+ * gate trips on what it found without having been asked to.
+ */
+export interface GateSpecLike {
+  flag?: string
+  name?: string
+  counter: string
+  direction?: string
+  threshold?: number
+}
+
 /** A citty `CommandDef`, narrowed to the fields the reference reads. */
 export interface CommandDefLike {
   meta?: { name?: string, description?: string }
   args?: Record<string, ArgDefLike>
+  /** Retained by `createCommand`. Absent on hand-written definitions. */
+  gates?: GateSpecLike[]
   /**
    * The handler. Never called — its identity is what distinguishes a genuine
    * command from an alias of one.
@@ -103,4 +118,6 @@ export interface CommandDoc {
   args: ArgDoc[]
   /** False when the registry holds the command but the CLI does not expose it. */
   aliases: AliasDoc[]
+  /** The gates the factory evaluates for this command, flagged or always on. */
+  gates: GateSpecLike[]
 }

@@ -430,11 +430,32 @@ describe('action.yml translate step, executed against a stub CLI', () => {
 })
 
 describe('gitlab-ci.yml gate configuration', () => {
-  it('allows exit 2 only, so a broken scan still fails the cleanup job red', async () => {
+  // Both findings jobs draw the same line: findings are informational, a scan
+  // that fell over is not. `check` could not do this while its findings and
+  // its failures were both exit 1 (#369).
+  it.each(['.i18n-cleanup', '.i18n-check'])('allows exit 2 only in %s, so a broken scan still fails it red', async (job) => {
     const raw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
     const doc = parse(raw) as Record<string, { allow_failure?: unknown }>
 
-    expect(doc['.i18n-cleanup'].allow_failure).toEqual({ exit_codes: [2] })
+    expect(doc[job].allow_failure).toEqual({ exit_codes: [2] })
+  })
+
+  // allow_failure.exit_codes covers the whole job, before_script included. A
+  // setup step that happened to exit 2 would be read as findings, and the job
+  // would pass yellow having never run the scan it exists to run.
+  it('keeps setup failures off exit 2 in every job that allowlists it', async () => {
+    const raw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
+    const doc = parse(raw) as Record<string, { allow_failure?: { exit_codes?: number[] }, before_script?: string[] }>
+
+    const allowlisted = Object.entries(doc)
+      .filter(([, job]) => job?.allow_failure?.exit_codes?.includes(2))
+    expect(allowlisted.length).toBeGreaterThan(0)
+
+    for (const [name, job] of allowlisted) {
+      for (const line of job.before_script ?? []) {
+        expect(line, `${name}: "${line}" can end the job on its own exit code`).toContain('|| exit 1')
+      }
+    }
   })
 
   it('declares the orphan gate as an opt-in variable defaulting to off', async () => {
