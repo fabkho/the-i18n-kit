@@ -154,3 +154,50 @@ export function buildLayerGraph(config: I18nConfig): LayerGraph {
 
   return { canonicalLayers, ownerOf, appsUsingLayer, sharedLayers, layersOfApp }
 }
+
+/**
+ * The graph as plain data, for surfaces that can only carry JSON.
+ *
+ * {@link LayerGraph} is function-valued, so it cannot be serialised directly.
+ * This answers the question an agent actually has — *which layer does this key
+ * belong in* — which the flat layer list `discover` returned could not: a key
+ * used by more than one app belongs in a layer those apps share, and `shared`
+ * names those layers outright (#342).
+ *
+ * The degenerate cases documented on {@link LayerGraph} survive the flattening,
+ * because they are what keeps a consumer from wrongly narrowing scope:
+ * a config with no app info reports *every* canonical layer as shared, and a
+ * layer no app consumes appears in `consumers` with an empty array rather than
+ * being left out. Absent and "none" must not look alike here.
+ */
+export interface SerializedLayerGraph {
+  /** Alias-free layer names, in `config.localeDirs` order. */
+  canonical: string[]
+  /** Canonical layers consumed by more than one app — where shared keys belong. */
+  shared: string[]
+  /** Alias layer name → the canonical layer whose locale dir it points at. */
+  aliases: Record<string, string>
+  /** Canonical layer name → the apps consuming it. Every canonical layer is a key. */
+  consumers: Record<string, string[]>
+}
+
+/** Flatten {@link buildLayerGraph}'s view of `config` into plain JSON. */
+export function serializeLayerGraph(config: I18nConfig): SerializedLayerGraph {
+  const graph = buildLayerGraph(config)
+  const canonical = graph.canonicalLayers.map(dir => dir.layer)
+
+  return {
+    canonical,
+    shared: graph.sharedLayers.map(dir => dir.layer),
+    aliases: Object.fromEntries(
+      (config.localeDirs ?? [])
+        .filter(dir => dir.aliasOf)
+        // ownerOf, not aliasOf: an alias may point at a layer that was itself
+        // demoted to one, and a reader wants the dir that actually holds the keys.
+        .map(dir => [dir.layer, graph.ownerOf(dir.layer)]),
+    ),
+    consumers: Object.fromEntries(
+      canonical.map(layer => [layer, graph.appsUsingLayer(layer)]),
+    ),
+  }
+}
