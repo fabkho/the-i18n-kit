@@ -249,7 +249,10 @@ on:
   pull_request:
     paths:
       - i18n/locales/en.json
-      - components/**/*.vue
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   translate:
@@ -260,122 +263,54 @@ jobs:
       - uses: fabkho/the-i18n-kit@main
         with:
           provider: google
-          model: gemini-2.0-flash
+          model: gemini-2.5-flash
           api_key: ${{ secrets.GEMINI_API_KEY }}
           layer: common
 ```
 
-The action translates missing keys and **creates a pull request** with the changes (branch `i18n/translate-missing-<timestamp>` by default). The job fails when every key failed to translate.
+The action installs the CLI plus the SDK for the chosen provider, runs `translate`, and **creates a pull request** with the changes (branch `i18n/translate-missing-<timestamp>` by default). A run that translated nothing fails the step with exit `1` and opens no pull request; a tripped gate still opens the pull request and fails the job afterwards, so the work is never reported red *and* lost.
 
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `provider` | ✅ | — | `openai`, `anthropic`, or `google` |
-| `model` | ✅ | — | Model name |
-| `api_key` | ✅ | — | API key for the provider |
-| `layer` | ✅ | — | Layer name (e.g. `common`, `dashboard`) |
-| `locales` | — | all except source | Comma-separated target locales |
-| `source_locale` | — | from `.i18n-mcp.json` | Reference locale |
-| `keys` | — | all missing | Comma-separated keys to translate |
-| `batch_size` | — | `50` | Keys per LLM call |
-| `dry_run` | — | `false` | Preview without writing files |
-| `working_directory` | — | `github.workspace` | Project root directory |
-| `create_pr` | — | `true` | Create a PR with the translated files |
-| `pr_branch` | — | `i18n/translate-missing-<timestamp>` | Branch name for the PR |
-| `commit_message` | — | auto-generated | Custom commit message |
-| `pr_title` | — | auto-generated | PR title |
-| `github_token` | — | `GITHUB_TOKEN` | Token used to create the PR |
-| `base_branch` | — | triggering branch | Base branch for the PR |
-| `cli_version` | — | `latest` | the-i18n-cli version to install (`skip` to use a preinstalled CLI) |
-
-Outputs: `translated_count`, `failed_count`, `pr_url`.
+→ [GitHub Actions guide](https://fabkho.github.io/the-i18n-kit/ci-cd/github-actions) · [generated input and output reference](https://fabkho.github.io/the-i18n-kit/reference/action)
 
 ### GitLab CI
 
-Three reusable jobs: `.i18n-translate`, `.i18n-cleanup`, and `.i18n-check`.
+Three reusable jobs: `.i18n-translate` (translates and pushes back to the branch), `.i18n-cleanup` (reports orphan keys), and `.i18n-check` (reports keys that render raw).
 
 ```yaml
 # .gitlab-ci.yml
 include:
   - remote: 'https://raw.githubusercontent.com/fabkho/the-i18n-kit/main/gitlab-ci.yml'
 
+stages:
+  - lint
+
 i18n-translate:
   extends: .i18n-translate
   variables:
     I18N_PROVIDER: google
-    I18N_MODEL: gemini-2.0-flash
+    I18N_MODEL: gemini-2.5-flash
     I18N_API_KEY: $GEMINI_API_KEY
-    I18N_LAYER: common
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - i18n/locales/en.json
 
-i18n-cleanup:
-  extends: .i18n-cleanup
-  variables:
-    I18N_LAYER: root
-    I18N_FAIL_ON_ORPHANS: "true"   # optional: exit 2 when orphans are found
-  # allow_failure: false           # optional: make orphans block the merge
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - components/**/*.vue
-        - i18n/locales/*.json
-    # Default-branch baseline — required for the MR Code Quality widget
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
 i18n-check:
   extends: .i18n-check
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Default-branch baseline — required for the MR Code Quality widget
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
-Translations are pushed to the MR branch. Orphan and undefined-key findings are emitted as a `gl-codequality.json` Code Quality artifact and surface in the MR's Code Quality widget. The widget diffs the MR report against the latest default-branch report — without a default-branch rule (no `changes:` filter) the widget stays blank. Artifacts (`.i18n-reports/`, `gl-codequality.json`) are retained for 7 days.
+Two things to know before you adopt this:
 
-Every job decides its outcome from the CLI's exit code rather than by parsing counts out of the JSON result — reading result fields to decide pass/fail is what coupled earlier versions of these templates to undocumented output shapes. `0` is success, `1` means the run itself failed, `2` means a requested gate tripped.
+- The Code Quality widget diffs the MR report against the latest **default-branch** report. Without a default-branch rule (and no `changes:` filter on it) the widget stays blank.
+- Pushing translations back to the branch requires either the GitLab ≥ 17.2 project setting *"Allow Git push requests to the repository"* (job token) or a project access token with `write_repository` scope in `I18N_PUSH_TOKEN`.
 
-`.i18n-cleanup` allows exit `2` only, so orphans surface as a yellow warning while a genuinely broken scan still fails the job red. Set `I18N_FAIL_ON_ORPHANS: "true"` to request the gate and `allow_failure: false` to make orphans block the merge. `.i18n-check` has no opt-in flag — it always exits `1` on findings, because a key that renders raw in production is a defect rather than a threshold, and it carries `allow_failure: true` by default (remove it to make it a gate).
+Every job decides its outcome from the CLI's exit code rather than by parsing counts out of the JSON result. `.i18n-cleanup` and `.i18n-check` allow exit `2` only, so findings surface as a yellow warning while a genuinely broken scan fails the job red.
 
-Pushing back to the branch requires either the GitLab ≥ 17.2 project setting *"Allow Git push requests to the repository"* (job token) or a project access token with `write_repository` scope in `I18N_PUSH_TOKEN`.
-
-**`.i18n-translate` variables:**
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `I18N_PROVIDER` | ✅ | — | `openai`, `anthropic`, or `google` |
-| `I18N_MODEL` | ✅ | — | Model name |
-| `I18N_API_KEY` | ✅ | — | API key for the provider |
-| `I18N_LAYER` | — | all layers | Layer to translate. Leave empty to translate every locale-backed layer in one run — on a layered project `I18N_LOCALE_PATHS` must then cover every layer's directory, or those translations are written but never committed |
-| `I18N_LOCALES` | — | all except source | Comma-separated target locales |
-| `I18N_SOURCE_LOCALE` | — | from `.i18n-mcp.json` | Reference locale |
-| `I18N_KEYS` | — | all missing | Comma-separated keys |
-| `I18N_BATCH_SIZE` | — | `50` | Keys per LLM call |
-| `I18N_DRY_RUN` | — | `false` | Preview without writing |
-| `I18N_FAIL_ON_FAILED` | — | `false` | `"true"` adds `--fail-on-failed`, so the job exits `2` when any key failed to translate. Off by default: the run still commits what succeeded, and the failed keys stay missing for the next run to retry |
-| `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
-| `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
-| `I18N_PUSH_TOKEN` | — | — | Project access token (`write_repository`) — push alternative to the job token |
-| `I18N_LOCALE_PATHS` | — | `i18n/locales/` | Space-separated globs for locale directories |
-| `I18N_COMMIT_MESSAGE` | — | auto-generated | Custom commit message |
-
-**`.i18n-cleanup` variables:**
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `I18N_LAYER` | — | all layers | Layer to scan. Leave empty to scan every layer |
-| `I18N_FAIL_ON_ORPHANS` | — | `false` | `"true"` adds `--fail-on-orphans`, so the job exits `2` when orphans are found |
-| `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
-| `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
-
-**`.i18n-check` variables:**
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `I18N_CLI_VERSION` | — | `latest` | Pin the-i18n-cli (npm version or dist-tag) |
-| `I18N_INSTALL_PEER_DEPS` | — | — | Extra npm packages installed alongside the CLI |
-
-> **Enterprise setups** (private registries, yarn, custom images): override `before_script` on the extending job. The template's `image`, `before_script`, `tags`, and `cache` are all overridable.
+→ [GitLab CI guide](https://fabkho.github.io/the-i18n-kit/ci-cd/gitlab-ci) — every job's variables and failure conditions, the Code Quality baseline, both push-permission options, and the `image` / `before_script` / `tags` / `cache` override points for private registries.
 
 ---
 
