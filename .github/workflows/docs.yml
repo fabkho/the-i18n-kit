@@ -64,10 +64,10 @@ jobs:
       - name: Build packages
         run: pnpm build
 
-      # Generated reference pages are committed, so a command definition that
-      # changed without a regenerated page is a stale reference. Regenerating
-      # here and failing on a difference makes that a red check on the pull
-      # request that caused it rather than something a reader discovers.
+      # Also checked in the CI workflow, which runs on every pull request and
+      # so catches the packages/ change that caused the drift. This copy is the
+      # last line before a deploy: a red CI run does not stop this workflow, so
+      # without it main could still publish pages known to be stale.
       - name: Regenerate the reference
         run: pnpm docs:generate
 
