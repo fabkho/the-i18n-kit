@@ -15,7 +15,7 @@ Part of [the-i18n-kit](https://github.com/fabkho/the-i18n-kit) monorepo. For CLI
 No install needed — your MCP host runs the server via `npx`.
 
 <details>
-<summary><strong>VS Code / Cursor</strong></summary>
+<summary><strong>VS Code</strong></summary>
 
 Add to `.vscode/mcp.json`:
 
@@ -24,6 +24,25 @@ Add to `.vscode/mcp.json`:
   "servers": {
     "the-i18n-mcp": {
       "type": "stdio",
+      "command": "npx",
+      "args": ["@the-i18n-kit/mcp@latest"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Cursor</strong></summary>
+
+Add to `.cursor/mcp.json`. Cursor uses its own path and its own key — a
+`.vscode/mcp.json` with a `servers` block is not read:
+
+```json
+{
+  "mcpServers": {
+    "the-i18n-mcp": {
       "command": "npx",
       "args": ["@the-i18n-kit/mcp@latest"]
     }
