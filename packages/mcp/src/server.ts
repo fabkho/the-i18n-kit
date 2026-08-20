@@ -23,6 +23,7 @@ import {
   searchTranslations,
   removeTranslations,
   renameTranslationKey,
+  moveTranslationKey,
   translateMissing,
   translateKey,
   findOrphanKeys,
@@ -635,6 +636,52 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('removing translations', error)
+      }
+    },
+  )
+
+  // ─── Tool: move_translation_key ────────────────────────────────
+
+  server.registerTool(
+    'move_translation_key',
+    {
+      title: 'Move Translation Key Between Layers',
+      description:
+        'Move a key from one layer to another, carrying every locale that defines it — promoting an '
+        + 'app-layer key to a shared layer once a second app needs it, or demoting a shared key that '
+        + 'turned out to be app-specific. Call discover first: layerGraph.shared names the layers more '
+        + 'than one app consumes. Writes nothing at all if the target layer already holds the key with '
+        + 'a different value in any locale; if it holds the same value, that locale is deduplicated '
+        + 'instead. Use dryRun to preview the plan.',
+      inputSchema: z.object({
+        fromLayer: z
+          .string()
+          .describe('Layer the key lives in today, from discover. Example: "app-admin".'),
+        toLayer: z
+          .string()
+          .describe('Layer to move it to, from discover. Example: "root". Must differ from fromLayer — to rename within one layer, use rename_translation_key.'),
+        key: z
+          .string()
+          .describe('Dot-separated key path to move. Example: "calendar.views.save".'),
+        newKey: z
+          .string()
+          .optional()
+          .describe('Key path in the target layer, when the move also renames it. Example: "common.actions.save". Defaults to the same path.'),
+        dryRun: z
+          .boolean()
+          .optional()
+          .describe('When true, returns the plan without writing any files. Default: false.'),
+        projectDir: z
+          .string()
+          .optional()
+          .describe('Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd.'),
+      }),
+    },
+    async ({ fromLayer, toLayer, key, newKey, dryRun, projectDir = DEFAULT_PROJECT_DIR }) => {
+      try {
+        return jsonContent(await moveTranslationKey({ fromLayer, toLayer, key, newKey, dryRun, projectDir }))
+      } catch (error) {
+        return toolErrorResponse('moving translation key', error)
       }
     },
   )

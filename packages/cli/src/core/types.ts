@@ -334,6 +334,41 @@ export interface RenameTranslationKeyResult {
   }
 }
 
+/** What a move does to one locale's copy of the key. */
+export interface MoveTranslationKeyPlanEntry {
+  locale: string
+  value: unknown
+  /**
+   * `move` writes the target and drops the source. `deduplicate` finds the
+   * target already holding the same value, so only the source is dropped.
+   */
+  action: 'move' | 'deduplicate'
+}
+
+export interface MoveTranslationKeyResult {
+  /** Present when dryRun=true */
+  dryRun?: boolean
+  wouldMove?: MoveTranslationKeyPlanEntry[]
+  /** Present when dryRun=false */
+  movedLocales?: string[]
+  /** Locales where the target already held this value, so only the source was dropped. */
+  deduplicatedLocales?: string[]
+  filesWritten?: number
+  fromLayer?: string
+  toLayer?: string
+  key?: string
+  newKey?: string
+  /** Locales whose source layer does not define the key at all. */
+  notFoundInLocales?: string[]
+  /** Locales where the target holds a different value. Nothing is written when this is non-empty. */
+  conflictsInLocales?: string[]
+  summary?: {
+    localesAffected: number
+    message: string
+    warning?: string
+  }
+}
+
 // ─── translate_missing ───────────────────────────────────────────
 
 /** How a translate run was (or would be) executed. */

@@ -30,6 +30,8 @@ import type {
   UnresolvedLocaleRef,
   RemoveTranslationsResult,
   RenameTranslationKeyResult,
+  MoveTranslationKeyResult,
+  MoveTranslationKeyPlanEntry,
 } from './types.js'
 import { findWritableLayerOrThrow, findLocaleImpl, findLocaleSuggestion, resolveLocaleRef } from './shared.js'
 import type { LocaleRefAmbiguity } from './shared.js'
@@ -535,4 +537,180 @@ export async function scaffoldLocaleFiles(opts: {
     skipped: result.skipped.map(toFileInfo),
     dryRun: opts.dryRun ?? false,
   }
+}
+
+/**
+ * Move a key from one layer to another, carrying every locale that defines it.
+ *
+ * Promoting an app-layer key to the shared layer once a second app needs it is
+ * a first-class operation in a layered monorepo, and composing it out of
+ * get/write/remove is three calls across up to thirty locales with no way to
+ * fail cleanly: a truncation between the write and the remove leaves the key in
+ * both layers, which is the state `find_duplicate_keys` exists to flag (#341).
+ *
+ * So the whole move is planned before anything is written. A target that
+ * already holds a *different* value is a conflict, and one conflict in one
+ * locale writes nothing at all — a half-moved key across thirty files is worse
+ * than a refusal. A target already holding the *same* value is not a conflict
+ * but a duplicate the move resolves: the source copy is dropped and the locale
+ * is reported as deduplicated.
+ *
+ * Locales come from the resolved config rather than from caller-supplied refs,
+ * so there is no ref to leave unresolved (#301) — a locale the source layer
+ * does not define is reported in `notFoundInLocales` rather than skipped
+ * silently.
+ */
+export async function moveTranslationKey(opts: {
+  fromLayer: string
+  toLayer: string
+  key: string
+  newKey?: string
+  dryRun?: boolean
+  projectDir?: string
+}): Promise<MoveTranslationKeyResult> {
+  const { fromLayer, toLayer, key } = opts
+  const targetKey = opts.newKey ?? key
+  const config = await detectI18nConfig(opts.projectDir ?? process.cwd())
+
+  if (fromLayer === toLayer) {
+    throw new ToolError(
+      `fromLayer and toLayer are both "${fromLayer}". To rename a key within one layer, use rename_translation_key.`,
+      'SAME_LAYER',
+    )
+  }
+
+  // Both ends must be real, writable layers before anything is read: an alias
+  // target would write into the layer it points at, silently landing the key
+  // somewhere the caller did not name.
+  findWritableLayerOrThrow(config, fromLayer)
+  findWritableLayerOrThrow(config, toLayer)
+
+  const { plan, notFound, conflicts } = await planMove(config, { fromLayer, toLayer, key, targetKey })
+
+  const identity = {
+    fromLayer,
+    toLayer,
+    key,
+    ...(opts.newKey ? { newKey: opts.newKey } : {}),
+    ...(notFound.length > 0 ? { notFoundInLocales: notFound } : {}),
+  }
+
+  // Refuse before writing, not part-way through.
+  if (conflicts.length > 0) {
+    return {
+      ...identity,
+      conflictsInLocales: conflicts,
+      summary: {
+        localesAffected: 0,
+        message: 'Nothing was written.',
+        warning: `"${targetKey}" already exists in "${toLayer}" with a different value in ${conflicts.length} locale(s). `
+          + 'Resolve those locales first — reconcile the values, or move to a key that does not collide.',
+      },
+    }
+  }
+
+  if (opts.dryRun ?? false) {
+    return {
+      dryRun: true,
+      wouldMove: plan,
+      ...identity,
+      summary: {
+        localesAffected: plan.length,
+        message: 'Call again with dryRun: false to apply these changes.',
+      },
+    }
+  }
+
+  const applied = await applyMove(config, { fromLayer, toLayer, key, targetKey }, plan)
+
+  return {
+    movedLocales: applied.moved,
+    ...(applied.deduplicated.length > 0 ? { deduplicatedLocales: applied.deduplicated } : {}),
+    filesWritten: applied.filesWritten,
+    ...identity,
+  }
+}
+
+/** Where a move reads from and writes to, with the key on each end. */
+interface MoveTarget {
+  fromLayer: string
+  toLayer: string
+  key: string
+  targetKey: string
+}
+
+/**
+ * Decide every locale's outcome before any of them is written, so that one
+ * conflicting locale can stop the whole move rather than half of it.
+ */
+async function planMove(
+  config: I18nConfig,
+  { fromLayer, toLayer, key, targetKey }: MoveTarget,
+): Promise<{ plan: MoveTranslationKeyPlanEntry[], notFound: string[], conflicts: string[] }> {
+  const plan: MoveTranslationKeyPlanEntry[] = []
+  const notFound: string[] = []
+  const conflicts: string[] = []
+
+  for (const locale of config.locales) {
+    const source = await readLocaleDataIfPresent(config, fromLayer, locale)
+    const value = source ? getNestedValue(source, key) : undefined
+    if (value === undefined) {
+      notFound.push(locale.code)
+      continue
+    }
+
+    const target = await readLocaleDataIfPresent(config, toLayer, locale)
+    const existing = target ? getNestedValue(target, targetKey) : undefined
+
+    if (existing === undefined) plan.push({ locale: locale.code, value, action: 'move' })
+    else if (sameTranslation(existing, value)) plan.push({ locale: locale.code, value, action: 'deduplicate' })
+    else conflicts.push(locale.code)
+  }
+
+  return { plan, notFound, conflicts }
+}
+
+/** Execute an already-validated plan. */
+async function applyMove(
+  config: I18nConfig,
+  { fromLayer, toLayer, key, targetKey }: MoveTarget,
+  plan: MoveTranslationKeyPlanEntry[],
+): Promise<{ moved: string[], deduplicated: string[], filesWritten: number }> {
+  const moved: string[] = []
+  const deduplicated: string[] = []
+  const filesWritten = new Set<string>()
+
+  for (const entry of plan) {
+    const locale = findLocaleImpl(config, entry.locale)
+    if (!locale) continue
+
+    // Target first: if the run dies between the two, the key exists in both
+    // layers — recoverable, and visible to find_duplicate_keys. The other order
+    // loses the translation outright.
+    if (entry.action === 'move') {
+      for (const file of await mutateLocaleData(config, toLayer, locale, (data) => {
+        setNestedValue(data, targetKey, entry.value)
+      })) filesWritten.add(file)
+      moved.push(entry.locale)
+    } else {
+      deduplicated.push(entry.locale)
+    }
+
+    for (const file of await mutateLocaleData(config, fromLayer, locale, (data) => {
+      removeNestedValue(data, key)
+    })) filesWritten.add(file)
+  }
+
+  return { moved, deduplicated, filesWritten: filesWritten.size }
+}
+
+/**
+ * Whether the target already holds what the move would write. Values are
+ * usually strings, but a key can name a whole namespace object, so this
+ * compares structurally rather than by identity.
+ */
+function sameTranslation(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  return JSON.stringify(a) === JSON.stringify(b)
 }

@@ -106,6 +106,7 @@ describe('the-i18n-mcp server over in-memory transport', () => {
       'get_translation_status',
       'get_translations',
       'list_namespaces',
+      'move_translation_key',
       'remove_orphan_keys',
       'remove_translations',
       'rename_translation_key',
@@ -390,6 +391,47 @@ describe('the-i18n-mcp server over in-memory transport', () => {
       expect(json?.summary.searchedLayersByApp).toEqual({ default: ['root'] })
     } finally {
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Promoting a key is the operation the layer graph's answer leads to (#341,
+  // #342): discover names the shared layer, this moves the key into it. Needs
+  // two layers, which the shared single-layer fixture does not have.
+  it('move_translation_key promotes a key between layers', async () => {
+    const twoLayer = await mkdtemp(join(tmpdir(), 'i18n-mcp-move-'))
+    try {
+      for (const [dir, data] of [
+        ['app-admin/i18n/locales', { admin: { dashboard: { title: 'Übersicht' } } }],
+        ['i18n/locales', {}],
+      ] as const) {
+        await mkdir(join(twoLayer, dir), { recursive: true })
+        await writeFile(join(twoLayer, dir, 'de.json'), JSON.stringify(data))
+      }
+      await writeFile(join(twoLayer, '.i18n-mcp.json'), JSON.stringify({
+        localeDirs: [
+          { path: 'i18n/locales', layer: 'root' },
+          { path: 'app-admin/i18n/locales', layer: 'app-admin' },
+        ],
+        defaultLocale: 'de',
+        locales: ['de'],
+      }))
+
+      const { json } = await callTool('move_translation_key', {
+        fromLayer: 'app-admin',
+        toLayer: 'root',
+        key: 'admin.dashboard.title',
+        newKey: 'common.dashboard.title',
+        projectDir: twoLayer,
+      })
+
+      expect(json?.movedLocales).toEqual(['de'])
+      expect(json?.filesWritten).toBe(2)
+      expect(JSON.parse(await readFile(join(twoLayer, 'i18n/locales/de.json'), 'utf-8')))
+        .toEqual({ common: { dashboard: { title: 'Übersicht' } } })
+      expect(JSON.parse(await readFile(join(twoLayer, 'app-admin/i18n/locales/de.json'), 'utf-8')))
+        .toEqual({})
+    } finally {
+      await rm(twoLayer, { recursive: true, force: true })
     }
   })
 

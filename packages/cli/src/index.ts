@@ -14,6 +14,7 @@ export {
   searchTranslations,
   removeTranslations,
   renameTranslationKey,
+  moveTranslationKey,
   translateMissing,
   translateKey,
   findOrphanKeys,
