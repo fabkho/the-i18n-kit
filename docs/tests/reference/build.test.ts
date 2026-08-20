@@ -9,10 +9,13 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { CONFIG_REFERENCE_ROUTE } from '../../generate/reference/config-pages.js'
 import { buildReference } from '../../generate/reference/build.js'
-import type { CliCommandEntry } from '../../generate/reference/types.js'
+import type { CliCommandEntry, ReferenceSources } from '../../generate/reference/types.js'
 import {
   DISCOVER_TOOL,
+  FIXTURE_SCHEMA,
+  fixtureConfigSource,
   HIDDEN_ENTRY,
   SCAN_ENTRY,
   TRANSLATE_ALIAS_ENTRY,
@@ -25,6 +28,10 @@ import {
 } from './fixtures.js'
 import {
   CLI_DIR,
+  configPage,
+  documentedFields,
+  documentedNames,
+  renderedText,
   MCP_DIR,
   actionPage,
   commandPage,
@@ -39,8 +46,8 @@ import {
   toolPage,
 } from './helpers.js'
 
-function build(cli = fixtureCliSource()) {
-  return buildReference(fixtureSources({ cli }))
+function build(overrides: Partial<ReferenceSources> = {}) {
+  return buildReference(fixtureSources(overrides))
 }
 
 describe('buildReference', () => {
@@ -159,6 +166,7 @@ describe('buildReference', () => {
     expect(markdown).toContain('/reference/cli')
     expect(markdown).toContain('/reference/mcp')
     expect(markdown).toContain('/reference/action')
+    expect(markdown).toContain(CONFIG_REFERENCE_ROUTE)
   })
 })
 
@@ -315,3 +323,112 @@ describe('the GitHub Action reference, from a fixture manifest', () => {
     expect(buildAction(source)).not.toContain('::note')
   })
 })
+
+describe('the configuration reference, from a fixture schema', () => {
+  it('lists every field the schema declares, and nothing else', () => {
+    const markdown = configPage(build())
+    expect(documentedFields(markdown)).toEqual(new Set(Object.keys(FIXTURE_SCHEMA.properties)))
+  })
+
+  it('carries every description the schema declares, verbatim', () => {
+    const markdown = renderedText(configPage(build()))
+    for (const node of Object.values(FIXTURE_SCHEMA.properties)) {
+      expect(markdown).toContain(node.description)
+    }
+  })
+
+  it('renders the type and the constraints the schema imposes', () => {
+    const markdown = configPage(build())
+    // A union renders as its members, not as the word "union", and an array of
+    // one keeps the constraint on the entry rather than on the array.
+    expect(markdown).toContain('`true \\| string`')
+    expect(markdown).toContain('`Record<string, string>`')
+    expect(markdown).toContain('each entry: minimum length 1')
+    expect(markdown).toContain('suggested: "nuxt", "generic"')
+  })
+
+  it('marks a deprecated field as deprecated and keeps its migration note', () => {
+    const row = fieldRow(configPage(build()), 'samplingPreferences')
+    expect(row).toContain('deprecated')
+    expect(row).toContain('configure a provider instead')
+  })
+
+  it('documents a nested object rather than flattening it to `object`', () => {
+    const shape = section(configPage(build()), '### `layerRules`')
+    // Including the optional property, and which of the three is required.
+    expect(documentedNames(shape)).toEqual(new Set(['layer', 'when', 'note']))
+    expect(shape).toMatch(/\| `layer` \| `string` \| yes \|/)
+    expect(shape).toMatch(/\| `note` \| `string` \| no \|/)
+  })
+
+  it('documents both accepted forms of an entry, including the object one', () => {
+    const shape = section(configPage(build()), '### `localeDirs`')
+    expect(shape).toContain('Relative path to a locale directory.')
+
+    // The object form's own properties, which a `string | object` union would
+    // otherwise leave undocumented.
+    const objectForm = shape.slice(shape.indexOf('form holds:'))
+    expect(documentedNames(objectForm)).toEqual(new Set(['path', 'layer']))
+    expect(objectForm).toContain('Layer name for this directory.')
+  })
+
+  it('documents a record entry and says that unlisted keys still validate', () => {
+    const shape = section(configPage(build()), '### `orphanScan`')
+    expect(documentedNames(shape)).toEqual(new Set(['ignorePatterns']))
+    expect(shape).toContain('Properties beyond these are accepted')
+  })
+
+  it('states where each field may be declared, restrictions included', () => {
+    const config = fixtureConfigSource()
+    const markdown = configPage(build({ config }))
+
+    for (const key of config.moduleOwnedKeys) {
+      expect(fieldRow(markdown, key)).toContain('rejected by `@the-i18n-kit/nuxt`')
+    }
+    for (const key of config.untypedKeys) {
+      expect(fieldRow(markdown, key)).toContain('`.i18n-mcp.json` only')
+    }
+    expect(fieldRow(markdown, 'framework')).toContain('Either config file')
+  })
+
+  it('names the options the i18nKit block accepts instead of these fields', () => {
+    const markdown = configPage(build())
+    for (const option of fixtureConfigSource().nuxtModuleOptions) {
+      expect(markdown).toContain(`\`${option}\``)
+    }
+  })
+
+  it('documents a field added to the schema with no other change', () => {
+    const added = {
+      type: 'string' as const,
+      description: 'Where the CI report is written.',
+    }
+    const config = fixtureConfigSource({
+      schema: {
+        ...FIXTURE_SCHEMA,
+        properties: { ...FIXTURE_SCHEMA.properties, ciReport: added },
+      },
+    })
+    const markdown = configPage(build({ config }))
+
+    expect(documentedFields(markdown)).toContain('ciReport')
+    expect(markdown).toContain(added.description)
+  })
+
+  it('emits the page at the path whose route the concept pages link', () => {
+    // The route follows from the file's location: numeric directory prefixes are
+    // stripped, so this path and only this path serves /configuration/reference.
+    const output = build()
+    expect([...output.keys()]).toContain('5.configuration/4.reference.md')
+    expect(CONFIG_REFERENCE_ROUTE).toBe('/configuration/reference')
+  })
+})
+
+/** The field table row for one field, by the code span that opens it. */
+function fieldRow(markdown: string, field: string): string {
+  const row = section(markdown, '## Fields')
+    .split('\n')
+    .find(line => new RegExp(`^\\| \\[?\`${field.replace('$', '\\$')}\``).test(line))
+  if (row === undefined) throw new Error(`No row for ${field} in the field table.`)
+  return row
+}

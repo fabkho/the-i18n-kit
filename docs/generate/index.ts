@@ -7,12 +7,14 @@
  * in `reference/` instead.
  */
 
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildReference } from './reference/build.js'
+import { GENERATED_NOTICE } from './reference/markdown.js'
 import { loadActionSource } from './sources/action.js'
 import { loadCliSource } from './sources/cli.js'
+import { loadConfigSource } from './sources/config.js'
 import { loadMcpSource } from './sources/mcp.js'
 import type { ReferenceOutput } from './reference/types.js'
 
@@ -29,23 +31,49 @@ const OWNED_DIRS = ['9.reference']
 
 async function main(): Promise<void> {
   // Loaded in parallel: the MCP listing spawns the built server and waits on a
-  // protocol round trip, which is the slowest of the three by an order of
-  // magnitude and has nothing to wait for from the others.
-  const [cli, mcp, action] = await Promise.all([
+  // protocol round trip, which is the slowest by an order of magnitude and has
+  // nothing to wait for from the others.
+  const [cli, mcp, action, config] = await Promise.all([
     loadCliSource(),
     loadMcpSource(),
     loadActionSource(),
+    loadConfigSource(),
   ])
-  const output = buildReference({ cli, mcp, action })
+  const output = buildReference({ cli, mcp, action, config })
 
   for (const dir of OWNED_DIRS) {
     await rm(join(CONTENT_DIR, dir), { recursive: true, force: true })
   }
+  await removeStaleGeneratedPages(output)
   await writeOutput(output)
 
   process.stdout.write(
     `Generated ${output.size} reference page(s) under ${relative(process.cwd(), CONTENT_DIR)}\n`,
   )
+}
+
+/**
+ * Delete generated pages this run did not produce.
+ *
+ * The reference directories above are owned outright and emptied wholesale. The
+ * configuration reference is not in one: it sits among hand-written pages
+ * because its route is part of the site's structure, so the directory around it
+ * cannot be wiped. Ownership is decided by the generated notice inside the file
+ * instead, which also survives renaming the page — the case a path list misses,
+ * leaving a stale reference published under its old route.
+ */
+async function removeStaleGeneratedPages(output: ReferenceOutput): Promise<void> {
+  const entries = await readdir(CONTENT_DIR, { recursive: true })
+  const candidates = entries.filter(entry => entry.endsWith('.md') && !output.has(entry))
+
+  for (const entry of candidates) {
+    const path = join(CONTENT_DIR, entry)
+    if (await isGenerated(path)) await rm(path)
+  }
+}
+
+async function isGenerated(path: string): Promise<boolean> {
+  return (await readFile(path, 'utf-8')).includes(GENERATED_NOTICE)
 }
 
 async function writeOutput(output: ReferenceOutput): Promise<void> {

@@ -12,6 +12,8 @@ import type {
   ActionSource,
   CliCommandEntry,
   CliSource,
+  ConfigJsonSchema,
+  ConfigSource,
   McpSource,
   McpToolListing,
   ReferenceSources,
@@ -165,12 +167,116 @@ export function fixtureActionSource(overrides: Partial<ActionSource> = {}): Acti
   }
 }
 
+/**
+ * A JSON Schema in the shape `z.toJSONSchema()` emits for the config schema,
+ * cut down to one field of each kind the reference has to render: a scalar with
+ * a suggestion list, an array of objects, a record of objects that accepts
+ * unlisted keys, a union, a constrained array, a key the Nuxt module derives, a
+ * key the typed config's interface omits, and a deprecated one.
+ */
+export const FIXTURE_SCHEMA: ConfigJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    $schema: {
+      type: 'string',
+      description: 'Path or URL to the JSON schema for IDE autocompletion.',
+    },
+    framework: {
+      type: 'string',
+      description: 'Force framework detection instead of auto-detecting.',
+      examples: ['nuxt', 'generic'],
+    },
+    glossary: {
+      type: 'object',
+      additionalProperties: { type: 'string' },
+      description: 'Term dictionary for consistent translations.',
+    },
+    layerRules: {
+      type: 'array',
+      description: 'Rules that decide which layer a new key belongs to.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['layer', 'when'],
+        properties: {
+          layer: { type: 'string', description: 'Layer name.' },
+          when: { type: 'string', description: 'When a key belongs in this layer.' },
+          note: { type: 'string', description: 'Optional aside.' },
+        },
+      },
+    },
+    orphanScan: {
+      type: 'object',
+      description: 'Per-layer configuration for orphan key detection.',
+      additionalProperties: {
+        type: 'object',
+        additionalProperties: {},
+        properties: {
+          ignorePatterns: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Key globs to exclude from orphan detection.',
+          },
+        },
+      },
+    },
+    localeDirs: {
+      type: 'array',
+      description: 'Locale directories for the generic adapter.',
+      items: {
+        anyOf: [
+          { type: 'string', minLength: 1, description: 'Relative path to a locale directory.' },
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['path', 'layer'],
+            properties: {
+              path: { type: 'string', minLength: 1, description: 'Relative path.' },
+              layer: { type: 'string', minLength: 1, description: 'Layer name for this directory.' },
+            },
+          },
+        ],
+      },
+    },
+    protectedLocales: {
+      type: 'array',
+      items: { type: 'string', minLength: 1 },
+      description: 'Locales excluded from automatic translation.',
+    },
+    reportOutput: {
+      description: 'Write full reports to <reportOutput>/<toolName>.json.',
+      anyOf: [
+        { type: 'boolean', const: true, description: 'Write to the default directory.' },
+        { type: 'string', minLength: 1, description: 'A directory path of your own.' },
+      ],
+    },
+    samplingPreferences: {
+      deprecated: true,
+      description: 'Deprecated and ignored — configure a provider instead.',
+    },
+  },
+}
+
+export function fixtureConfigSource(overrides: Partial<ConfigSource> = {}): ConfigSource {
+  return {
+    schema: FIXTURE_SCHEMA,
+    moduleOwnedKeys: ['localeDirs'],
+    untypedKeys: ['$schema', 'samplingPreferences'],
+    nuxtModuleOptions: ['enabled', 'failOnInvalidConfig'],
+    ...overrides,
+  }
+}
+
+/** Every source the builder needs, with either half replaceable per test. */
+
 /** Every source the builder needs, so a test overrides only the one it is about. */
 export function fixtureSources(overrides: Partial<ReferenceSources> = {}): ReferenceSources {
   return {
     cli: fixtureCliSource(),
     mcp: fixtureMcpSource(),
     action: fixtureActionSource(),
+    config: fixtureConfigSource(),
     ...overrides,
   }
 }
