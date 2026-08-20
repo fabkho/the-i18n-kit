@@ -172,6 +172,22 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(second.json).not.toHaveProperty('_notice')
   })
 
+  // The flat layer list discover returned could not answer where a new key
+  // belongs, so an agent had to guess from layer names — the heuristic the
+  // layer-graph module was written to replace (#342).
+  it('discover carries the layer graph, not just a flat layer list', async () => {
+    const { json } = await callTool('discover', { projectDir })
+
+    expect(json?.layerGraph.canonical).toContain('root')
+    // Every canonical layer is a key, so "no consumers" and "not computed"
+    // cannot be confused for one another by whatever reads this.
+    for (const layer of json?.layerGraph.canonical as string[]) {
+      expect(json?.layerGraph.consumers[layer]).toBeInstanceOf(Array)
+    }
+    expect(json?.layerGraph.shared).toBeInstanceOf(Array)
+    expect(json?.layerGraph.aliases).toBeInstanceOf(Object)
+  })
+
   it('find_empty_translations reports a key that exists but has no value', async () => {
     // Empty values are not missing keys — they are present in the file and
     // render as nothing, which is why they need a report of their own.

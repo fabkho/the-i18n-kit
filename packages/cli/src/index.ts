@@ -43,8 +43,8 @@ export * from './core/types.js'
 // Config
 export { detectI18nConfig, getCachedConfig, clearConfigCache } from './config/detector.js'
 export type { I18nConfig, LocaleDefinition, LocaleDir, ProjectConfig } from './config/types.js'
-export { buildLayerGraph } from './config/layer-graph.js'
-export type { LayerGraph } from './config/layer-graph.js'
+export { buildLayerGraph, serializeLayerGraph } from './config/layer-graph.js'
+export type { LayerGraph, SerializedLayerGraph } from './config/layer-graph.js'
 
 // IO
 export { readLocaleData } from './io/locale-data.js'

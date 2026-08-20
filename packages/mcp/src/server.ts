@@ -14,6 +14,7 @@ import {
   renameNotice,
   detectConfig,
   listLocaleDirs,
+  serializeLayerGraph,
   getTranslations,
   writeTranslations,
   getMissingTranslations,
@@ -287,7 +288,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         + 'fallback chain, glossary, translation style) plus per-layer directory listings with file '
         + 'counts and top-level key namespaces, and the active translation mode ("provider" when the '
         + 'server has an env-configured LLM provider, "agent" otherwise). Call this first to '
-        + 'understand the project before reading or writing translations.',
+        + 'understand the project before reading or writing translations. layerGraph answers where a '
+        + 'new key belongs: a key used by more than one app belongs in a layer those apps share, and '
+        + 'layerGraph.shared names those layers.',
       inputSchema: z.object({
         projectDir: z
           .string()
@@ -307,6 +310,11 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           // projectConfig.protectedLocales).
           protectedLocales: resolveProtectedLocales(config).map(l => l.code),
           layers: dirs,
+          // The topology behind that flat list: which layers are shared, which
+          // apps consume which layer, and what each alias points at. Without it
+          // an agent placing a key can only guess from layer names, which is
+          // how app-layer keys end up duplicating root keys (#342).
+          layerGraph: serializeLayerGraph(config),
           // Active translation mode — lets operators verify env configuration
           // without triggering a translation. Never includes the API key.
           translationMode: backend.mode,

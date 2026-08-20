@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildLayerGraph } from '../../src/config/layer-graph.js'
+import { buildLayerGraph, serializeLayerGraph } from '../../src/config/layer-graph.js'
 import type { I18nConfig } from '../../src/config/types.js'
 import {
   createMultiAppConfig,
@@ -165,5 +165,62 @@ describe('buildLayerGraph — degenerate configs', () => {
     expect(graph.sharedLayers).toEqual([])
     expect(graph.appsUsingLayer('root')).toEqual(['root'])
     expect(graph.layersOfApp('root').map(d => d.layer)).toEqual(['root'])
+  })
+})
+
+/**
+ * The graph as JSON, which is the only form the MCP surface can carry (#342).
+ * The degenerate cases matter more here than anywhere: a consumer reading this
+ * to place a key has nothing else to fall back on.
+ */
+describe('serializeLayerGraph', () => {
+  it('names the shared layers a key can be placed in, and who consumes each', () => {
+    const graph = serializeLayerGraph(createMultiAppConfig())
+
+    expect(graph.canonical).toEqual(['root', 'app-admin', 'app-shop'])
+    // root because all three apps consume it. app-shop because app-outlook is
+    // an alias of it, so two apps read the same dir — a key used by both
+    // belongs there rather than in root, which no name-matching would tell you.
+    expect(graph.shared).toEqual(['root', 'app-shop'])
+    expect(graph.consumers.root).toEqual(['app-admin', 'app-shop', 'app-outlook'])
+    expect(graph.consumers['app-admin']).toEqual(['app-admin'])
+  })
+
+  it('resolves an alias to the layer whose dir actually holds the keys', () => {
+    const graph = serializeLayerGraph(createMultiAppConfig())
+
+    expect(graph.aliases).toEqual({ 'app-outlook': 'app-shop' })
+    // The alias is not a placement target: it has no dir of its own.
+    expect(graph.canonical).not.toContain('app-outlook')
+    // Its consumption still counts, through the layer that owns the dir.
+    expect(graph.consumers['app-shop']).toEqual(['app-shop', 'app-outlook'])
+  })
+
+  it('reports every layer as shared when no app info exists, rather than none', () => {
+    // Absent app info is not "nothing is shared" — ownership is unknowable, so
+    // every layer's keys must be treated as globally visible. Flattening that
+    // to an empty array would invite a consumer to narrow scope wrongly.
+    const graph = serializeLayerGraph(createNoAppsConfig())
+
+    expect(graph.shared).toEqual(graph.canonical)
+    expect(graph.consumers).toEqual({ default: [] })
+  })
+
+  it('keeps a layer no app consumes as an empty list, not a missing key', () => {
+    const config = createMultiAppConfig()
+    config.apps = config.apps!.filter(app => app.name !== 'app-admin')
+
+    const graph = serializeLayerGraph(config)
+
+    expect(graph.canonical).toContain('app-admin')
+    expect(graph.consumers['app-admin']).toEqual([])
+    expect(graph.shared).not.toContain('app-admin')
+  })
+
+  it('reports nothing as shared for a single-app project', () => {
+    const graph = serializeLayerGraph(createPlaygroundConfig())
+
+    expect(graph.shared).toEqual([])
+    expect(graph.consumers.root).toEqual(['root'])
   })
 })
