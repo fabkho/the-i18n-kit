@@ -28,7 +28,7 @@ The command pages are generated from the command definitions, so a flag that no 
 | [`translate`](/reference/cli/translate) | Find missing translations and translate them via LLM. Requires --provider and --model for auto-translation. |
 | [`translate-key`](/reference/cli/translate-key) | Translate a single key from a source locale into target locales. Supports LLM translation with --provider. |
 | [`scan`](/reference/cli/scan) | Scan source code for translation key usage (file paths + line numbers) |
-| [`check`](/reference/cli/check) | Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); exits non-zero when any are found |
+| [`check`](/reference/cli/check) | Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); exits 2 when any are found |
 | [`find-duplicates`](/reference/cli/find-duplicates) | Find keys defined in both a shared layer and a consuming child layer (with divergence detection) |
 | [`remove-orphans`](/reference/cli/remove-orphans) | Find and remove orphan translation keys not referenced in source code |
 | [`scaffold`](/reference/cli/scaffold) | Create empty locale files for new languages |
@@ -73,10 +73,11 @@ Gates are opt-in. Without one of these flags a command reports its findings and 
 | [`missing`](/reference/cli/missing) | `--failOnMissing` | Exit 2 when any key is missing (CI gate) |
 | [`status`](/reference/cli/status) | `--failUnder` | Exit 2 when overall completion is below this percentage (CI gate) |
 | [`translate`](/reference/cli/translate) | `--failOnFailed` | Exit 2 when any key failed to translate (CI gate) |
+| [`check`](/reference/cli/check) | always on | `summary.undefinedCount` is above `0` |
 | [`remove-orphans`](/reference/cli/remove-orphans) | `--failOnOrphans` | Exit 2 when any orphan key is found (CI gate) |
 
 When a gate trips, the result gains a `gatesTripped` array naming each gate, the counter it read and the value it observed. A run where nothing tripped is byte-for-byte what it was before gates existed, so a consumer parsing the result needs no change to tolerate them.
 
 ::note
-A command can also fail on its own findings without being asked, through a condition the shared factory evaluates rather than a gate flag. A command that does says so in its description above. That path sets exit 1, not 2, and reports no `gatesTripped` — no gate was involved.
+A gate marked "always on" needs no flag: its findings are a defect rather than a threshold you opt into caring about. It still reports as a gate — exit 2 with a `gatesTripped` entry — so a finding stays distinguishable from the run itself failing with exit 1.
 ::

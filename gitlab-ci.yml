@@ -416,13 +416,14 @@
 .i18n-check:
   extends: .i18n-base
   stage: lint
-  # `check` gates unconditionally on exit 1 — a key that renders raw in
-  # production is a defect, not a threshold, so it has no opt-in flag and no
-  # exit 2. That means findings and a crashed scan both surface as 1 here, so
-  # this job cannot use allow_failure.exit_codes the way .i18n-cleanup does.
-  # allow_failure keeps findings informational (they still reach the MR
-  # widget) — remove allow_failure on the extending job to make it a gate.
-  allow_failure: true
+  # `check` gates unconditionally — a key that renders raw in production is a
+  # defect, not a threshold, so the gate has no opt-in flag. It is still a
+  # gate: findings exit 2, a scan that fell over exits 1. Allowing only 2 keeps
+  # findings informational (they still reach the MR widget) while a broken scan
+  # fails the job red rather than passing for a project with no findings.
+  # Remove allow_failure on the extending job to make findings block too.
+  allow_failure:
+    exit_codes: [2]
   variables:
     I18N_CLI_VERSION: "latest"
     I18N_INSTALL_PEER_DEPS: ""

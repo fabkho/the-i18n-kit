@@ -104,4 +104,41 @@ describe('gate exit codes through the real binary', () => {
 
     expect(code).toBe(0)
   })
+
+  // check's gate is always on — a key that renders raw in production is a
+  // defect, not a threshold — but it is still a gate. Reporting it as exit 1
+  // left CI unable to tell an undefined key from a scan that fell over (#369).
+  describe('check, whose gate takes no flag', () => {
+    it('exits 2 and names the gate when a key is defined nowhere', async () => {
+      await writeFile(
+        join(projectDir, 'src/app.ts'),
+        `export const missing = t('common.nowhere')\n`,
+      )
+
+      const { stdout, code } = await runBin(['check'], projectDir)
+
+      expect(code).toBe(2)
+      expect(JSON.parse(stdout)).toMatchObject({
+        summary: { undefinedCount: 1 },
+        gatesTripped: [{ name: 'undefined-keys', counter: 'undefinedCount', threshold: 0, observed: 1 }],
+      })
+    })
+
+    it('exits 0 when every referenced key is defined', async () => {
+      await writeFile(
+        join(projectDir, 'src/app.ts'),
+        `export const label = t('common.greeting')\n`,
+      )
+
+      const { code } = await runBin(['check'], projectDir)
+
+      expect(code).toBe(0)
+    })
+
+    it('still exits 1 when the run itself fails, so the two stay distinguishable', async () => {
+      const { code } = await runBin(['check', '--projectDir', join(projectDir, 'no-such-dir')], projectDir)
+
+      expect(code).toBe(1)
+    })
+  })
 })

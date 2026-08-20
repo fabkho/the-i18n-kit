@@ -4,7 +4,7 @@
  * about it.
  */
 
-import { buildCliModel, gateArgs, specificArgs } from './cli-model.js'
+import { alwaysOnGates, buildCliModel, gateArgs, specificArgs } from './cli-model.js'
 import { GENERATED_NOTICE, cell, code, frontmatter, page, table } from './markdown.js'
 import type { ArgDoc, CliSource, CommandDoc, ExitCodeValues, ReferenceOutput } from './types.js'
 
@@ -99,13 +99,18 @@ function exitCodeTable(exitCodes: ExitCodeValues): string {
 }
 
 function gateTable(commands: CommandDoc[]): string {
-  const rows = commands.flatMap(command =>
-    gateArgs(command).map(arg => [
-      `[${code(command.name)}](${ROUTE}/${command.name})`,
-      code(`--${arg.name}`),
-      cell(arg.description),
-    ]),
-  )
+  const rows = commands.flatMap((command) => {
+    const link = `[${code(command.name)}](${ROUTE}/${command.name})`
+    return [
+      ...gateArgs(command).map(arg => [link, code(`--${arg.name}`), cell(arg.description)]),
+      // No flag to name, so the trip condition is stated from the spec itself.
+      ...alwaysOnGates(command).map(gate => [
+        link,
+        'always on',
+        `${code(`summary.${gate.counter}`)} is ${gate.direction === 'below' ? 'below' : 'above'} ${code(String(gate.threshold ?? 0))}`,
+      ]),
+    ]
+  })
   return table(['Command', 'Flag', 'Trips when'], rows)
 }
 
@@ -113,11 +118,11 @@ function gateReportNote(exitCodes: ExitCodeValues): string[] {
   return [
     `When a gate trips, the result gains a ${code('gatesTripped')} array naming each gate, the counter it read and the value it observed. A run where nothing tripped is byte-for-byte what it was before gates existed, so a consumer parsing the result needs no change to tolerate them.`,
     ['::note',
-      `A command can also fail on its own findings without being asked, through a `
-      + `condition the shared factory evaluates rather than a gate flag. A command `
-      + `that does says so in its description above. That path sets exit `
-      + `${exitCodes.runFailed}, not ${exitCodes.gateTripped}, and reports no `
-      + `${code('gatesTripped')} — no gate was involved.`,
+      `A gate marked "always on" needs no flag: its findings are a defect rather `
+      + `than a threshold you opt into caring about. It still reports as a gate — `
+      + `exit ${exitCodes.gateTripped} with a ${code('gatesTripped')} entry — so a `
+      + `finding stays distinguishable from the run itself failing with exit `
+      + `${exitCodes.runFailed}.`,
       '::'].join('\n'),
   ]
 }
