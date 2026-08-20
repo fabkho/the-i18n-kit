@@ -79,7 +79,14 @@ export const projectConfigSchema = z.object({
     )
     .optional(),
   examples: z.array(
-    z.record(z.string(), z.string())
+    // `key` is required because the prompt builder renders `- ${ex.key}: …`
+    // unconditionally: an entry without one reached the provider as the literal
+    // string "undefined", offered as a translation key to imitate (#367).
+    z.object({
+      key: z.string().describe('The dot-path translation key this example demonstrates (e.g., \'common.actions.save\').'),
+      note: z.string().describe('Optional style comment shown alongside the example.').optional(),
+    })
+      .catchall(z.string())
       .describe(
         'A single translation example. \'key\' holds the dot-path translation key (e.g., '
         + '\'common.actions.save\'), \'note\' an optional style comment, and every other '

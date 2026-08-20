@@ -79,9 +79,19 @@
       "type": "array",
       "items": {
         "type": "object",
-        "propertyNames": {
-          "type": "string"
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The dot-path translation key this example demonstrates (e.g., 'common.actions.save')."
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional style comment shown alongside the example."
+          }
         },
+        "required": [
+          "key"
+        ],
         "additionalProperties": {
           "type": "string"
         },

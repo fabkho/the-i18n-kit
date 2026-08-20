@@ -254,6 +254,44 @@ describe('loadProjectConfig', () => {
     }
   })
 
+  // The prompt builder renders `- ${ex.key}: …` unconditionally, so an entry
+  // without a key reached the provider as the literal word "undefined" —
+  // offered to the model as a translation key to imitate (#367).
+  it('rejects an examples entry with no key, naming the field', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({
+        examples: [{ de: 'Buchung', 'en-us': 'Booking' }],
+      }), 'utf-8')
+
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/key/)
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
+  it('keeps note optional and accepts any locale code alongside the key', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({
+        examples: [
+          { key: 'common.actions.save', de: 'Speichern', 'en-us': 'Save' },
+          { key: 'common.terms.booking', de: 'Buchung', note: 'never "Reservierung"' },
+        ],
+      }), 'utf-8')
+
+      const config = await loadProjectConfig(tmpDir)
+
+      expect(config!.examples).toHaveLength(2)
+      expect(config!.examples![0]!['en-us']).toBe('Save')
+      expect(config!.examples![1]!.note).toBe('never "Reservierung"')
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
   it('accepts orphanScan without ignorePatterns (optional field)', async () => {
     await mkdir(tmpDir, { recursive: true })
     const configPath = resolve(tmpDir, '.i18n-mcp.json')
