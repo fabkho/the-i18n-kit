@@ -2,9 +2,13 @@
  * Loads the CLI reference's sources.
  *
  * The command registry maps names to lazy loaders, so every entry has to be
- * resolved before anything can be read off it. That is asynchronous and, for
- * the exposed set, reads a file — which is why it lives here rather than in the
- * builder.
+ * resolved before anything can be read off it. That is asynchronous, which is
+ * why it lives here rather than in the builder.
+ *
+ * Which of those names the CLI actually exposes is read off the registry too.
+ * It used to be recovered by regex-parsing `cli.ts` for a module-private set:
+ * safe, in that a shape change threw rather than silently marking every command
+ * reachable, but a generator parsing source text to recover a constant (#370).
  *
  * The registry is imported from source rather than from `dist`, because
  * `tsdown` emits content-hashed chunks and the registry is not one of the
@@ -13,9 +17,7 @@
  * reference to go stale anyway.
  */
 
-import { readFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
-import { commands } from '../../../packages/cli/src/commands/index.js'
+import { commands, exposedCommandNames } from '../../../packages/cli/src/commands/index.js'
 import {
   EXIT_GATE_TRIPPED,
   EXIT_RUN_FAILED,
@@ -23,13 +25,10 @@ import {
 } from '../../../packages/cli/src/commands/_shared.js'
 import type { CliCommandEntry, CliSource, CommandDefLike } from '../reference/types.js'
 
-const CLI_ENTRY = new URL('../../../packages/cli/src/cli.ts', import.meta.url)
-
 export async function loadCliSource(): Promise<CliSource> {
-  const [entries, exposed] = await Promise.all([resolveEntries(), loadExposedNames()])
   return {
-    entries,
-    exposed,
+    entries: await resolveEntries(),
+    exposed: exposedCommandNames(),
     exitCodes: {
       success: EXIT_SUCCESS,
       runFailed: EXIT_RUN_FAILED,
@@ -44,35 +43,7 @@ async function resolveEntries(): Promise<CliCommandEntry[]> {
   return Promise.all(
     names.map(async name => ({
       name: name as string,
-      def: (await commands[name]()) as CommandDefLike,
+      def: (await commands[name].load()) as CommandDefLike,
     })),
   )
-}
-
-/**
- * The registry names the CLI wires into its subcommands.
- *
- * `cli.ts` filters a hidden set out of the registry before handing it to citty,
- * so a registered name is not necessarily a runnable one. That set is
- * module-private, and the alternative to reading it is publishing pages for
- * commands that report an unknown command when run. Reading it here means the
- * pages follow the filter; a change to the shape of the declaration fails this
- * loader loudly rather than silently marking every command reachable.
- */
-async function loadExposedNames(): Promise<string[]> {
-  const hidden = await loadHiddenNames()
-  return Object.keys(commands).filter(name => !hidden.has(name))
-}
-
-async function loadHiddenNames(): Promise<Set<string>> {
-  const source = await readFile(fileURLToPath(CLI_ENTRY), 'utf-8')
-  const declaration = /const hiddenCommands = new Set\(\[([^\]]*)\]\)/.exec(source)
-  if (declaration === null || declaration[1] === undefined) {
-    throw new Error(
-      'Could not find the hiddenCommands declaration in packages/cli/src/cli.ts. '
-      + 'The CLI reference derives which registered commands are reachable from it — '
-      + 'update the pattern in docs/generate/sources/cli.ts to match the new shape.',
-    )
-  }
-  return new Set([...declaration[1].matchAll(/'([^']+)'/g)].map(match => match[1] as string))
 }

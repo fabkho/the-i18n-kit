@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { commands } from '../../src/commands/index.js'
+import { commands, exposedCommandNames } from '../../src/commands/index.js'
 
 const execFileAsync = promisify(execFile)
 const binPath = resolve(import.meta.dirname, '../../dist/bin.js')
@@ -27,12 +27,12 @@ async function runBin(args: string[], cwd?: string): Promise<{ stdout: string, c
   }
 }
 
-/** Kept out of --help; #252 restores them. */
-const stillHidden = new Set(['detect', 'list-dirs', 'empty'])
+// Derived, not restated: a third copy of the hidden list is a third thing to
+// fall out of step with the registry, which is the drift #370 removed.
+const publicCommands = exposedCommandNames()
+const hiddenCommands = Object.keys(commands).filter(name => !publicCommands.includes(name))
 
 describe('every public command is invocable through the binary', () => {
-  const publicCommands = Object.keys(commands).filter(name => !stillHidden.has(name))
-
   it.each(publicCommands)('%s', async (name) => {
     const { stdout, code } = await runBin([name, '--help'])
 
@@ -46,6 +46,23 @@ describe('every public command is invocable through the binary', () => {
     for (const name of publicCommands) {
       expect(stdout).toContain(name)
     }
+  })
+})
+
+// The flag has to keep meaning what it says, in both directions: hiding a
+// command removes it from the executed map, not merely from --help (#307).
+describe('hidden commands', () => {
+  it('names the ones reachable another way, and nothing else', () => {
+    expect(hiddenCommands).toEqual(['detect', 'list-dirs', 'empty'])
+  })
+
+  // Invoked bare, not with --help: runCli hands any --help straight to citty,
+  // which answers an unrecognised subcommand with the root usage and exits 0.
+  it.each(hiddenCommands)('%s is not in the executed map', async (name) => {
+    const { stdout, code } = await runBin([name, '--json'])
+
+    expect(code).toBe(1)
+    expect(JSON.parse(stdout).error.code).toBe('E_UNKNOWN_COMMAND')
   })
 })
 
