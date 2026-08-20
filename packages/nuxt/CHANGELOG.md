@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-nuxt-0.1.3...the-i18n-kit-nuxt-0.1.4) (2026-08-17)
+
+
+### Bug Fixes
+
+* **config:** check every declaration site, and alias the name the docs use ([#375](https://github.com/fabkho/the-i18n-kit/issues/375)) ([ab1a268](https://github.com/fabkho/the-i18n-kit/commit/ab1a268a308baa7a7acf5a6354004243432f2a47)), closes [#362](https://github.com/fabkho/the-i18n-kit/issues/362) [#361](https://github.com/fabkho/the-i18n-kit/issues/361)
+
 ## [0.1.3](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-nuxt-0.1.2...the-i18n-kit-nuxt-0.1.3) (2026-08-16)
 
 

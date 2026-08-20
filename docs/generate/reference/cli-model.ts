@@ -15,6 +15,7 @@ import type {
   CliCommandEntry,
   CliSource,
   CommandDoc,
+  GateSpecLike,
 } from './types.js'
 
 /**
@@ -45,6 +46,17 @@ export function specificArgs(command: CommandDoc, shared: ArgDoc[]): ArgDoc[] {
 /** The gate flags a command declares, recognised by the marker in their description. */
 export function gateArgs(command: CommandDoc): ArgDoc[] {
   return command.args.filter(arg => arg.description.includes(GATE_MARKER))
+}
+
+/**
+ * Gates a command evaluates without being asked, taken from the definition.
+ *
+ * These have no flag, so there is no description to read them off — which is
+ * why `check` was absent from the gate table while its gate was expressed as a
+ * bare predicate (#369).
+ */
+export function alwaysOnGates(command: CommandDoc): GateSpecLike[] {
+  return command.gates.filter(gate => gate.flag === undefined)
 }
 
 /**
@@ -111,6 +123,7 @@ function toCommandDoc(entry: CliCommandEntry): CommandDoc {
     description: description(entry),
     args: toArgDocs(entry.def.args),
     aliases: [],
+    gates: entry.def.gates ?? [],
   }
 }
 

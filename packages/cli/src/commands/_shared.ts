@@ -14,17 +14,10 @@ export function createCommand(opts: {
   description: string
   args?: Record<string, unknown>
   /**
-   * Command-specific CI gate: when it returns true for the (already
-   * emitted) result, the process exits non-zero — e.g. `check` failing
-   * the build on undefined-key findings. Runs in addition to the generic
-   * isTotalFailure check.
-   */
-  failWhen?: (result: unknown) => boolean
-  /**
-   * Opt-in CI gates this command accepts. The factory reads the requesting
-   * flag off args and evaluates every gate uniformly, so no command grows
-   * bespoke exit logic. Declaring a gate does not add its flag — pair each
-   * spec with an entry in `args`.
+   * CI gates this command evaluates. The factory reads the requesting flag off
+   * args and evaluates every gate uniformly, so no command grows bespoke exit
+   * logic. Declaring a flagged gate does not add its flag — pair each spec
+   * with an entry in `args`. A spec without a flag is always evaluated.
    */
   gates?: GateSpec[]
   /**
@@ -36,14 +29,16 @@ export function createCommand(opts: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
   run: (args: any) => Promise<unknown>
 }): CommandDef {
-  return defineCommand({
+  // Retained on the definition, not only consumed here: the generated CLI
+  // reference has to state which commands fail a build on findings, and a gate
+  // with no flag leaves no trace in the arg descriptions to infer it from.
+  return withGates(defineCommand({
     meta: { name: opts.name, description: opts.description },
     args: { ...sharedArgs, ...(opts.args ?? {}) },
     async run({ args }) {
       try {
         const result = await opts.run(args)
-        const runFailed = isTotalFailure(result) || (opts.failWhen?.(result) ?? false)
-        const decision = resolveExitCode(result, requestedGates(opts.gates ?? [], args), runFailed)
+        const decision = resolveExitCode(result, requestedGates(opts.gates ?? [], args), isTotalFailure(result))
         outputResult(withGateReport(result, decision.tripped), args)
         // Assign only on a non-zero decision: a clean run must leave the exit
         // code exactly as it found it, as it did before gates existed.
@@ -53,7 +48,20 @@ export function createCommand(opts: {
         process.exitCode = EXIT_RUN_FAILED
       }
     },
-  }) as CommandDef
+  }) as CommandDef, opts.gates ?? [])
+}
+
+/**
+ * A command definition carrying the gates its factory evaluates. Read
+ * structurally by the reference generator rather than by importing this type,
+ * which would make the docs build depend on the CLI's internals.
+ */
+interface GatedCommandDef extends CommandDef {
+  gates: GateSpec[]
+}
+
+function withGates(def: CommandDef, gates: GateSpec[]): GatedCommandDef {
+  return Object.assign(def, { gates })
 }
 
 /** The run succeeded and no gate tripped. */
@@ -64,17 +72,44 @@ export const EXIT_RUN_FAILED = 1
 export const EXIT_GATE_TRIPPED = 2
 
 /**
- * A CI gate a command accepts. `flag` is the arg that requests it; `counter`
- * is the field of `result.summary` carrying the observed value. Omitting
- * `threshold` takes it from the flag's own value, so a boolean flag pairs
- * with `threshold: 0` and a numeric one (`--fail-under 90`) omits it.
+ * A CI gate a command evaluates. `counter` is the field of `result.summary`
+ * carrying the observed value.
+ *
+ * The two shapes are a union rather than one type with optional halves so the
+ * invariants hold at compile time: a flagged gate always has a flag to read
+ * its name and threshold from, and a flagless one always carries both itself.
+ * Stated as options, `{ counter, threshold }` type-checks and then has no name
+ * to report the gate under.
  */
-export interface GateSpec {
-  flag: string
+export type GateSpec = FlaggedGateSpec | AlwaysOnGateSpec
+
+interface GateSpecBase {
   counter: string
   /** 'above' trips when observed > threshold (default); 'below' when observed < threshold. */
   direction?: 'above' | 'below'
+}
+
+/**
+ * Requested by a flag, and evaluated only when that flag is passed. Omitting
+ * `threshold` takes it from the flag's own value, so a boolean flag pairs with
+ * `threshold: 0` and a numeric one (`--fail-under 90`) omits it.
+ */
+export interface FlaggedGateSpec extends GateSpecBase {
+  flag: string
+  name?: never
   threshold?: number
+}
+
+/**
+ * Always evaluated, for findings that are a defect rather than a threshold — a
+ * key that renders raw in production is not something you opt into caring
+ * about. It still reports as a gate: the run succeeded, and what it found is
+ * what you are being told about.
+ */
+export interface AlwaysOnGateSpec extends GateSpecBase {
+  flag?: never
+  name: string
+  threshold: number
 }
 
 /** A gate the caller asked for, with its threshold already resolved. */
@@ -142,18 +177,25 @@ function trips(gate: RequestedGate, observed: number): boolean {
 function requestedGates(specs: GateSpec[], args: Record<string, unknown>): RequestedGate[] {
   const requested: RequestedGate[] = []
   for (const spec of specs) {
-    const raw = args[spec.flag]
-    if (raw === undefined || raw === null || raw === false || raw === '') continue
-    const threshold = spec.threshold ?? Number(raw)
-    if (!Number.isFinite(threshold)) continue
+    const resolved = spec.flag === undefined
+      ? { name: spec.name, threshold: spec.threshold }
+      : { name: kebabCase(spec.flag), threshold: thresholdFromFlag(spec, args) }
+    if (resolved.threshold === undefined || !Number.isFinite(resolved.threshold)) continue
     requested.push({
-      name: kebabCase(spec.flag),
+      name: resolved.name,
       counter: spec.counter,
       direction: spec.direction ?? 'above',
-      threshold,
+      threshold: resolved.threshold,
     })
   }
   return requested
+}
+
+/** The gate's threshold, or undefined when this invocation did not ask for it. */
+function thresholdFromFlag(spec: FlaggedGateSpec, args: Record<string, unknown>): number | undefined {
+  const raw = args[spec.flag]
+  if (raw === undefined || raw === null || raw === false || raw === '') return undefined
+  return spec.threshold ?? Number(raw)
 }
 
 /**

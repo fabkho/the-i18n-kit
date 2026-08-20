@@ -115,6 +115,26 @@ describe('the CLI reference against the command registry', () => {
   })
 
 
+  // A gate with no flag has no description to be inferred from, so before the
+  // specs were retained on the definition `check` was simply missing from the
+  // table — the tool's most CI-relevant gate, undocumented (#369).
+  it('documents gates that take no flag, which no arg description can reveal', () => {
+    const alwaysOn = model.commands.filter(command =>
+      command.gates.some(gate => gate.flag === undefined),
+    )
+    expect(alwaysOn.length).toBeGreaterThan(0)
+
+    const markdown = overview(output)
+    for (const command of alwaysOn) {
+      const gate = command.gates.find(g => g.flag === undefined)!
+      // The whole row, not just the command name: the reader needs the counter
+      // and the threshold to know what trips it, since there is no flag to read.
+      expect(markdown).toContain(
+        `| [\`${command.name}\`](/reference/cli/${command.name}) | always on | \`summary.${gate.counter}\` is above \`${gate.threshold}\` |`,
+      )
+    }
+  })
+
   it('reports the exit codes the shared command factory assigns', () => {
     const markdown = overview(output)
     for (const code of Object.values(source.exitCodes)) {
