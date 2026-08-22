@@ -138,7 +138,6 @@ function renderCommand(command: CommandDoc, shared: ArgDoc[]): string {
   return page([
     frontmatter({ title: command.name, description: command.description }),
     GENERATED_NOTICE,
-    `# ${code(`${BINARY} ${command.name}`)}`,
     prose(command.description),
     '## Synopsis',
     synopsis(command),

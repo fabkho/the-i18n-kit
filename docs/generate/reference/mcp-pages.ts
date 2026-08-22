@@ -123,7 +123,6 @@ function renderTool(tool: ToolDoc): string {
   return page([
     frontmatter({ title: tool.name, description: tool.description }),
     GENERATED_NOTICE,
-    `# ${code(tool.name)}`,
     prose(tool.description),
     '## Parameters',
     ...paramSection(tool),
