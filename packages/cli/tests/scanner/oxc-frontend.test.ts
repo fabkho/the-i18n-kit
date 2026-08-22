@@ -105,6 +105,18 @@ describe('reading the argument', () => {
     expect(evidence?.dynamicKeys).toEqual([])
   })
 
+  it('does not resolve a template through a name bound to two values', async () => {
+    const evidence = await scan(`
+      function a() { const base = 'pages.settings'; return t(\`\${base}.title\`) }
+      function b() { const base = 'pages.profile'; return t(\`\${base}.title\`) }
+    `)
+
+    // Name-keyed collection cannot tell the scopes apart, so neither call may
+    // claim a static key — both stay dynamic.
+    expect(evidence?.usages).toEqual([])
+    expect(evidence?.dynamicKeys).toHaveLength(2)
+  })
+
   it('reports a template it cannot resolve as a dynamic key', async () => {
     const evidence = await scan('const label = t(`common.metrics.${metric}`)')
 
@@ -155,6 +167,27 @@ describe('Vue single-file components', () => {
     expect(evidence?.usages.map(u => u.key)).toContain('pages.settings.title')
   })
 
+  it('reads a single-quoted attribute binding', async () => {
+    const evidence = await scan(
+      `<template><Btn :label='$t("a.b")' /></template>`,
+      'A.vue',
+    )
+
+    expect(evidence?.usages.map(u => u.key)).toEqual(['a.b'])
+  })
+
+  it('does not let one block\'s constant resolve through another\'s', async () => {
+    const evidence = await scan(
+      `<template><p>{{ t(\`\${base}.title\`) }}</p></template>\n`
+      + `<script>const base = 'pages.profile'</script>\n`
+      + `<script setup>\nimport { useI18n } from 'vue-i18n'\nconst { t } = useI18n()\nconst base = 'pages.settings'\n</script>`,
+      'A.vue',
+    )
+
+    expect(evidence?.usages).toEqual([])
+    expect(evidence?.dynamicKeys[0]?.expression).toBe('`\${_}.title`')
+  })
+
   it('reports the line a key was used on, not the line of its block', async () => {
     const evidence = await scan(
       `<template>\n  <p>{{ $t('a.b') }}</p>\n</template>\n<script setup>\n\nconst x = $t('c.d')\n</script>`,
@@ -163,6 +196,15 @@ describe('Vue single-file components', () => {
 
     const cd = evidence?.usages.find(u => u.key === 'c.d')
     expect(cd?.line).toBe(6)
+  })
+
+  it('keeps lines right when the opening tag spans several lines', async () => {
+    const evidence = await scan(
+      `<script\n  setup\n  lang="ts"\n>\nconst x = $t('c.d')\n</script>`,
+      'A.vue',
+    )
+
+    expect(evidence?.usages.find(u => u.key === 'c.d')?.line).toBe(5)
   })
 })
 
@@ -180,6 +222,9 @@ describe('declining a file', () => {
 
   it('reads only the languages it claims', () => {
     expect(frontend.handles('a.ts')).toBe(true)
+    expect(frontend.handles('a.tsx')).toBe(true)
+    expect(frontend.handles('a.js')).toBe(true)
+    expect(frontend.handles('a.jsx')).toBe(true)
     expect(frontend.handles('a.vue')).toBe(true)
     expect(frontend.handles('a.php')).toBe(false)
     expect(frontend.handles('a.blade.php')).toBe(false)

@@ -22,8 +22,10 @@ if (!projectDir) {
   process.exit(1)
 }
 
-const { scanSourceFiles } = await import('../packages/cli/dist/index.js')
-  .catch(() => import('../packages/cli/src/scanner/code-scanner.ts'))
+const { scanSourceFiles } = await import('../packages/cli/dist/index.js').catch(() => {
+  console.error('Build the CLI first: pnpm --filter the-i18n-cli build')
+  process.exit(1)
+})
 
 async function run(label, scanner) {
   const before = process.env.I18N_SCANNER
@@ -50,9 +52,23 @@ const ast = await run('ast', 'ast')
 const onlyRegex = [...regex.uniqueKeys].filter(k => !ast.uniqueKeys.has(k)).sort()
 const onlyAst = [...ast.uniqueKeys].filter(k => !regex.uniqueKeys.has(k)).sort()
 
-console.log(`\nkeys only the regex frontend found: ${onlyRegex.length}`)
-for (const key of onlyRegex.slice(0, 25)) console.log(`  - ${key}`)
+// A key that left uniqueKeys can still be protected: the bare-candidate net
+// and the dynamic-key regexes also veto orphans. Only a key covered by none
+// of them changes what remove-orphans would do.
+const astDynamic = new Set(ast.dynamicKeys.map(dk => dk.expression))
+const stillProtected = k => ast.bareStringCandidates.has(k) || astDynamic.has(k)
+const unprotected = onlyRegex.filter(k => !stillProtected(k))
+
+console.log(`\nkeys only the regex frontend found: ${onlyRegex.length}`
+  + ` (${unprotected.length} not covered by AST candidates or dynamic keys)`)
+for (const key of onlyRegex.slice(0, 25)) {
+  console.log(`  - ${key}${stillProtected(key) ? '  (still protected)' : ''}`)
+}
 if (onlyRegex.length > 25) console.log(`  … and ${onlyRegex.length - 25} more`)
+
+const onlyRegexDynamic = [...new Set(regex.dynamicKeys.map(dk => dk.expression))].filter(e => !astDynamic.has(e)).sort()
+console.log(`\ndynamic expressions only the regex frontend found: ${onlyRegexDynamic.length}`)
+for (const expr of onlyRegexDynamic.slice(0, 25)) console.log(`  - ${expr}`)
 
 console.log(`\nkeys only the AST frontend found: ${onlyAst.length}`)
 for (const key of onlyAst.slice(0, 25)) console.log(`  + ${key}`)
@@ -60,7 +76,7 @@ if (onlyAst.length > 25) console.log(`  … and ${onlyAst.length - 25} more`)
 
 // A key the old frontend saw and the new one does not is the failure that
 // matters: it becomes an orphan, and orphans get deleted.
-if (onlyRegex.length > 0) {
+if (unprotected.length > 0 || onlyRegexDynamic.length > 0) {
   console.log('\nKeys found only by the outgoing frontend would be reported as orphans.')
   console.log('Explain every one of them before adopting.')
 }

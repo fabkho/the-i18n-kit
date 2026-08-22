@@ -70,7 +70,10 @@ export function createOxcFrontend(): LanguageFrontend {
       // script declared. Collecting per block would leave `t(`${base}.title`)`
       // in the template unresolvable, and it is the same file.
       const i18nNames = new Set(parsed.flatMap(p => [...p.ast.i18nNames]))
-      const constants = new Map(parsed.flatMap(p => [...p.ast.constants]))
+      const constants: ConstantTable = new Map()
+      for (const { ast } of parsed) {
+        for (const [name, value] of ast.constants) addConstant(constants, name, value)
+      }
 
       const sites: CallSite[] = []
       for (const { block, ast } of parsed) {
@@ -114,7 +117,7 @@ function loadParser(): Promise<ParseSync | null> {
 interface ParsedBlock {
   program: Node
   i18nNames: Set<string>
-  constants: Map<string, string>
+  constants: ConstantTable
 }
 
 function parseBlock(parseSync: ParseSync, source: string, filePath: string): ParsedBlock | null {
@@ -193,17 +196,32 @@ function propertyName(prop: Node): string | undefined {
  * it is the binding itself, which is the difference between resolving a name
  * and hoping no other name looks like it.
  */
-function collectStringConstants(program: Node): Map<string, string> {
-  const constants = new Map<string, string>()
+function collectStringConstants(program: Node): ConstantTable {
+  const constants: ConstantTable = new Map()
 
   walk(program, (node) => {
     if (node.type !== 'VariableDeclarator') return
     if (node.id?.type !== 'Identifier') return
     if (node.init?.type !== 'Literal' || typeof node.init.value !== 'string') return
-    constants.set(node.id.name, node.init.value)
+    addConstant(constants, node.id.name, node.init.value)
   })
 
   return constants
+}
+
+/**
+ * `null` marks a name bound to more than one value. Collection is name-keyed
+ * with no scope tracking, so two `const base = …` in different functions would
+ * otherwise resolve last-write-wins — and a template resolved through the
+ * wrong one reports a static key the code never produces. A conflicted name
+ * resolves nothing, which leaves the template a dynamic key.
+ */
+type ConstantTable = Map<string, string | null>
+
+function addConstant(table: ConstantTable, name: string, value: string | null): void {
+  const existing = table.get(name)
+  if (existing === undefined) table.set(name, value)
+  else if (existing !== value) table.set(name, null)
 }
 
 function readImportSpecifiers(node: Node, names: Set<string>, factories: Set<string>): void {
@@ -289,7 +307,7 @@ function resolveCallee(node: Node | undefined, i18nNames: Set<string>): { name: 
   return undefined
 }
 
-function readArgument(node: Node, constants: Map<string, string>): CallArgument {
+function readArgument(node: Node, constants: ConstantTable): CallArgument {
   if (node.type === 'Literal' && typeof node.value === 'string') {
     return { kind: 'static', value: node.value }
   }
@@ -306,7 +324,7 @@ function readArgument(node: Node, constants: Map<string, string>): CallArgument 
   return { kind: 'unknown' }
 }
 
-function readTemplateArgument(node: Node, constants: Map<string, string>): CallArgument {
+function readTemplateArgument(node: Node, constants: ConstantTable): CallArgument {
   // No expressions is a plain string written with backticks.
   if ((node.expressions ?? []).length === 0) {
     const only = node.quasis?.[0]?.value?.cooked
@@ -325,7 +343,7 @@ function readTemplateArgument(node: Node, constants: Map<string, string>): CallA
  * The literal a template resolves to, or undefined when any slot is something
  * other than a constant this file declares.
  */
-function resolveTemplate(node: Node, constants: Map<string, string>): string | undefined {
+function resolveTemplate(node: Node, constants: ConstantTable): string | undefined {
   const parts: string[] = []
   const quasis = node.quasis ?? []
   const expressions = node.expressions ?? []
@@ -337,7 +355,7 @@ function resolveTemplate(node: Node, constants: Map<string, string>): string | u
 
     if (expression.type !== 'Identifier') return undefined
     const value = constants.get(expression.name)
-    if (value === undefined) return undefined
+    if (typeof value !== 'string') return undefined
     parts.push(value)
   }
 
@@ -383,12 +401,16 @@ function vueBlocks(content: string): Array<{ source: string, lineOffset: number 
   const blocks: Array<{ source: string, lineOffset: number }> = []
 
   for (const match of content.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)) {
-    const before = content.slice(0, match.index ?? 0)
+    // Offset to the block body, not the tag: an opening tag written across
+    // several lines (`<script\n  setup\n  lang="ts">`) otherwise shifts every
+    // line the block reports.
+    const openTagLength = match[0].length - (match[1]?.length ?? 0) - '</script>'.length
+    const before = content.slice(0, (match.index ?? 0) + openTagLength)
     blocks.push({ source: match[1] ?? '', lineOffset: before.split('\n').length - 1 })
   }
 
-  for (const match of content.matchAll(/\{\{([\s\S]*?)\}\}|(?:v-[a-z-]+|:[\w-]+|@[\w-]+)="([^"]*)"/g)) {
-    const expression = match[1] ?? match[2]
+  for (const match of content.matchAll(/\{\{([\s\S]*?)\}\}|(?:v-[a-z-]+|:[\w-]+|@[\w-]+)=(?:"([^"]*)"|'([^']*)')/g)) {
+    const expression = match[1] ?? match[2] ?? match[3]
     if (!expression?.trim()) continue
     const before = content.slice(0, match.index ?? 0)
     // Wrapped so a bare expression parses as a statement.
