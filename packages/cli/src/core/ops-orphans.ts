@@ -28,6 +28,8 @@ const MISPLACED_USAGE_NOTE
   + 'Either the key belongs in a broader (shared) layer, or the usage is a bug. '
   + 'These keys are not counted as orphans and are never removed.'
 
+const CANDIDATE_ONLY_NOTE = 'These keys are protected only by the bare-candidate net: no call site references them, a dotted string somewhere merely shares their name (often a comment or a data structure). They are not offered for removal, but they are where dead references hide - review them when pruning.'
+
 /** True when `child` equals `parent` or lies inside it. */
 function isWithin(child: string, parent: string): boolean {
   const rel = relative(parent, child)
@@ -280,17 +282,21 @@ export async function findOrphanKeys(opts: {
   const output: FindOrphanKeysResult = {
     orphanKeys: sortedByLayer,
     uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
+    candidateOnlyKeys: orphanResult.candidateOnlyCount > 0 ? orphanResult.candidateOnlyByLayer : undefined,
+    candidateOnlyNote: orphanResult.candidateOnlyCount > 0 ? CANDIDATE_ONLY_NOTE : undefined,
     misplacedUsages: misplacedCount > 0 ? orphanResult.misplacedUsages : undefined,
     misplacedUsageNote: misplacedCount > 0 ? MISPLACED_USAGE_NOTE : undefined,
     summary: {
       totalKeys,
       orphanCount: orphanResult.orphanCount,
       uncertainCount: orphanResult.uncertainCount,
+      candidateOnlyCount: orphanResult.candidateOnlyCount,
       misplacedCount,
       dynamicMatchedCount: orphanResult.dynamicMatchedCount,
       ignoredCount: orphanResult.ignoredCount,
       usedCount: totalKeys - orphanResult.orphanCount - orphanResult.uncertainCount - misplacedCount,
       filesScanned: orphanResult.totalFilesScanned,
+      filesDeclined: orphanResult.totalFilesDeclined,
       layersChecked: layersToCheck.map(d => d.layer),
       dirsScanned: orphanResult.dirsScanned,
       scanScope: relativeScanScope(orphanResult, dir),
@@ -344,10 +350,12 @@ export async function scanCodeUsage(opts: {
   const allUsages: Array<{ key: string; file: string; line: number; callee: string }> = []
   const allDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }> = []
   let totalFilesScanned = 0
+  let totalFilesDeclined = 0
 
   for (const scanDir of dirsToScan) {
     const result = await scanSourceFiles(scanDir, excludeDirs, getPatternSet(config.localeFileFormat))
     totalFilesScanned += result.filesScanned
+    totalFilesDeclined += result.declinedFiles.length
     allUsages.push(...result.usages)
     allDynamicKeys.push(...result.dynamicKeys)
   }
@@ -380,6 +388,7 @@ export async function scanCodeUsage(opts: {
       uniqueKeysFound: Object.keys(sortedByKey).length,
       totalReferences: filteredUsages.length,
       filesScanned: totalFilesScanned,
+      filesDeclined: totalFilesDeclined,
       dirsScanned: dirsToScan,
     },
   }

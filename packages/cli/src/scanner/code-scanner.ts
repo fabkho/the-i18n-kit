@@ -6,6 +6,7 @@ import { createOxcFrontend } from './frontends/oxc.js'
 import type { LanguageFrontend } from './frontends/types.js'
 import { interpret } from './rules.js'
 import type { RuleContext } from './rules.js'
+import { ambiguousCalleeNeedsDot } from './rules.js'
 import { createPatternsFrontend, readPatternSites, collectConstKeyTable, substituteConstIdentifiers } from './frontends/patterns.js'
 import type { ScanPatternSet } from './patterns.js'
 import { VUE_NUXT_PATTERNS } from './patterns.js'
@@ -60,16 +61,13 @@ export interface ScanResult {
  * scanner suites are written against. Same pipeline as every scan: the
  * frontend reports call sites, the rules decide what they mean.
  */
-export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet, constTable?: Map<string, string>): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[]; bareStringCandidates: Set<string> } {
+export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[]; bareStringCandidates: Set<string> } {
   const pat = patterns ?? VUE_NUXT_PATTERNS
-  return interpret(readPatternSites(content, filePath, pat, constTable), ruleContext(filePath, pat))
+  return interpret(readPatternSites(content, filePath, pat), ruleContext(filePath))
 }
 
-function ruleContext(filePath: string, pat: ScanPatternSet): RuleContext {
-  return {
-    filePath,
-    ambiguousCalleeNeedsDot: callee => pat.requiresDotForCallee?.(callee) ?? false,
-  }
+function ruleContext(filePath: string): RuleContext {
+  return { filePath, ambiguousCalleeNeedsDot }
 }
 
 // ─── Dynamic key pattern matching ───────────────────────────────
@@ -339,7 +337,6 @@ async function extractFileEvidence(
   filePath: string,
   frontends: LanguageFrontend[],
   patterns?: ScanPatternSet,
-  constTable?: Map<string, string>,
 ): Promise<{ usages: KeyUsage[], dynamicKeys: DynamicKeyUsage[], bareStringCandidates: Set<string>, declined: boolean }> {
   const pat = patterns ?? VUE_NUXT_PATTERNS
   let declined = false
@@ -355,10 +352,10 @@ async function extractFileEvidence(
       continue
     }
 
-    return { ...interpret(sites, ruleContext(filePath, pat)), declined }
+    return { ...interpret(sites, ruleContext(filePath)), declined }
   }
 
-  return { ...extractKeys(content, filePath, pat, constTable), declined }
+  return { ...extractKeys(content, filePath, pat), declined }
 }
 
 /**
@@ -373,9 +370,22 @@ async function extractFileEvidence(
  *
  * Flip it once `scripts/scanner-diff.mjs` reports nothing in that direction.
  */
+let warnedRegexHatch = false
+
+/**
+ * The syntax frontend is the default (#402); patterns read only what it
+ * declines. `I18N_SCANNER=regex` restores the old scanner for exactly one
+ * release — an escape hatch for reporting a regression, not a mode.
+ */
 function defaultFrontends(pat: ScanPatternSet): LanguageFrontend[] {
-  const syntax = process.env.I18N_SCANNER === 'ast' ? [oxcFrontend] : []
-  return [...syntax, createPatternsFrontend(pat)]
+  if (process.env.I18N_SCANNER === 'regex') {
+    if (!warnedRegexHatch) {
+      warnedRegexHatch = true
+      log.warn('I18N_SCANNER=regex is deprecated and will be removed in the next major. If the default scanner misses something the regex found, please file it: https://github.com/fabkho/the-i18n-kit/issues')
+    }
+    return [createPatternsFrontend(pat)]
+  }
+  return [oxcFrontend, createPatternsFrontend(pat)]
 }
 
 const oxcFrontend = createOxcFrontend()
@@ -414,8 +424,8 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
       continue
     }
 
-    const constTable = pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()
-    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls, declined } = await extractFileEvidence(content, filePath, active, pat, constTable)
+    const constTable = (pat.bareShapes ?? 'js') === 'js' ? collectConstKeyTable(content) : new Map<string, string>()
+    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls, declined } = await extractFileEvidence(content, filePath, active, pat)
     if (declined) declinedFiles.push(relPath)
     allUsages.push(...usages)
     allDynamicKeys.push(...dynamicKeys)
@@ -544,7 +554,17 @@ export interface OrphanScanResult {
   orphanCount: number
   uncertainByLayer: Record<string, string[]>
   uncertainCount: number
+  /**
+   * Keys alive solely through the bare-candidate net — no call site references
+   * them, a dotted string somewhere merely shares their name (a comment, a
+   * data structure, a coincidence). Visible rather than silently kept: these
+   * are where dead references hide (#402).
+   */
+  candidateOnlyByLayer: Record<string, string[]>
+  candidateOnlyCount: number
   totalFilesScanned: number
+  /** Files a syntax frontend declined; pattern matching read them instead. */
+  totalFilesDeclined: number
   /** Accumulated across layers — a key present in several layers counts once per layer. */
   dynamicMatchedCount: number
   /** Accumulated across layers, like dynamicMatchedCount. */
@@ -600,10 +620,13 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
   const allDynamicKeysRaw: DynamicKeyUsage[] = []
   let totalFilesScanned = 0
 
+  let totalFilesDeclined = 0
+
   for (const unit of units) {
     const ignores = globalScope ? [] : nestedUnitIgnores(unit, units)
     const result = await scanSourceFiles(unit.dir, [...(excludeDirs ?? []), ...ignores], patterns)
     totalFilesScanned += result.filesScanned
+    totalFilesDeclined += result.declinedFiles.length
     const dynamicRaw: DynamicKeyUsage[] = [
       ...result.dynamicKeys,
       ...[...result.bareDynamicCandidates].map(bd => ({ expression: bd, file: '', line: 0, callee: '' })),
@@ -647,6 +670,8 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
 
   const orphansByLayer: Record<string, string[]> = {}
   let orphanCount = 0
+  const candidateOnlyByLayer: Record<string, string[]> = {}
+  let candidateOnlyCount = 0
   const uncertainByLayer: Record<string, string[]> = {}
   let uncertainCount = 0
   let dynamicMatchedCount = 0
@@ -668,9 +693,14 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
     const ignorePatterns = resolveIgnorePatterns(layerName)
     const ignoreRegexes = ignorePatterns ? buildIgnorePatternRegexes(ignorePatterns) : []
 
+    const candidateOnly: string[] = []
     const orphans = keys.filter((k) => {
       if (scope.unique.has(k)) return false
-      if (scope.bare.has(k)) return false
+      if (scope.bare.has(k)) {
+        // Protected, but by nothing a frontend could call a usage.
+        if (!scope.dynRegexes.some(re => re.test(k))) candidateOnly.push(k)
+        return false
+      }
       if (scope.dynRegexes.some(re => re.test(k))) {
         dynamicMatchedCount++
         return false
@@ -712,6 +742,10 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
       uncertainByLayer[layerName] = uncertain
       uncertainCount += uncertain.length
     }
+    if (candidateOnly.length > 0) {
+      candidateOnlyByLayer[layerName] = candidateOnly.sort()
+      candidateOnlyCount += candidateOnly.length
+    }
   }
 
   misplacedUsages.sort((a, b) => a.layer.localeCompare(b.layer) || a.key.localeCompare(b.key))
@@ -728,7 +762,10 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
     orphanCount,
     uncertainByLayer,
     uncertainCount,
+    candidateOnlyByLayer,
+    candidateOnlyCount,
     totalFilesScanned,
+    totalFilesDeclined,
     dynamicMatchedCount,
     ignoredCount,
     allDynamicKeys: allDynamicKeysRaw,

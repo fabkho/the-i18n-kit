@@ -20,25 +20,35 @@ export function createPatternsFrontend(pat: ScanPatternSet): LanguageFrontend {
 }
 
 /**
- * Synchronous core, so the sync `extractKeys` contract the scanner tests are
+ * Synchronous core, so the sync `extractKeys` contract the scanner suites are
  * written against keeps working unchanged.
  */
-export function readPatternSites(content: string, filePath: string, pat: ScanPatternSet, constTable?: Map<string, string>): CallSite[] {
-  const table = constTable ?? (pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>())
+export function readPatternSites(content: string, _filePath: string, pat: ScanPatternSet): CallSite[] {
   const sites: CallSite[] = []
+  // A pattern set whose static and dynamic regexes cover the same quote style
+  // (Laravel: both read double quotes) would report one call twice; the
+  // frontend reports each site once.
+  const seen = new Set<string>()
 
   const lines = content.split('\n')
   for (const [i, line] of lines.entries()) {
     const lineNumber = i + 1
-    staticSites(line, lineNumber, pat, sites)
-    dynamicSites(line, lineNumber, pat, table, sites)
+    staticSites(line, lineNumber, pat, sites, seen)
+    dynamicSites(line, lineNumber, pat, sites, seen)
     concatSites(line, lineNumber, pat, sites)
   }
 
   return sites
 }
 
-function staticSites(line: string, lineNumber: number, pat: ScanPatternSet, sites: CallSite[]): void {
+function pushStatic(sites: CallSite[], seen: Set<string>, callee: string, value: string, line: number): void {
+  const id = `${line}:${callee}:${value}`
+  if (seen.has(id)) return
+  seen.add(id)
+  sites.push({ callee, binding: 'ambiguous', argument: { kind: 'static', value }, line })
+}
+
+function staticSites(line: string, lineNumber: number, pat: ScanPatternSet, sites: CallSite[], seen: Set<string>): void {
   for (const regex of pat.staticKeyPatterns) {
     regex.lastIndex = 0
     for (const match of line.matchAll(regex)) {
@@ -48,27 +58,22 @@ function staticSites(line: string, lineNumber: number, pat: ScanPatternSet, site
       // A quoted string carrying PHP interpolation is not a static key; the
       // dynamic pattern reads it.
       if (key.includes('{$')) continue
-      sites.push({ callee, binding: 'ambiguous', argument: { kind: 'static', value: key }, line: lineNumber })
+      pushStatic(sites, seen, callee, key, lineNumber)
     }
   }
 }
 
-function dynamicSites(line: string, lineNumber: number, pat: ScanPatternSet, table: Map<string, string>, sites: CallSite[]): void {
+function dynamicSites(line: string, lineNumber: number, pat: ScanPatternSet, sites: CallSite[], seen: Set<string>): void {
   for (const regex of pat.dynamicKeyPatterns) {
     regex.lastIndex = 0
     for (const match of line.matchAll(regex)) {
       const callee = match[1] ?? ''
       const raw = match[2]
       if (!raw) continue
-      // Const-resolved expressions lose their interpolation and, with
-      // promoteStaticDynamicMatches, become exact static usages below.
-      const expression = substituteConstIdentifiers(raw, table)
-      const normalized = normalizeDynamicExpression(expression)
+      const normalized = normalizeDynamicExpression(raw)
+      // No interpolation is a plain string written in template syntax.
       if (normalized === undefined) {
-        if (!pat.promoteStaticDynamicMatches) continue
-        if (!expression) continue
-        if (pat.requiresDotForCallee?.(callee) && !expression.includes('.')) continue
-        sites.push({ callee, binding: 'ambiguous', argument: { kind: 'static', value: expression }, line: lineNumber })
+        pushStatic(sites, seen, callee, raw, lineNumber)
         continue
       }
       sites.push({ callee, binding: 'ambiguous', argument: { kind: 'template', expression: normalized }, line: lineNumber })
@@ -90,20 +95,18 @@ function concatSites(line: string, lineNumber: number, pat: ScanPatternSet, site
 
 /**
  * Matches `const` declarations initialized to a key-shaped string literal
- * (≥1 dot). Scope is deliberately tight: identifier = literal only — no
+ * (>=1 dot). Scope is deliberately tight: identifier = literal only — no
  * object properties, no expressions, and no `let` (a reassigned binding
  * would substitute a stale literal and bypass the conservative widening).
  */
 const CONST_KEY_DECL = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(['"])((?:[\w-]+\.)+[\w-]+)\2/g
 
 /**
- * Collects same-file `const NAME = 'dotted.path'` declarations so
- * `${NAME}` interpolations can be substituted with the literal value.
- * Same-file only — imported/cross-file constants are NOT resolved and fall
- * back to the conservative `${_}` widening in buildDynamicKeyRegexes.
- * A name bound to different values (shadowing across scopes) is ambiguous
- * and dropped: substituting one of several possible values could narrow a
- * pattern past a live key.
+ * Collects same-file `const NAME = 'dotted.path'` declarations for the
+ * bare-candidate net, which stays deliberately non-syntactic (#332): a
+ * substituted candidate is an exact protector where an unsubstituted one
+ * would be a wildcard. Usage extraction no longer consults this — the syntax
+ * frontends resolve real bindings instead.
  */
 export function collectConstKeyTable(content: string): Map<string, string> {
   const table = new Map<string, string>()
@@ -127,7 +130,7 @@ export function collectConstKeyTable(content: string): Map<string, string> {
 /**
  * Substitutes `${NAME}` interpolations with the const table's literal value,
  * producing an exact or narrower pattern: `${i18nBase}.title` +
- * `const i18nBase = 'a.b.c'` → `a.b.c.title`. Only plain-identifier
+ * `const i18nBase = 'a.b.c'` -> `a.b.c.title`. Only plain-identifier
  * interpolations qualify; member expressions and anything else stay dynamic.
  */
 export function substituteConstIdentifiers(expr: string, table: Map<string, string>): string {
