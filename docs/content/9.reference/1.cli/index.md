@@ -30,7 +30,7 @@ The command pages are generated from the command definitions, so a flag that no 
 | [`translate-key`](/reference/cli/translate-key) | Translate a single key from a source locale into target locales. Supports LLM translation with --provider. |
 | [`scan`](/reference/cli/scan) | Scan source code for translation key usage (file paths + line numbers) |
 | [`check`](/reference/cli/check) | Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); findings trip an always-on gate and exit 2, distinct from exit 1 for a run that failed |
-| [`find-duplicates`](/reference/cli/find-duplicates) | Find keys defined in both a shared layer and a consuming child layer (with divergence detection) |
+| [`find-duplicates`](/reference/cli/find-duplicates) | Find keys defined in both a shared layer and a consuming child layer (with divergence detection); --byValue also finds different keys carrying the same value |
 | [`remove-orphans`](/reference/cli/remove-orphans) | Find and remove orphan translation keys not referenced in source code |
 | [`scaffold`](/reference/cli/scaffold) | Create empty locale files for new languages |
 

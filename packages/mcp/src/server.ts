@@ -1013,12 +1013,22 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .optional()
           .describe('Locale code to compare values in (e.g., "de", "en-US"). Defaults to the project default locale.'),
         projectDir: projectDirInput(),
+        byValue: z
+          .boolean()
+          .optional()
+          .describe('When true, also groups different keys carrying the same value — e.g. common.actions.save and calendar.views.save both "Speichern". Each group says what to do about it: "reuse" (a shared layer already has it — delete the app copies and repoint call sites), "promote" (move one to a shared layer with move_translation_key), or "consolidate" (duplication inside one layer). Default: false.'),
+        minValueLength: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe('Shortest value worth grouping when byValue is set. Default: 4 — below it, values like "OK" repeat across unrelated namespaces legitimately.'),
         outputFile: outputFileInput('/tmp/duplicate-keys.json'),
       }),
     },
-    async ({ locale, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
+    async ({ locale, projectDir = DEFAULT_PROJECT_DIR, outputFile, byValue, minValueLength }) => {
       try {
-        const result = await findDuplicateKeys({ locale, projectDir, outputFile })
+        const result = await findDuplicateKeys({ locale, projectDir, outputFile, byValue, minValueLength })
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('finding duplicate keys', error)

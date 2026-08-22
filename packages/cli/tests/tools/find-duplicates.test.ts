@@ -338,3 +338,173 @@ describe('findDuplicateKeys — degenerate config without app info', () => {
     expect(result.summary.message).toContain('No app info')
   })
 })
+
+/**
+ * Value-level duplication (#343): different key paths carrying the same value,
+ * which key-path collision detection cannot see at all. The motivating case is
+ * two app-layer keys re-implementing a root key that already exists — each then
+ * translated into every locale separately, so the duplication costs provider
+ * spend on every run.
+ */
+describe('findDuplicateKeys — value duplicates', () => {
+  /** The real anny-ui shape: one root key, two app keys, all "Speichern". */
+  async function makeValueDuplicateProject(): Promise<string> {
+    return makeTwoLayerProject(
+      'i18n-dup-value-',
+      { common: { actions: { save: 'Speichern' } }, greeting: 'Willkommen' },
+      {
+        bookingCreator: { orderDetails: { save: 'Speichern' } },
+        calendar: { views: { save: 'Speichern ' } },
+        yes: 'Ja',
+        alsoYes: 'Ja',
+      },
+    )
+  }
+
+  it('is absent unless asked for, so the existing result shape is untouched', async () => {
+    const result = asResult(await findDuplicateKeys({ projectDir: multiDir }))
+
+    expect(result.valueDuplicates).toBeUndefined()
+    expect(result.summary.valueGroups).toBeUndefined()
+  })
+
+  it('groups keys that carry the same value across layers', async () => {
+    const dir = await makeValueDuplicateProject()
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      const group = result.valueDuplicates?.find(g => g.normalized === 'speichern')
+
+      expect(group?.members.map(m => m.key).sort()).toEqual([
+        'bookingCreator.orderDetails.save',
+        'calendar.views.save',
+        'common.actions.save',
+      ])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // The fix here costs nothing but deletions, which is why it sorts first.
+  it('calls a group reuse when a shared layer already carries the value', async () => {
+    const dir = await makeValueDuplicateProject()
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+
+      expect(result.valueDuplicates?.[0]?.action).toBe('reuse')
+      expect(result.valueDuplicates?.[0]?.members.filter(m => m.shared)).toHaveLength(1)
+      expect(result.summary.reusableGroups).toBe(1)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('folds trailing whitespace, case and punctuation into one group', async () => {
+    const dir = await makeTwoLayerProject(
+      'i18n-dup-norm-',
+      { a: { save: 'Speichern' } },
+      { b: { save: 'speichern. ' } },
+    )
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+
+      expect(result.valueDuplicates).toHaveLength(1)
+      expect(result.valueDuplicates?.[0]?.members).toHaveLength(2)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('folds a run of internal whitespace, which a copy-paste leaves behind', async () => {
+    const dir = await makeTwoLayerProject(
+      'i18n-dup-inner-ws-',
+      { a: { save: 'Jetzt  speichern' } },
+      { b: { save: 'Jetzt speichern' } },
+    )
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+
+      expect(result.valueDuplicates).toHaveLength(1)
+      expect(result.valueDuplicates?.[0]?.normalized).toBe('jetzt speichern')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // The pair-wise check already reports this key, with both values. Repeating
+  // it as a value duplicate would say nothing new and inflate the count.
+  it('leaves one key path defined in two layers to the collision report', async () => {
+    const dir = await makeTwoLayerProject(
+      'i18n-dup-same-key-',
+      { common: { save: 'Speichern' } },
+      { common: { save: 'Speichern' } },
+    )
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+
+      expect(result.collisions.map(c => c.key)).toEqual(['common.save'])
+      expect(result.valueDuplicates).toEqual([])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Comparing a length against NaN is always false, so a mistyped floor would
+  // silently remove the floor — the opposite of what asking for one means.
+  it('refuses a floor that is not a usable number instead of ignoring it', async () => {
+    const dir = await makeValueDuplicateProject()
+    try {
+      await expect(findDuplicateKeys({ projectDir: dir, byValue: true, minValueLength: Number('abc') }))
+        .rejects.toThrow(/minValueLength/)
+      await expect(findDuplicateKeys({ projectDir: dir, byValue: true, minValueLength: -1 }))
+        .rejects.toThrow(/minValueLength/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // "Ja" repeating across unrelated namespaces is not a finding, and reporting
+  // it buries the ones worth acting on.
+  it('leaves short values alone, and takes a floor from the caller', async () => {
+    const dir = await makeValueDuplicateProject()
+    try {
+      const byDefault = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      expect(byDefault.valueDuplicates?.some(g => g.normalized === 'ja')).toBe(false)
+
+      const withFloor = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true, minValueLength: 2 }))
+      expect(withFloor.valueDuplicates?.some(g => g.normalized === 'ja')).toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reports a value duplicated inside one layer as a consolidation', async () => {
+    const dir = await makeTwoLayerProject(
+      'i18n-dup-same-layer-',
+      { a: { save: 'Speichern' }, b: { store: 'Speichern' } },
+      { unrelated: { title: 'Etwas anderes' } },
+    )
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+
+      expect(result.valueDuplicates?.[0]?.action).toBe('consolidate')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('says nothing about a value that appears once', async () => {
+    const dir = await makeTwoLayerProject(
+      'i18n-dup-unique-',
+      { a: { save: 'Speichern' } },
+      { b: { cancel: 'Abbrechen' } },
+    )
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+
+      expect(result.valueDuplicates).toEqual([])
+      expect(result.summary.valueGroups).toBe(0)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
