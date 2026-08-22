@@ -1,0 +1,122 @@
+import type { CallSite, LanguageFrontend } from '../types.js'
+import { collectPhpSites, loadPhpParser } from './index.js'
+import type { PhpNode, PhpParserEngine } from './index.js'
+import { log } from '../../../utils/logger.js'
+
+/**
+ * Blade, by lifting (#404, #332).
+ *
+ * No maintained Blade AST parser exists, and none is needed: every construct
+ * that can carry a translation key wraps a PHP expression. The lexical pass
+ * here finds those wrappers — echoes, `@lang`/`@choice`, `@php` blocks, raw
+ * PHP tags — and hands the expression inside to the same parser and the same
+ * site collection plain PHP uses. The regex frames text; it never decides
+ * what a key is.
+ *
+ * A lifted chunk the parser cannot read declines the whole file to the
+ * pattern fallback: partially-read templates would silently drop keys.
+ */
+export function createBladeFrontend(): LanguageFrontend {
+  return {
+    name: 'blade',
+
+    handles(filePath: string): boolean {
+      return filePath.endsWith('.blade.php')
+    },
+
+    async read(content: string, filePath: string): Promise<CallSite[] | null> {
+      const parser = await loadPhpParser(filePath)
+      if (!parser) return null
+
+      const sites: CallSite[] = []
+      for (const chunk of liftChunks(content)) {
+        const parsed = parseChunk(parser, chunk, filePath)
+        if (!parsed) return null
+        sites.push(...collectPhpSites(parsed, chunk.lineOffset, chunk.callee))
+      }
+      sites.sort((a, b) => a.line - b.line)
+      return sites
+    },
+  }
+}
+
+interface Chunk {
+  /** A statement the PHP parser can read, `<?php` prefix excluded. */
+  source: string
+  /** Lines before the chunk in the template — added to every reported line. */
+  lineOffset: number
+  /** Report sites under the directive's own name (`@lang`), as written. */
+  callee?: string
+}
+
+function parseChunk(parser: PhpParserEngine, chunk: Chunk, filePath: string): PhpNode | null {
+  try {
+    return parser.parseCode(`<?php ${chunk.source}`, filePath) as unknown as PhpNode
+  } catch (error) {
+    log.debug(`blade frontend declined ${filePath}: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+}
+
+const BLADE_COMMENT = /\{\{--[\s\S]*?--\}\}/g
+
+function liftChunks(content: string): Chunk[] {
+  // Comments may contain anything, including things shaped like echoes.
+  const source = content.replace(BLADE_COMMENT, m => m.replace(/[^\n]/g, ' '))
+  const chunks: Chunk[] = []
+  const lineAt = (offset: number) => source.slice(0, offset).split('\n').length - 1
+
+  // {{ expr }} and {!! expr !!} — echoes of a PHP expression.
+  for (const match of source.matchAll(/\{\{([\s\S]*?)\}\}|\{!!([\s\S]*?)!!\}/g)) {
+    const expression = match[1] ?? match[2]
+    if (!expression?.trim()) continue
+    chunks.push({ source: `${expression};`, lineOffset: lineAt(match.index ?? 0) })
+  }
+
+  // @php ... @endphp and raw <?php ... ?> — statements as written.
+  for (const match of source.matchAll(/@php\b([\s\S]*?)@endphp/g)) {
+    const body = match[1]
+    if (body?.trim()) chunks.push({ source: body, lineOffset: lineAt(match.index ?? 0) })
+  }
+  for (const match of source.matchAll(/<\?php\b([\s\S]*?)(?:\?>|$)/g)) {
+    const body = match[1]
+    if (body?.trim()) chunks.push({ source: body, lineOffset: lineAt(match.index ?? 0) })
+  }
+
+  // @lang(...) / @choice(...) — thin wrappers over __ and trans_choice.
+  // Reported under the directive's own name, as the reports always have.
+  for (const match of source.matchAll(/@(lang|choice)\s*\(/g)) {
+    const open = (match.index ?? 0) + match[0].length - 1
+    const args = balancedParens(source, open)
+    if (args === undefined) continue
+    const helper = match[1] === 'lang' ? '__' : 'trans_choice'
+    chunks.push({ source: `${helper}(${args});`, lineOffset: lineAt(match.index ?? 0), callee: `@${match[1]}` })
+  }
+
+  return chunks
+}
+
+/**
+ * The argument text between a directive's parentheses, quote-aware — a `)`
+ * inside a string does not close the call. Returns undefined when the call
+ * never closes, which declines the construct rather than guessing.
+ */
+function balancedParens(source: string, openIndex: number): string | undefined {
+  let depth = 0
+  let quote: string | undefined
+  for (let i = openIndex; i < source.length; i++) {
+    const ch = source[i]
+    if (quote) {
+      if (ch === '\\') i++
+      else if (ch === quote) quote = undefined
+      continue
+    }
+    if (ch === '\'' || ch === '"') quote = ch
+    else if (ch === '(') depth++
+    else if (ch === ')') {
+      depth--
+      if (depth === 0) return source.slice(openIndex + 1, i)
+    }
+  }
+  return undefined
+}
