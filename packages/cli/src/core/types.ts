@@ -539,6 +539,14 @@ export interface FindOrphanKeysResult {
   /** Absent when the full report went to `reportFile` instead. */
   orphanKeys?: Record<string, string[]>
   uncertainKeys?: Record<string, string[]>
+  /**
+   * Keys kept alive solely by the bare-candidate net — nothing a frontend
+   * could call a usage references them; a dotted string somewhere (a comment,
+   * a data structure) merely shares their name. Not orphans, but where dead
+   * references hide.
+   */
+  candidateOnlyKeys?: Record<string, string[]>
+  candidateOnlyNote?: string
   /** Keys used only from apps that do not consume the owning layer. */
   misplacedUsages?: MisplacedUsageRef[]
   misplacedUsageNote?: string
@@ -546,11 +554,14 @@ export interface FindOrphanKeysResult {
     totalKeys: number
     orphanCount: number
     uncertainCount?: number
+    candidateOnlyCount?: number
     misplacedCount?: number
     dynamicMatchedCount?: number
     ignoredCount?: number
     usedCount?: number
     filesScanned: number
+    /** Files a syntax frontend declined; pattern matching read them instead. */
+    filesDeclined?: number
     layersChecked?: string[]
     dirsScanned?: string[]
     scanScope?: Record<string, string[]>
@@ -578,6 +589,8 @@ export interface CodeUsageResult {
     uniqueKeysFound: number
     totalReferences: number
     filesScanned: number
+    /** Files a syntax frontend declined; pattern matching read them instead. */
+    filesDeclined?: number
     dirsScanned?: string[]
     message?: string
   }
@@ -597,6 +610,8 @@ export interface ScanCodeUsageResult {
     uniqueKeysFound: number
     totalReferences: number
     filesScanned: number
+    /** Files a syntax frontend declined; pattern matching read them instead. */
+    filesDeclined?: number
     dirsScanned: string[]
   }
   notFoundInCode?: string[]

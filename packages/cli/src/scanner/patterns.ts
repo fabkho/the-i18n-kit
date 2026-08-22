@@ -13,23 +13,6 @@ export interface ScanPatternSet {
   /** Must capture: (1) callee, (2) quote char, (3) prefix */
   concatKeyPatterns: RegExp[]
   /**
-   * Returns true if the callee should be skipped when the key has no dot.
-   * Vue `t('word')` without a dot is likely not i18n — `emit`, `import`, etc.
-   */
-  requiresDotForCallee?: (callee: string) => boolean
-  /**
-   * When true, dynamic-pattern matches without interpolation are promoted to static keys.
-   * Enables backtick literals like `t(\`foo.bar\`)` to be recognized as static.
-   */
-  promoteStaticDynamicMatches?: boolean
-  /**
-   * When true, `${identifier}` interpolations are resolved against same-file
-   * `const`/`let` string-literal declarations before classification (#284).
-   * JS/TS-only: PHP's `${var}` interpolation reads runtime variables, so
-   * substituting declared constants there could wrongly narrow a pattern.
-   */
-  resolveLocalConsts?: boolean
-  /**
    * Language family for the context-free bare-candidate collectors (#288).
    * 'js' (default) runs the template-literal and `+`-concat shapes; 'php'
    * runs the double-quoted `{$var}` interpolation shape instead. Ungated,
@@ -73,9 +56,6 @@ export const VUE_NUXT_PATTERNS: ScanPatternSet = {
   staticKeyPatterns: [VUE_STATIC_KEY],
   dynamicKeyPatterns: [VUE_DYNAMIC_KEY],
   concatKeyPatterns: [VUE_CONCAT_KEY],
-  requiresDotForCallee: (callee: string) => callee === 't',
-  promoteStaticDynamicMatches: true,
-  resolveLocalConsts: true,
   bareShapes: 'js',
 }
 

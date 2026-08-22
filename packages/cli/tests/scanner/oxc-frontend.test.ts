@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createOxcFrontend } from '../../src/scanner/frontends/oxc.js'
-import { interpret } from '../../src/scanner/rules.js'
-import { VUE_NUXT_PATTERNS } from '../../src/scanner/patterns.js'
+import { interpret, ambiguousCalleeNeedsDot } from '../../src/scanner/rules.js'
 
 /**
  * The AST frontend (#332). It exists to answer the one question a regex
@@ -19,10 +18,7 @@ async function scan(source: string, filePath = 'a.ts') {
   const sites = await frontend.read(source, filePath)
   if (!sites) return null
 
-  return interpret(sites, {
-    filePath,
-    ambiguousCalleeNeedsDot: callee => VUE_NUXT_PATTERNS.requiresDotForCallee?.(callee) ?? false,
-  })
+  return interpret(sites, { filePath, ambiguousCalleeNeedsDot })
 }
 
 /** Not a usage, but net-protected — the #298 posture for ambiguity. */
