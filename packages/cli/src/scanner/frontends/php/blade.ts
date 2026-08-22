@@ -31,7 +31,15 @@ export function createBladeFrontend(): LanguageFrontend {
       const sites: CallSite[] = []
       for (const chunk of liftChunks(content)) {
         const parsed = parseChunk(parser, chunk, filePath)
-        if (!parsed) return null
+        if (!parsed) {
+          // A control-flow directive's argument (`@foreach($items as $item)`)
+          // is Blade grammar, not a PHP expression — skipping it loses nothing
+          // a call site could carry. The constructs that do carry keys must
+          // parse, or the whole file declines: partially-read templates would
+          // silently drop keys.
+          if (chunk.optional) continue
+          return null
+        }
         sites.push(...collectPhpSites(parsed, chunk.lineOffset, chunk.callee))
       }
       sites.sort((a, b) => a.line - b.line)
@@ -47,6 +55,8 @@ interface Chunk {
   lineOffset: number
   /** Report sites under the directive's own name (`@lang`), as written. */
   callee?: string
+  /** A chunk that may fail to parse without declining the file. */
+  optional?: boolean
 }
 
 function parseChunk(parser: PhpParserEngine, chunk: Chunk, filePath: string): PhpNode | null {
@@ -100,17 +110,30 @@ function phpBlockChunks(source: string, lineAt: LineAt): Chunk[] {
 }
 
 /**
- * @lang(...) / @choice(...) — thin wrappers over __ and trans_choice.
- * Reported under the directive's own name, as the reports always have.
+ * Directive arguments. @lang and @choice are thin wrappers over __ and
+ * trans_choice — the argument list is the translation call, reported under
+ * the directive's own name. Every other directive gets its arguments read
+ * as an expression list (`@section('title', __('Forbidden'))` carries a
+ * real call), best-effort: what is not an expression is Blade grammar.
  */
 function directiveChunks(source: string, lineAt: LineAt): Chunk[] {
   const chunks: Chunk[] = []
-  for (const match of source.matchAll(/@(lang|choice)\s*\(/g)) {
+  for (const match of source.matchAll(/@(\w+)\s*\(/g)) {
+    const directive = match[1] ?? ''
+    if (directive === 'php') continue // handled as a block above
     const open = (match.index ?? 0) + match[0].length - 1
     const args = balancedParens(source, open)
     if (args === undefined) continue
-    const helper = match[1] === 'lang' ? '__' : 'trans_choice'
-    chunks.push({ source: `${helper}(${args});`, lineOffset: lineAt(match.index ?? 0), callee: `@${match[1]}` })
+    const lineOffset = lineAt(match.index ?? 0)
+
+    if (directive === 'lang' || directive === 'choice') {
+      const helper = directive === 'lang' ? '__' : 'trans_choice'
+      chunks.push({ source: `${helper}(${args});`, lineOffset, callee: `@${directive}` })
+      continue
+    }
+    if (args.trim()) {
+      chunks.push({ source: `__args__(${args});`, lineOffset, optional: true })
+    }
   }
   return chunks
 }

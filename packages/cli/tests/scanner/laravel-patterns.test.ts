@@ -323,8 +323,8 @@ describe('Laravel scanSourceFiles', () => {
 
   it('respects custom excludeDirs', async () => {
     await mkdir(join(tmpDir, 'tests'), { recursive: true })
-    await writeFile(join(tmpDir, 'tests/Feature.php'), `__('test.key')`)
-    await writeFile(join(tmpDir, 'app.php'), `__('app.key')`)
+    await writeFile(join(tmpDir, 'tests/Feature.php'), `<?php __('test.key');`)
+    await writeFile(join(tmpDir, 'app.php'), `<?php __('app.key');`)
 
     const result = await scanSourceFiles(tmpDir, ['tests'], LARAVEL_PATTERNS)
     expect(result.filesScanned).toBe(1)

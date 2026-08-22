@@ -3,6 +3,8 @@ import { isAbsolute, join, relative, sep } from 'node:path'
 import { glob } from 'tinyglobby'
 import { log } from '../utils/logger.js'
 import { createOxcFrontend } from './frontends/oxc.js'
+import { createPhpFrontend } from './frontends/php/index.js'
+import { createBladeFrontend } from './frontends/php/blade.js'
 import type { LanguageFrontend } from './frontends/types.js'
 import { interpret } from './rules.js'
 import type { RuleContext } from './rules.js'
@@ -373,9 +375,10 @@ async function extractFileEvidence(
 let warnedRegexHatch = false
 
 /**
- * The syntax frontend is the default (#402); patterns read only what it
- * declines. `I18N_SCANNER=regex` restores the old scanner for exactly one
- * release — an escape hatch for reporting a regression, not a mode.
+ * The syntax frontends are the default (#402 for JS/TS/Vue, #405 for
+ * PHP/Blade); patterns read only what they decline. `I18N_SCANNER=regex`
+ * restores the old scanner for exactly one release — an escape hatch for
+ * reporting a regression, not a mode.
  */
 function defaultFrontends(pat: ScanPatternSet): LanguageFrontend[] {
   if (process.env.I18N_SCANNER === 'regex') {
@@ -385,10 +388,13 @@ function defaultFrontends(pat: ScanPatternSet): LanguageFrontend[] {
     }
     return [createPatternsFrontend(pat)]
   }
-  return [oxcFrontend, createPatternsFrontend(pat)]
+  const syntax = pat.bareShapes === 'php' ? [phpFrontend, bladeFrontend] : [oxcFrontend]
+  return [...syntax, createPatternsFrontend(pat)]
 }
 
 const oxcFrontend = createOxcFrontend()
+const phpFrontend = createPhpFrontend()
+const bladeFrontend = createBladeFrontend()
 
 export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], patterns?: ScanPatternSet, frontends?: LanguageFrontend[]): Promise<ScanResult> {
   const pat = patterns ?? VUE_NUXT_PATTERNS

@@ -15,26 +15,33 @@
  */
 import { performance } from 'node:perf_hooks'
 
-const [projectDir] = process.argv.slice(2)
+const args = process.argv.slice(2)
+const laravel = args.includes('--laravel')
+const [projectDir] = args.filter(a => a !== '--laravel')
 
 if (!projectDir) {
-  console.error('Usage: node scripts/scanner-diff.mjs <projectDir>')
+  console.error('Usage: node scripts/scanner-diff.mjs <projectDir> [--laravel]')
   process.exit(1)
 }
 
-const { scanSourceFiles, createOxcFrontend, createPatternsFrontend, VUE_NUXT_PATTERNS } = await import('../packages/cli/dist/index.js').catch(() => {
+const {
+  scanSourceFiles, createOxcFrontend, createPatternsFrontend, createPhpFrontend, createBladeFrontend,
+  VUE_NUXT_PATTERNS, LARAVEL_PATTERNS,
+} = await import('../packages/cli/dist/index.js').catch(() => {
   console.error('Build the CLI first: pnpm --filter the-i18n-cli build')
   process.exit(1)
 })
 
+const PATTERNS = laravel ? LARAVEL_PATTERNS : VUE_NUXT_PATTERNS
+const syntaxFrontends = laravel ? [createPhpFrontend(), createBladeFrontend()] : [createOxcFrontend()]
 const FRONTENDS = {
-  regex: [createPatternsFrontend(VUE_NUXT_PATTERNS)],
-  ast: [createOxcFrontend(), createPatternsFrontend(VUE_NUXT_PATTERNS)],
+  regex: [createPatternsFrontend(PATTERNS)],
+  ast: [...syntaxFrontends, createPatternsFrontend(PATTERNS)],
 }
 
 async function run(label, scanner) {
   const started = performance.now()
-  const result = await scanSourceFiles(projectDir, undefined, undefined, FRONTENDS[scanner])
+  const result = await scanSourceFiles(projectDir, undefined, PATTERNS, FRONTENDS[scanner])
   const elapsed = performance.now() - started
 
   console.log(
