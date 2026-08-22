@@ -78,6 +78,26 @@ export interface FindDuplicateKeysResult {
  */
 const DEFAULT_MIN_VALUE_LENGTH = 4
 
+/**
+ * A floor arrives as a CLI string or an MCP number, so it can be NaN or
+ * negative by the time it lands here. Comparing a length against NaN is always
+ * false, which silently removes the floor and buries the report in "OK" — the
+ * opposite of what asking for a floor means. Saying so beats defaulting: the
+ * caller asked for a specific threshold and would not learn it was ignored.
+ */
+function resolveMinValueLength(requested: number | undefined): number {
+  if (requested === undefined) return DEFAULT_MIN_VALUE_LENGTH
+  if (!Number.isFinite(requested) || requested < 0) {
+    throw new ToolError(
+      // String(), not JSON.stringify(): the latter renders NaN as "null", which
+      // is the one value this message most needs to name.
+      `minValueLength must be a non-negative number, got ${String(requested)}.`,
+      'INVALID_MIN_VALUE_LENGTH',
+    )
+  }
+  return Math.floor(requested)
+}
+
 const VALUE_DUPLICATE_GUIDANCE
   = 'Different keys carrying the same value. "reuse" means a shared layer already defines this '
   + 'value: delete the app-layer keys and repoint their call sites at the shared key. "promote" '
@@ -194,7 +214,13 @@ function groupByValue(
     byNormalized.set(normalized, group)
   }
 
-  const groups = [...byNormalized.values()].filter(group => group.members.length > 1)
+  const groups = [...byNormalized.values()].filter(group =>
+    group.members.length > 1
+    // One key path defined in several layers is a collision, which the
+    // pair-wise check above already reports with both values. Repeating it
+    // here as a value duplicate says nothing new.
+    && new Set(group.members.map(m => m.key)).size > 1,
+  )
   for (const group of groups) group.action = classifyGroup(group.members)
 
   // Actionability first, then size: the biggest reuse opportunity is the one
@@ -225,14 +251,16 @@ function normalizeValue(value: string): string {
     .trim()
     .replace(/\s+/g, ' ')
     .replace(/[.!?:;,\u2026]+$/u, '')
-    .toLocaleLowerCase()
+    // toLowerCase, not toLocaleLowerCase: the latter folds by the host's
+    // locale, so the same repository would group differently on a Turkish
+    // machine. A grouping key has to be a property of the data.
+    .toLowerCase()
 }
 
 /** Every leaf key of every canonical layer, minus the ones config says to ignore. */
 async function collectLayerEntries(
   config: I18nConfig,
   layers: LocaleDir[],
-  locale: LocaleDefinition,
   dataFor: (layer: string) => Promise<Record<string, unknown>>,
 ): Promise<Array<{ key: string, layer: string, value: unknown }>> {
   const entries: Array<{ key: string, layer: string, value: unknown }> = []
@@ -329,14 +357,14 @@ export async function findDuplicateKeys(opts: {
 
   const valueDuplicates = opts.byValue
     ? groupByValue(
-        await collectLayerEntries(config, graph.canonicalLayers, locale, dataFor),
+        await collectLayerEntries(config, graph.canonicalLayers, dataFor),
         // The layers something falls through to, from the same pairs the
         // collision check uses — not graph.sharedLayers, which means "consumed
         // by more than one app". A single-app project has no layer shared in
         // that sense, yet its root layer is still the one whose keys the app
         // can reuse, which is the question this report answers.
         new Set(pairs.map(pair => pair.shared.layer)),
-        opts.minValueLength ?? DEFAULT_MIN_VALUE_LENGTH,
+        resolveMinValueLength(opts.minValueLength),
       )
     : undefined
 
@@ -365,7 +393,7 @@ export async function findDuplicateKeys(opts: {
   if (reportPath) {
     await writeReportFile(reportPath, output as unknown as Record<string, unknown>, {
       tool: 'find_duplicate_keys',
-      args: { locale: opts.locale, byValue: opts.byValue },
+      args: { locale: opts.locale, byValue: opts.byValue, minValueLength: opts.minValueLength },
     })
     return { reportFile: reportPath, summary }
   }

@@ -414,6 +414,54 @@ describe('findDuplicateKeys — value duplicates', () => {
     }
   })
 
+  it('folds a run of internal whitespace, which a copy-paste leaves behind', async () => {
+    const dir = await makeTwoLayerProject(
+      'i18n-dup-inner-ws-',
+      { a: { save: 'Jetzt  speichern' } },
+      { b: { save: 'Jetzt speichern' } },
+    )
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+
+      expect(result.valueDuplicates).toHaveLength(1)
+      expect(result.valueDuplicates?.[0]?.normalized).toBe('jetzt speichern')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // The pair-wise check already reports this key, with both values. Repeating
+  // it as a value duplicate would say nothing new and inflate the count.
+  it('leaves one key path defined in two layers to the collision report', async () => {
+    const dir = await makeTwoLayerProject(
+      'i18n-dup-same-key-',
+      { common: { save: 'Speichern' } },
+      { common: { save: 'Speichern' } },
+    )
+    try {
+      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+
+      expect(result.collisions.map(c => c.key)).toEqual(['common.save'])
+      expect(result.valueDuplicates).toEqual([])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Comparing a length against NaN is always false, so a mistyped floor would
+  // silently remove the floor — the opposite of what asking for one means.
+  it('refuses a floor that is not a usable number instead of ignoring it', async () => {
+    const dir = await makeValueDuplicateProject()
+    try {
+      await expect(findDuplicateKeys({ projectDir: dir, byValue: true, minValueLength: Number('abc') }))
+        .rejects.toThrow(/minValueLength/)
+      await expect(findDuplicateKeys({ projectDir: dir, byValue: true, minValueLength: -1 }))
+        .rejects.toThrow(/minValueLength/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   // "Ja" repeating across unrelated namespaces is not a finding, and reporting
   // it buries the ones worth acting on.
   it('leaves short values alone, and takes a floor from the caller', async () => {

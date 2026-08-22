@@ -1019,6 +1019,8 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .describe('When true, also groups different keys carrying the same value — e.g. common.actions.save and calendar.views.save both "Speichern". Each group says what to do about it: "reuse" (a shared layer already has it — delete the app copies and repoint call sites), "promote" (move one to a shared layer with move_translation_key), or "consolidate" (duplication inside one layer). Default: false.'),
         minValueLength: z
           .number()
+          .int()
+          .min(1)
           .optional()
           .describe('Shortest value worth grouping when byValue is set. Default: 4 — below it, values like "OK" repeat across unrelated namespaces legitimately.'),
         outputFile: outputFileInput('/tmp/duplicate-keys.json'),

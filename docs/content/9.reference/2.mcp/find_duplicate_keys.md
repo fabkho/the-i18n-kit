@@ -16,7 +16,7 @@ Find translation keys defined in BOTH a shared layer and an app layer that consu
 | `locale` | `string` | no | Locale code to compare values in (e.g., "de", "en-US"). Defaults to the project default locale. |
 | `projectDir` | `string` | no | Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |
 | `byValue` | `boolean` | no | When true, also groups different keys carrying the same value — e.g. common.actions.save and calendar.views.save both "Speichern". Each group says what to do about it: "reuse" (a shared layer already has it — delete the app copies and repoint call sites), "promote" (move one to a shared layer with move_translation_key), or "consolidate" (duplication inside one layer). Default: false. |
-| `minValueLength` | `number` | no | Shortest value worth grouping when byValue is set. Default: 4 — below it, values like "OK" repeat across unrelated namespaces legitimately. |
+| `minValueLength` | `integer` | no | Shortest value worth grouping when byValue is set. Default: 4 — below it, values like "OK" repeat across unrelated namespaces legitimately. |
 | `outputFile` | `string` | no | Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/duplicate-keys.json" |
 
 ## Paired CLI Command
