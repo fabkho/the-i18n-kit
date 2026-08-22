@@ -52,11 +52,22 @@ const ast = await run('ast', 'ast')
 const onlyRegex = [...regex.uniqueKeys].filter(k => !ast.uniqueKeys.has(k)).sort()
 const onlyAst = [...ast.uniqueKeys].filter(k => !regex.uniqueKeys.has(k)).sort()
 
+// The frontends write dynamic expressions differently — the regex keeps the
+// original interpolation text, the AST normalises slots to ${_} — so compare
+// them with the slots erased, the way the orphan planner treats them.
+const normalise = expr => expr.replace(/\$\{[^}]*\}/g, '${_}')
+const astDynamic = new Set(ast.dynamicKeys.map(dk => normalise(dk.expression)))
+const regexDynamic = new Set(regex.dynamicKeys.map(dk => normalise(dk.expression)))
+
 // A key that left uniqueKeys can still be protected: the bare-candidate net
 // and the dynamic-key regexes also veto orphans. Only a key covered by none
 // of them changes what remove-orphans would do.
-const astDynamic = new Set(ast.dynamicKeys.map(dk => dk.expression))
-const stillProtected = k => ast.bareStringCandidates.has(k) || astDynamic.has(k)
+const astDynamicMatchers = [...astDynamic].map((expr) => {
+  const inner = expr.replace(/^`|`$/g, '')
+  const pattern = inner.split('${_}').map(part => part.replace(/[.*+?^{}()|[\]\\]/g, String.raw`\$&`)).join('.+')
+  return new RegExp(`^${pattern}$`)
+})
+const stillProtected = k => ast.bareStringCandidates.has(k) || astDynamicMatchers.some(re => re.test(k))
 const unprotected = onlyRegex.filter(k => !stillProtected(k))
 
 console.log(`\nkeys only the regex frontend found: ${onlyRegex.length}`
@@ -66,7 +77,7 @@ for (const key of onlyRegex.slice(0, 25)) {
 }
 if (onlyRegex.length > 25) console.log(`  … and ${onlyRegex.length - 25} more`)
 
-const onlyRegexDynamic = [...new Set(regex.dynamicKeys.map(dk => dk.expression))].filter(e => !astDynamic.has(e)).sort()
+const onlyRegexDynamic = [...regexDynamic].filter(e => !astDynamic.has(e)).sort()
 console.log(`\ndynamic expressions only the regex frontend found: ${onlyRegexDynamic.length}`)
 for (const expr of onlyRegexDynamic.slice(0, 25)) console.log(`  - ${expr}`)
 
