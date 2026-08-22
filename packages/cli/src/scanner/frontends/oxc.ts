@@ -52,6 +52,12 @@ export function createOxcFrontend(): LanguageFrontend {
       const parse = await loadParser()
       if (!parse) return null
 
+      // A .vue file with neither a template nor a script tag is not an SFC.
+      // The block splitter would read only the fragments it recognises and
+      // silently drop everything between them; declining hands the whole file
+      // to the fallback instead.
+      if (filePath.endsWith('.vue') && !/<template[\s>]|<script[\s>]/.test(content)) return null
+
       const blocks = filePath.endsWith('.vue') ? vueBlocks(content) : [{ source: content, lineOffset: 0 }]
 
       // No blocks means the file was not understood at all, not that it has no
@@ -116,6 +122,7 @@ function loadParser(): Promise<ParseSync | null> {
  */
 interface ParsedBlock {
   program: Node
+  source: string
   i18nNames: Set<string>
   constants: ConstantTable
 }
@@ -130,6 +137,7 @@ function parseBlock(parseSync: ParseSync, source: string, filePath: string): Par
 
   return {
     program: result.program as Node,
+    source,
     i18nNames: collectI18nNames(result.program as Node),
     constants: collectStringConstants(result.program as Node),
   }
@@ -275,7 +283,7 @@ function toCallSite(node: Node, parsed: ParsedBlock, lineAt: (offset: number) =>
   return {
     callee: callee.name,
     binding: callee.resolved ? 'resolved' : 'ambiguous',
-    argument: readArgument(first, parsed.constants),
+    argument: readArgument(first, parsed),
     line: lineAt(node.start ?? 0),
   }
 }
@@ -309,13 +317,13 @@ function resolveMemberCallee(node: Node, i18nNames: Set<string>): ResolvedCallee
   return { name, resolved: ALWAYS_I18N.has(name) || (receiverIsI18n && MAYBE_I18N.has(name)) }
 }
 
-function readArgument(node: Node, constants: ConstantTable): CallArgument {
+function readArgument(node: Node, parsed: ParsedBlock): CallArgument {
   if (node.type === 'Literal' && typeof node.value === 'string') {
     return { kind: 'static', value: node.value }
   }
 
   if (node.type === 'TemplateLiteral') {
-    return readTemplateArgument(node, constants)
+    return readTemplateArgument(node, parsed)
   }
 
   // `'common.' + name` — the literal side bounds what the call can produce.
@@ -326,7 +334,7 @@ function readArgument(node: Node, constants: ConstantTable): CallArgument {
   return { kind: 'unknown' }
 }
 
-function readTemplateArgument(node: Node, constants: ConstantTable): CallArgument {
+function readTemplateArgument(node: Node, parsed: ParsedBlock): CallArgument {
   // No expressions is a plain string written with backticks.
   if ((node.expressions ?? []).length === 0) {
     const only = node.quasis?.[0]?.value?.cooked
@@ -334,10 +342,14 @@ function readTemplateArgument(node: Node, constants: ConstantTable): CallArgumen
   }
 
   // Every slot filled by a known constant makes the whole thing a literal.
-  const resolved = resolveTemplate(node, constants)
+  const resolved = resolveTemplate(node, parsed.constants)
   if (resolved !== undefined) return { kind: 'static', value: resolved }
 
-  const expression = (node.quasis ?? []).map((q: Node) => q.value?.cooked ?? '').join('${_}')
+  // As written in the file, backticks excluded — reports stay byte-identical
+  // with the pattern scanner's for unchanged code.
+  const expression = typeof node.start === 'number' && typeof node.end === 'number'
+    ? parsed.source.slice(node.start + 1, node.end - 1)
+    : (node.quasis ?? []).map((q: Node) => q.value?.cooked ?? '').join('${_}')
   return { kind: 'template', expression }
 }
 

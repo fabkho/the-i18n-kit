@@ -28,6 +28,12 @@ export interface ScanResult {
   usages: KeyUsage[]
   dynamicKeys: DynamicKeyUsage[]
   filesScanned: number
+  /**
+   * Files an active syntax frontend handled but declined — unparseable, or a
+   * parser that would not load — so pattern matching read them instead. A
+   * broken parser install shows up here rather than as silently weaker scans.
+   */
+  declinedFiles: string[]
   uniqueKeys: Set<string>
   /**
    * All quoted strings containing at least one dot, extracted from source files.
@@ -474,22 +480,29 @@ async function extractFileEvidence(
   filePath: string,
   patterns?: ScanPatternSet,
   constTable?: Map<string, string>,
-): Promise<{ usages: KeyUsage[], dynamicKeys: DynamicKeyUsage[], bareStringCandidates: Set<string> }> {
+): Promise<{ usages: KeyUsage[], dynamicKeys: DynamicKeyUsage[], bareStringCandidates: Set<string>, declined: boolean }> {
   const pat = patterns ?? VUE_NUXT_PATTERNS
+  let declined = false
 
   for (const frontend of activeFrontends()) {
     if (!frontend.handles(filePath)) continue
 
     const sites = await frontend.read(content, filePath)
-    if (!sites) break
+    if (!sites) {
+      declined = true
+      break
+    }
 
-    return interpret(sites, {
-      filePath,
-      ambiguousCalleeNeedsDot: callee => pat.requiresDotForCallee?.(callee) ?? false,
-    })
+    return {
+      ...interpret(sites, {
+        filePath,
+        ambiguousCalleeNeedsDot: callee => pat.requiresDotForCallee?.(callee) ?? false,
+      }),
+      declined: false,
+    }
   }
 
-  return extractKeys(content, filePath, pat, constTable)
+  return { ...extractKeys(content, filePath, pat, constTable), declined }
 }
 
 /**
@@ -523,13 +536,14 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     // unit tests miss, read as thousands of lines of noise (#327).
     relativePaths = (await glob(pat.filePatterns, { cwd: rootDir, ignore, dot: false, absolute: false })).sort()
   } catch {
-    return { usages: [], dynamicKeys: [], filesScanned: 0, uniqueKeys: new Set(), bareStringCandidates: new Set(), bareDynamicCandidates: new Set() }
+    return { usages: [], dynamicKeys: [], filesScanned: 0, declinedFiles: [], uniqueKeys: new Set(), bareStringCandidates: new Set(), bareDynamicCandidates: new Set() }
   }
 
   const allUsages: KeyUsage[] = []
   const allDynamicKeys: DynamicKeyUsage[] = []
   const bareStringCandidates = new Set<string>()
   const bareDynamicCandidates = new Set<string>()
+  const declinedFiles: string[] = []
   let filesScanned = 0
 
   for (const relPath of relativePaths) {
@@ -543,7 +557,8 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     }
 
     const constTable = pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()
-    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls } = await extractFileEvidence(content, filePath, pat, constTable)
+    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls, declined } = await extractFileEvidence(content, filePath, pat, constTable)
+    if (declined) declinedFiles.push(relPath)
     allUsages.push(...usages)
     allDynamicKeys.push(...dynamicKeys)
     for (const candidate of bareFromCalls) bareStringCandidates.add(candidate)
@@ -556,7 +571,7 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   const uniqueKeys = new Set(allUsages.map(u => u.key))
   log.debug(`Scanned ${filesScanned} files, found ${uniqueKeys.size} unique keys, ${allDynamicKeys.length} dynamic references, ${bareStringCandidates.size} bare string candidates, ${bareDynamicCandidates.size} bare dynamic candidates`)
 
-  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, uniqueKeys, bareStringCandidates, bareDynamicCandidates }
+  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, declinedFiles, uniqueKeys, bareStringCandidates, bareDynamicCandidates }
 }
 
 // ─── Utilities ──────────────────────────────────────────────────
