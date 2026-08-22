@@ -28,7 +28,7 @@ export function createPhpFrontend(): LanguageFrontend {
     },
 
     async read(content: string, filePath: string): Promise<CallSite[] | null> {
-      const parser = await loadParser(filePath)
+      const parser = await loadPhpParser(filePath)
       if (!parser) return null
 
       let program: PhpNode
@@ -39,27 +39,36 @@ export function createPhpFrontend(): LanguageFrontend {
         return null
       }
 
-      const sites: CallSite[] = []
-      walk(program, (node) => {
-        if (node.kind !== 'call') return
-        const callee = calleeName(node.what as PhpNode | undefined)
-        if (!callee) return
-
-        const [first] = (node.arguments as PhpNode[] | undefined) ?? []
-        if (!first) return
-
-        sites.push({
-          callee,
-          // A global helper name is not shadowable in idiomatic Laravel; the
-          // name is the binding.
-          binding: 'resolved',
-          argument: readArgument(first),
-          line: (node.loc as { start?: { line?: number } } | undefined)?.start?.line ?? 0,
-        })
-      })
-      return sites
+      return collectPhpSites(program)
     },
   }
+}
+
+/**
+ * Call sites in a parsed program. Shared with the Blade frontend, which parses
+ * lifted expressions through the same engine and interprets them identically —
+ * a key's fate must not depend on which file type referenced it (#332).
+ */
+export function collectPhpSites(program: PhpNode, lineOffset = 0, calleeOverride?: string): CallSite[] {
+  const sites: CallSite[] = []
+  walk(program, (node) => {
+    if (node.kind !== 'call') return
+    const callee = calleeName(node.what as PhpNode | undefined)
+    if (!callee) return
+
+    const [first] = (node.arguments as PhpNode[] | undefined) ?? []
+    if (!first) return
+
+    sites.push({
+      callee: calleeOverride ?? callee,
+      // A global helper name is not shadowable in idiomatic Laravel; the
+      // name is the binding.
+      binding: 'resolved',
+      argument: readArgument(first),
+      line: ((node.loc as { start?: { line?: number } } | undefined)?.start?.line ?? 1) + lineOffset,
+    })
+  })
+  return sites
 }
 
 function calleeName(what: PhpNode | undefined): string | undefined {
@@ -123,12 +132,12 @@ function readEncapsed(parts: PhpNode[]): CallArgument {
  * package's own tree, which covers the workspace and test setup. Cached
  * including the failure, so a missing install is reported once.
  */
-interface PhpParserEngine { parseCode(code: string, filename: string): unknown }
-type PhpNode = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- untyped AST from the parser
+export interface PhpParserEngine { parseCode(code: string, filename: string): unknown }
+export type PhpNode = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- untyped AST from the parser
 
 let parserPromise: Promise<PhpParserEngine | null> | undefined
 
-function loadParser(fromFile: string): Promise<PhpParserEngine | null> {
+export function loadPhpParser(fromFile: string): Promise<PhpParserEngine | null> {
   parserPromise ??= resolveParser(fromFile)
   return parserPromise
 }

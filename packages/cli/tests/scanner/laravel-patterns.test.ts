@@ -4,116 +4,132 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildDynamicKeyRegexes, extractKeys, findOrphanKeysForConfig, scanSourceFiles } from '../../src/scanner/code-scanner.js'
 import { LARAVEL_PATTERNS, getPatternSet } from '../../src/scanner/patterns.js'
+import { createPhpFrontend } from '../../src/scanner/frontends/php/index.js'
+import { createBladeFrontend } from '../../src/scanner/frontends/php/blade.js'
+import { interpret, ambiguousCalleeNeedsDot } from '../../src/scanner/rules.js'
 
 const tmpDir = join(dirname(fileURLToPath(import.meta.url)), '../../.tmp-test/laravel-scanner')
 
-function extract(content: string, filePath = 'test.blade.php') {
-  return extractKeys(content, filePath, LARAVEL_PATTERNS)
+/**
+ * The shared contract (#332): the same expectations run against the pattern
+ * set and the syntax frontends. A test passing for one and failing for the
+ * other is either a regression or an expectation that encoded a heuristic.
+ */
+const MODES = ['patterns', 'syntax'] as const
+
+async function extractVia(mode: (typeof MODES)[number], content: string, filePath = 'test.blade.php') {
+  if (mode === 'patterns') return extractKeys(content, filePath, LARAVEL_PATTERNS)
+  const frontend = filePath.endsWith('.blade.php') ? createBladeFrontend() : createPhpFrontend()
+  const sites = await frontend.read(content, filePath)
+  if (!sites) throw new Error(`${frontend.name} declined ${filePath}`)
+  return interpret(sites, { filePath, ambiguousCalleeNeedsDot })
 }
 
-describe('Laravel extractKeys', () => {
+describe.each(MODES)('Laravel extraction via %s', (mode) => {
+  const extract = (content: string, filePath = 'test.blade.php') => extractVia(mode, content, filePath)
+
   describe('static key extraction', () => {
-    it('extracts __() with single quotes', () => {
-      const { usages } = extract(`<?php echo __('messages.welcome'); ?>`)
+    it('extracts __() with single quotes', async () => {
+      const { usages } = await extract(`<?php echo __('messages.welcome'); ?>`)
       expect(usages).toHaveLength(1)
       expect(usages[0]).toMatchObject({ key: 'messages.welcome', callee: '__', line: 1 })
     })
 
-    it('extracts __() with double quotes', () => {
-      const { usages } = extract(`<?php echo __("messages.welcome"); ?>`)
+    it('extracts __() with double quotes', async () => {
+      const { usages } = await extract(`<?php echo __("messages.welcome"); ?>`)
       expect(usages).toHaveLength(1)
       expect(usages[0]).toMatchObject({ key: 'messages.welcome', callee: '__' })
     })
 
-    it('extracts trans() with single quotes', () => {
-      const { usages } = extract(`{{ trans('auth.failed') }}`)
+    it('extracts trans() with single quotes', async () => {
+      const { usages } = await extract(`{{ trans('auth.failed') }}`)
       expect(usages).toHaveLength(1)
       expect(usages[0]).toMatchObject({ key: 'auth.failed', callee: 'trans', line: 1 })
     })
 
-    it('extracts trans() with double quotes', () => {
-      const { usages } = extract(`{{ trans("auth.failed") }}`)
+    it('extracts trans() with double quotes', async () => {
+      const { usages } = await extract(`{{ trans("auth.failed") }}`)
       expect(usages).toHaveLength(1)
       expect(usages[0]).toMatchObject({ key: 'auth.failed', callee: 'trans' })
     })
 
-    it('extracts trans_choice()', () => {
-      const { usages } = extract(`{{ trans_choice('messages.apples', 10) }}`)
+    it('extracts trans_choice()', async () => {
+      const { usages } = await extract(`{{ trans_choice('messages.apples', 10) }}`)
       expect(usages).toHaveLength(1)
       expect(usages[0]).toMatchObject({ key: 'messages.apples', callee: 'trans_choice' })
     })
 
-    it('extracts Lang::get()', () => {
-      const { usages } = extract(`<?php Lang::get('messages.welcome'); ?>`)
+    it('extracts Lang::get()', async () => {
+      const { usages } = await extract(`<?php Lang::get('messages.welcome'); ?>`)
       expect(usages).toHaveLength(1)
       expect(usages[0]).toMatchObject({ key: 'messages.welcome', callee: 'Lang::get' })
     })
 
-    it('extracts @lang() Blade directive', () => {
-      const { usages } = extract(`@lang('messages.welcome')`)
+    it('extracts @lang() Blade directive', async () => {
+      const { usages } = await extract(`@lang('messages.welcome')`)
       expect(usages).toHaveLength(1)
       expect(usages[0]).toMatchObject({ key: 'messages.welcome', callee: '@lang' })
     })
 
-    it('extracts keys without dots (no bare-callee filter for Laravel)', () => {
-      const { usages } = extract(`__('welcome')`)
+    it('extracts keys without dots (no bare-callee filter for Laravel)', async () => {
+      const { usages } = await extract(`{{ __('welcome') }}`)
       expect(usages).toHaveLength(1)
       expect(usages[0]).toMatchObject({ key: 'welcome', callee: '__' })
     })
 
-    it('extracts multiple keys from the same line', () => {
-      const { usages } = extract(`<p>{{ __('auth.login') }} | {{ __('auth.register') }}</p>`)
+    it('extracts multiple keys from the same line', async () => {
+      const { usages } = await extract(`<p>{{ __('auth.login') }} | {{ __('auth.register') }}</p>`)
       expect(usages).toHaveLength(2)
       expect(usages[0].key).toBe('auth.login')
       expect(usages[1].key).toBe('auth.register')
     })
 
-    it('extracts keys across multiple lines with correct line numbers', () => {
+    it('extracts keys across multiple lines with correct line numbers', async () => {
       const content = [
         '<h1>{{ __("pages.title") }}</h1>',
         '',
         '<p>{{ trans("pages.body") }}</p>',
       ].join('\n')
-      const { usages } = extract(content)
+      const { usages } = await extract(content)
       expect(usages).toHaveLength(2)
       expect(usages[0]).toMatchObject({ key: 'pages.title', line: 1 })
       expect(usages[1]).toMatchObject({ key: 'pages.body', line: 3 })
     })
 
-    it('extracts keys with spaces around parentheses', () => {
-      const { usages } = extract(`__(  'spaced.key'  )`)
+    it('extracts keys with spaces around parentheses', async () => {
+      const { usages } = await extract(`{{ __(  'spaced.key'  ) }}`)
       expect(usages).toHaveLength(1)
       expect(usages[0].key).toBe('spaced.key')
     })
 
-    it('extracts keys with nested dots', () => {
-      const { usages } = extract(`__('admin.users.permissions.edit')`)
+    it('extracts keys with nested dots', async () => {
+      const { usages } = await extract(`{{ __('admin.users.permissions.edit') }}`)
       expect(usages).toHaveLength(1)
       expect(usages[0].key).toBe('admin.users.permissions.edit')
     })
 
-    it('does not match __() preceded by a word character', () => {
-      const { usages } = extract(`foo__('not.a.key')`)
+    it('does not match __() preceded by a word character', async () => {
+      const { usages } = await extract(`foo__('not.a.key')`)
       expect(usages).toHaveLength(0)
     })
 
-    it('does not match trans preceded by a word character', () => {
-      const { usages } = extract(`detrans('not.a.key')`)
+    it('does not match trans preceded by a word character', async () => {
+      const { usages } = await extract(`detrans('not.a.key')`)
       expect(usages).toHaveLength(0)
     })
 
-    it('extracts from Blade echo and raw echo', () => {
+    it('extracts from Blade echo and raw echo', async () => {
       const content = [
         '{{ __("escaped.key") }}',
         '{!! __("raw.key") !!}',
       ].join('\n')
-      const { usages } = extract(content)
+      const { usages } = await extract(content)
       expect(usages).toHaveLength(2)
       expect(usages[0].key).toBe('escaped.key')
       expect(usages[1].key).toBe('raw.key')
     })
 
-    it('extracts from PHP controller code', () => {
+    it('extracts from PHP controller code', async () => {
       const content = [
         '<?php',
         'class UserController extends Controller {',
@@ -122,17 +138,19 @@ describe('Laravel extractKeys', () => {
         '    }',
         '}',
       ].join('\n')
-      const { usages } = extract(content, 'UserController.php')
+      const { usages } = await extract(content, 'UserController.php')
       expect(usages).toHaveLength(1)
       expect(usages[0]).toMatchObject({ key: 'users.created', callee: '__', line: 4 })
     })
 
-    it('extracts from validation messages array', () => {
+    it('extracts from validation messages array', async () => {
       const content = [
+        '<?php return [',
         "'email.required' => __('validation.email_required'),",
         "'name.max' => trans('validation.name_too_long'),",
+        '];',
       ].join('\n')
-      const { usages } = extract(content, 'validation.php')
+      const { usages } = await extract(content, 'validation.php')
       expect(usages).toHaveLength(2)
       expect(usages[0].key).toBe('validation.email_required')
       expect(usages[1].key).toBe('validation.name_too_long')
@@ -140,65 +158,65 @@ describe('Laravel extractKeys', () => {
   })
 
   describe('dynamic key extraction', () => {
-    it('detects PHP variable interpolation in double-quoted strings', () => {
-      const { dynamicKeys } = extract(`__("messages.{$type}.title")`)
+    it('detects PHP variable interpolation in double-quoted strings', async () => {
+      const { dynamicKeys } = await extract(`{{ __("messages.{$type}.title") }}`)
       expect(dynamicKeys).toHaveLength(1)
       expect(dynamicKeys[0].expression).toContain('messages.')
       expect(dynamicKeys[0].expression).toContain('.title')
       expect(dynamicKeys[0].callee).toBe('__')
     })
 
-    it('ignores static double-quoted strings (no interpolation)', () => {
-      const { dynamicKeys, usages } = extract(`__("messages.welcome")`)
+    it('ignores static double-quoted strings (no interpolation)', async () => {
+      const { dynamicKeys, usages } = await extract(`{{ __("messages.welcome") }}`)
       expect(dynamicKeys).toHaveLength(0)
       expect(usages).toHaveLength(1)
     })
 
-    it('detects $var interpolation (without braces)', () => {
-      const content = `__("messages.$type.title")`
-      const { dynamicKeys } = extract(content)
+    it('detects $var interpolation (without braces)', async () => {
+      const content = `{{ __("messages.$type.title") }}`
+      const { dynamicKeys } = await extract(content)
       expect(dynamicKeys).toHaveLength(1)
       expect(dynamicKeys[0].expression).toBe('`messages.${_}.title`')
       expect(dynamicKeys[0].callee).toBe('__')
     })
 
-    it('detects $this->property interpolation', () => {
-      const content = `__("exceptions.$this->code.message")`
-      const { dynamicKeys } = extract(content)
+    it('detects $this->property interpolation', async () => {
+      const content = `{{ __("exceptions.$this->code.message") }}`
+      const { dynamicKeys } = await extract(content)
       expect(dynamicKeys).toHaveLength(1)
       expect(dynamicKeys[0].expression).toBe('`exceptions.${_}.message`')
     })
 
-    it('detects multiple bare $var interpolations', () => {
-      const content = `__("connected_persons.$scope.$translationKey")`
-      const { dynamicKeys } = extract(content)
+    it('detects multiple bare $var interpolations', async () => {
+      const content = `{{ __("connected_persons.$scope.$translationKey") }}`
+      const { dynamicKeys } = await extract(content)
       expect(dynamicKeys).toHaveLength(1)
       expect(dynamicKeys[0].expression).toBe('`connected_persons.${_}.${_}`')
     })
   })
 
   describe('concatenation-based dynamic keys', () => {
-    it('detects PHP dot concatenation with single quotes', () => {
-      const { dynamicKeys } = extract(`__('messages.' . $type)`)
+    it('detects PHP dot concatenation with single quotes', async () => {
+      const { dynamicKeys } = await extract(`{{ __('messages.' . $type) }}`)
       expect(dynamicKeys).toHaveLength(1)
       expect(dynamicKeys[0].expression).toBe('`messages.${_}`')
       expect(dynamicKeys[0].callee).toBe('__')
     })
 
-    it('detects PHP dot concatenation with double quotes', () => {
-      const { dynamicKeys } = extract(`__("prefix." . $var)`)
+    it('detects PHP dot concatenation with double quotes', async () => {
+      const { dynamicKeys } = await extract(`{{ __("prefix." . $var) }}`)
       expect(dynamicKeys).toHaveLength(1)
       expect(dynamicKeys[0].expression).toBe('`prefix.${_}`')
     })
 
-    it('detects trans() concatenation', () => {
-      const { dynamicKeys } = extract(`trans('pages.' . $page)`)
+    it('detects trans() concatenation', async () => {
+      const { dynamicKeys } = await extract(`{{ trans('pages.' . $page) }}`)
       expect(dynamicKeys).toHaveLength(1)
       expect(dynamicKeys[0].callee).toBe('trans')
     })
 
-    it('detects @lang concatenation', () => {
-      const { dynamicKeys } = extract(`@lang('section.' . $name)`)
+    it('detects @lang concatenation', async () => {
+      const { dynamicKeys } = await extract(`@lang('section.' . $name)`)
       expect(dynamicKeys).toHaveLength(1)
       expect(dynamicKeys[0].callee).toBe('@lang')
     })
