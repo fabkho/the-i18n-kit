@@ -152,7 +152,7 @@ async function resolveParser(fromFile: string): Promise<PhpParserEngine | null> 
   if (!Engine) {
     log.warn(
       'PHP files found, but php-parser is not installed — falling back to pattern matching. '
-      + 'Install it in your project for syntax-aware scanning: npm i -D php-parser',
+      + 'Laravel projects need the PHP packages installed: npm i -D php-parser php-array-reader',
     )
     return null
   }
