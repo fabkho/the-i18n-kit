@@ -31,18 +31,21 @@ run() {
   "
 }
 
+# ── the JS-only world (#406): no PHP anywhere in the tree
+if npm ls php-parser >/dev/null 2>&1 || npm ls php-array-reader >/dev/null 2>&1; then
+  echo "FAIL: a JS-only install carries PHP packages"; npm ls php-parser php-array-reader; exit 1
+fi
 out="$(run 2>stderr.txt)"
-grep -q "php-parser is not installed" stderr.txt && { echo "FAIL: warned despite available parser"; exit 1; }
-echo "$out" | grep -q '"declined":\[\]' || { echo "FAIL: declined despite available parser: $out"; exit 1; }
-echo "$out" | grep -q 'smoke.from.php' || { echo "FAIL: parser path did not read the file: $out"; exit 1; }
-echo "   packed install: parsed via the frontend, no warning ✓"
+grep -q "php-parser is not installed" stderr.txt || { echo "FAIL: missing-peer warning not printed"; cat stderr.txt; exit 1; }
+echo "$out" | grep -q '"declined":\["probe.php"\]' || { echo "FAIL: absent peer did not decline visibly: $out"; exit 1; }
+echo "$out" | grep -q 'smoke.from.php' || { echo "FAIL: pattern fallback did not read the file: $out"; exit 1; }
+echo "   JS-only install: zero PHP packages, warned, declined, patterns read the file ✓"
 
-# The absent-peer scenario is not reachable today: php-array-reader (a hard
-# dependency, PHP locale IO) statically imports php-parser, so the parser is
-# in every install transitively and deleting it breaks the CLI's own import.
-# #406 makes that IO import lazy and the dependency optional — extend this
-# script with the absent case then; the loader's decline-and-warn path is
-# covered by unit tests meanwhile.
-echo "   absent-peer case deferred to #406 (php-array-reader ships php-parser transitively)"
+echo "── installing the Laravel peers"
+npm install php-parser php-array-reader >/dev/null 2>&1
+out="$(run 2>stderr.txt)"
+grep -q "php-parser is not installed" stderr.txt && { echo "FAIL: warned despite installed peer"; exit 1; }
+echo "$out" | grep -q '"declined":\[\]' || { echo "FAIL: declined despite installed peer: $out"; exit 1; }
+echo "   Laravel install: parsed via the frontend, no warning ✓"
 
 echo "php-peer-smoke: PASS"

@@ -4,6 +4,7 @@ import { glob } from 'tinyglobby'
 import { log } from '../utils/logger.js'
 import { createOxcFrontend } from './frontends/oxc.js'
 import { createPhpFrontend } from './frontends/php/index.js'
+import { collectBarePhpCandidates } from './frontends/php/patterns.js'
 import { createBladeFrontend } from './frontends/php/blade.js'
 import type { LanguageFrontend } from './frontends/types.js'
 import { interpret } from './rules.js'
@@ -204,16 +205,6 @@ const BARE_DYNAMIC_TEMPLATE = /`([\w.-]*(?:\$\{(?:[^`{}\n]|\{[^`{}\n]*\})*\}[\w.
 /** Longer candidates cannot plausibly be i18n keys — drop, don't truncate. */
 const MAX_BARE_TEMPLATE_LENGTH = 120
 /**
- * Matches PHP double-quoted interpolated strings with i18n-key shape,
- * regardless of call context — `$transKey = "api.x.{$key}"` assigned first
- * and passed to Lang::get() later must still suppress api.x.* orphans.
- * Content is restricted to key-like chars plus {$expr} / $var->prop
- * interpolations: a permissive "any double-quoted string containing $"
- * match swallows the code BETWEEN quoted strings (PHP code is full of $),
- * shifting quote parity past the real candidates.
- */
-const BARE_PHP_DYNAMIC = /"((?:[\w.-]|\{\$[^}]+\}|\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*)+)"/g
-/**
  * Matches prefix-shaped string literals (≥1 key-like segment, trailing dot,
  * closing quote right after the dot) regardless of call context: concat
  * prefixes ('menu.' + var, __('a.b.' . $x) — incl. multiline t() calls where
@@ -257,21 +248,6 @@ function collectBareTemplateCandidates(content: string, constTable: Map<string, 
   }
 }
 
-function collectBarePhpCandidates(content: string, bareDynamics: Set<string>): void {
-  BARE_PHP_DYNAMIC.lastIndex = 0
-  for (const match of content.matchAll(BARE_PHP_DYNAMIC)) {
-    const expr = match[1]
-    // The $-check keeps plain dotted strings out (BARE_DOTTED_STRING's job);
-    // the dot must survive interpolation stripping so `{$a}$b` (no literal
-    // key segment) does not become an everything-matches candidate.
-    if (!expr?.includes('$')) continue
-    const normalized = expr
-      .replace(/\{\$[^}]+\}/g, '${_}')
-      .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
-    if (!normalized.replace(/\$\{_\}/g, '').includes('.')) continue
-    bareDynamics.add(`\`${normalized}\``)
-  }
-}
 
 function collectBarePrefixCandidates(content: string, bareDynamics: Set<string>): void {
   BARE_PREFIX_LITERAL.lastIndex = 0
