@@ -55,6 +55,34 @@ describe('resolving what t is bound to', () => {
     expect(evidence?.usages).toEqual([])
   })
 
+  it('does not let a local t vouch for an unrelated member call', async () => {
+    const evidence = await scan(`
+      import { useI18n } from 'vue-i18n'
+      const { t } = useI18n()
+      client.t('save')
+    `)
+
+    // `client.t` shares a property name with the binding, nothing more.
+    expect(evidence?.usages).toEqual([])
+    expect(evidence?.bareStringCandidates.has('save')).toBe(true)
+  })
+
+  it('resolves t on a receiver that is itself an i18n binding', async () => {
+    const evidence = await scan(`
+      import { useI18n } from 'vue-i18n'
+      const i18n = useI18n()
+      const label = i18n.t('save')
+    `)
+
+    expect(evidence?.usages.map(u => u.key)).toEqual(['save'])
+  })
+
+  it('treats $t as resolved on any receiver', async () => {
+    const evidence = await scan(`const label = this.$t('save')`)
+
+    expect(evidence?.usages.map(u => u.key)).toEqual(['save'])
+  })
+
   it('follows a factory imported under another name', async () => {
     const evidence = await scan(`
       import { useI18n as useTranslations } from 'vue-i18n'
