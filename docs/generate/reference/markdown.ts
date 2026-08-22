@@ -45,9 +45,14 @@ export function table(headers: string[], rows: string[][]): string {
  * parsing as a mapping.
  */
 export function frontmatter(fields: Record<string, string>): string {
-  const lines = Object.entries(fields).map(
-    ([key, value]) => `${key}: '${value.replace(/'/g, "''")}'`,
-  )
+  const lines = Object.entries(fields).flatMap(([key, value]) => {
+    const quoted = `'${value.replace(/'/g, "''")}'`
+    // `description` renders as a subtitle under the heading, which restates the
+    // title to no one's benefit. Under `seo` it still feeds the meta tag.
+    return key === 'description'
+      ? ['seo:', `  description: ${quoted}`]
+      : [`${key}: ${quoted}`]
+  })
   return ['---', ...lines, '---'].join('\n')
 }
 
