@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { FileIOError, toErrorMessage } from '../utils/errors'
 
 /**
@@ -14,11 +14,19 @@ import { FileIOError, toErrorMessage } from '../utils/errors'
 const LARAVEL_INSTALL_HINT = 'Laravel projects need the PHP packages installed: npm i -D php-parser php-array-reader'
 
 type FromString = (content: string) => unknown
-let fromStringPromise: Promise<FromString | null> | undefined
+// Keyed by the locale file's directory — see the scanner's parser cache: a
+// long-lived server must not pin resolution (or a cached failure) to the
+// first project it served.
+const fromStringPromises = new Map<string, Promise<FromString | null>>()
 
 function loadFromString(fromFile: string): Promise<FromString | null> {
-  fromStringPromise ??= resolveFromString(fromFile)
-  return fromStringPromise
+  const key = dirname(fromFile)
+  let promise = fromStringPromises.get(key)
+  if (!promise) {
+    promise = resolveFromString(fromFile)
+    fromStringPromises.set(key, promise)
+  }
+  return promise
 }
 
 async function resolveFromString(fromFile: string): Promise<FromString | null> {

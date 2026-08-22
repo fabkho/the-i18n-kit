@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module'
-import { isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import type { CallArgument, CallSite, LanguageFrontend } from '../types.js'
 import { log } from '../../../utils/logger.js'
 
@@ -135,21 +135,33 @@ function readEncapsed(parts: PhpNode[]): CallArgument {
 export interface PhpParserEngine { parseCode(code: string, filename: string): unknown }
 export type PhpNode = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any -- untyped AST from the parser
 
-let parserPromise: Promise<PhpParserEngine | null> | undefined
+// Keyed by the scanned file's directory: a long-lived server scanning several
+// projects must not pin every scan — or a cached failure — to whichever
+// project came first.
+const parserPromises = new Map<string, Promise<PhpParserEngine | null>>()
 
 export function loadPhpParser(fromFile: string): Promise<PhpParserEngine | null> {
-  parserPromise ??= resolveParser(fromFile)
-  return parserPromise
+  const key = dirname(fromFile)
+  let promise = parserPromises.get(key)
+  if (!promise) {
+    promise = resolveParser(fromFile)
+    parserPromises.set(key, promise)
+  }
+  return promise
 }
 
-/** The cache spans files by design; tests exercising resolution reset it. */
+/** Tests exercising resolution reset the cache between scenarios. */
 export function resetPhpParserCacheForTests(): void {
-  parserPromise = undefined
+  parserPromises.clear()
 }
+
+let warnedMissingParser = false
 
 async function resolveParser(fromFile: string): Promise<PhpParserEngine | null> {
   const Engine = requireFromProject(fromFile) ?? await importFromOwnTree()
   if (!Engine) {
+    if (warnedMissingParser) return null
+    warnedMissingParser = true
     log.warn(
       'PHP files found, but php-parser is not installed — falling back to pattern matching. '
       + 'Laravel projects need the PHP packages installed: npm i -D php-parser php-array-reader',
