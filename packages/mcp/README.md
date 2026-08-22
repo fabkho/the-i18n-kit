@@ -57,9 +57,9 @@ No install needed — your MCP host runs the server with `npx`.
 | [Configuration](https://fabkho.github.io/the-i18n-kit/configuration/where-config-lives) | Glossary, tone, protected locales — [every field](https://fabkho.github.io/the-i18n-kit/configuration/reference) |
 | [Monorepos and layers](https://fabkho.github.io/the-i18n-kit/monorepos/layers) | What the agent needs to know before deleting a key |
 
-Translation modes — what happens with and without a provider configured — are
-documented in the [CLI readme](https://github.com/fabkho/the-i18n-kit/tree/main/packages/cli#translation-modes)
-until [#358](https://github.com/fabkho/the-i18n-kit/issues/358) moves them to the site.
+[Translation modes](https://fabkho.github.io/the-i18n-kit/concepts/translation-modes)
+covers what happens with and without a provider configured — including that this
+server returns fallback contexts for your agent rather than translating nothing.
 
 ## Migrating
 
