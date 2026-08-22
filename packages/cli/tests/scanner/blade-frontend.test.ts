@@ -68,6 +68,29 @@ describe('lifting', () => {
     ])
   })
 
+  it("reads translation calls inside any directive's arguments", async () => {
+    // Laravel's own error pages: @section('title', __('Forbidden')).
+    const evidence = await scan([
+      `@extends('errors.layout')`,
+      `@section('title', ($e instanceof \\App\\X) ? $e->getTitle() : __('Forbidden'))`,
+      `@if($booking->isPast()) {{ __('bookings.past.notice') }} @endif`,
+    ].join('\n'))
+
+    expect(evidence?.usages.map(u => u.key)).toContain('Forbidden')
+    expect(evidence?.usages.map(u => u.key)).toContain('bookings.past.notice')
+    expect(evidence?.usages.find(u => u.key === 'Forbidden')?.line).toBe(2)
+  })
+
+  it('skips control-flow directive grammar without declining the file', async () => {
+    const evidence = await scan([
+      `@foreach($items as $item)`,
+      `  {{ __('list.item.label') }}`,
+      `@endforeach`,
+    ].join('\n'))
+
+    expect(evidence?.usages.map(u => u.key)).toEqual(['list.item.label'])
+  })
+
   it('template text outside any construct is text, not code', async () => {
     const evidence = await scan(`__('just.text.in.the.page')`)
 
