@@ -22,19 +22,20 @@ if (!projectDir) {
   process.exit(1)
 }
 
-const { scanSourceFiles } = await import('../packages/cli/dist/index.js').catch(() => {
+const { scanSourceFiles, createOxcFrontend, createPatternsFrontend, VUE_NUXT_PATTERNS } = await import('../packages/cli/dist/index.js').catch(() => {
   console.error('Build the CLI first: pnpm --filter the-i18n-cli build')
   process.exit(1)
 })
 
+const FRONTENDS = {
+  regex: [createPatternsFrontend(VUE_NUXT_PATTERNS)],
+  ast: [createOxcFrontend(), createPatternsFrontend(VUE_NUXT_PATTERNS)],
+}
+
 async function run(label, scanner) {
-  const before = process.env.I18N_SCANNER
-  process.env.I18N_SCANNER = scanner
   const started = performance.now()
-  const result = await scanSourceFiles(projectDir)
+  const result = await scanSourceFiles(projectDir, undefined, undefined, FRONTENDS[scanner])
   const elapsed = performance.now() - started
-  if (before === undefined) delete process.env.I18N_SCANNER
-  else process.env.I18N_SCANNER = before
 
   console.log(
     `${label.padEnd(8)} ${String(result.filesScanned).padStart(5)} files  `
