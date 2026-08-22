@@ -44,47 +44,12 @@ the-i18n-cli remove-orphans          # keys defined but unused (previews by defa
 | [Referring to locales](https://fabkho.github.io/the-i18n-kit/configuration/locale-refs) | Codes, language tags, and why the code is the one to use |
 | [CI/CD](https://fabkho.github.io/the-i18n-kit/ci-cd/github-actions) | The Action and the GitLab template |
 
-The two sections below have not moved to the site yet. They are the deepest
-material here, and both are being rewritten against the new extraction
-architecture — see [#358](https://github.com/fabkho/the-i18n-kit/issues/358).
+| [Translation modes](https://fabkho.github.io/the-i18n-kit/concepts/translation-modes) | Provider and agent mode, the result contract, what is validated before writing |
 
-## Translation Modes
+The section below has not moved to the site yet. It is the deepest material
+here, and it is being rewritten against the new extraction architecture — see
+[#358](https://github.com/fabkho/the-i18n-kit/issues/358).
 
-`translate` and `translate-key` run in one of two modes — every result reports which one ran (`mode: "provider" | "agent" | "dry-run"`).
-
-**Provider mode** — pass `--provider` (`openai`, `anthropic`, or `google`) and `--model`; the API key comes from `--apiKey` or the provider's env var (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`). The CLI calls the LLM directly and writes validated results:
-
-```bash
-the-i18n-cli translate --layer root --provider google --model gemini-2.5-flash
-the-i18n-cli translate --layer root --targets de-DE,fr-FR --batchSize 25 --provider openai --model gpt-4o-mini
-```
-
-To reach an endpoint that speaks the same protocol — a gateway, a self-hosted model server, a proxy — add `--baseUrl`, or set `I18N_BASE_URL`, or `providerBaseUrl` in `.i18n-mcp.json`, in that order of precedence:
-
-```bash
-the-i18n-cli translate --layer root --provider openai --model llama3 \
-  --baseUrl http://localhost:11434/v1 --apiKey unused
-```
-
-An API key is still required even when the endpoint ignores it — pass any placeholder for a local server. This overrides the endpoint only, so providers that also change the request shape or auth header (Azure OpenAI among them) are not reachable this way.
-
-`google` has no endpoint override, so a base URL with it is rejected as a configuration error rather than silently ignored.
-
-**Agent mode** — no `--provider` given. Nothing is translated: keys are reported as `skipped` with reason `no-provider`, and the result explains how to enable provider mode. (In the MCP server, agent mode instead returns fallback contexts for the host agent — see [the-i18n-mcp](https://www.npmjs.com/package/the-i18n-mcp).)
-
-### Result contract
-
-Translate results account for every key:
-
-- `translated` — keys written
-- `wouldTranslate` — `--dryRun` only: keys that would be translated
-- `failed` — with a reason: `provider-error`, `omitted-by-model`, `truncated`, `placeholder-mismatch`, `plural-mismatch`, `write-error`
-- `skipped` — with a reason: `no-provider`, `already-translated`, `protected-locale`
-- Invariant: `missing = translated + wouldTranslate + failed + skipped`
-
-Translations are validated before writing: placeholder parity per vue-i18n plural variant (`{placeholders}`, `@:linked.refs`; `:params` for PHP) and plural variant-count parity with the source. Failing values are rejected into `failed` instead of written.
-
-Locales listed in `protectedLocales` (see Project Config) are excluded from default translate targets and reported as `skipped` with reason `protected-locale`; naming one explicitly in `--targets` overrides the protection with a warning.
 
 ## How Orphan Detection Works
 
