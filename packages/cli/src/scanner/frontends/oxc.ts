@@ -247,22 +247,46 @@ function collect(parsed: ParsedBlock, sites: CallSite[], lineAt: (offset: number
 }
 
 function toCallSite(node: Node, parsed: ParsedBlock, lineAt: (offset: number) => number): CallSite | undefined {
-  const callee = calleeName(node.callee)
+  const callee = resolveCallee(node.callee, parsed.i18nNames)
   if (!callee) return undefined
-
-  const bare = bareName(callee)
-  const resolved = parsed.i18nNames.has(callee) || ALWAYS_I18N.has(bare)
-  if (!resolved && !MAYBE_I18N.has(bare)) return undefined
+  if (!callee.resolved && !MAYBE_I18N.has(callee.name)) return undefined
 
   const [first] = node.arguments ?? []
   if (!first) return undefined
 
   return {
-    callee: bare,
-    binding: resolved ? 'resolved' : 'ambiguous',
+    callee: callee.name,
+    binding: callee.resolved ? 'resolved' : 'ambiguous',
     argument: readArgument(first, parsed.constants),
     line: lineAt(node.start ?? 0),
   }
+}
+
+/**
+ * Name a callee and decide whether its binding proves it is i18n.
+ *
+ * An identifier resolves through what this file bound — an i18n import or a
+ * destructure of `useI18n()`. A member call resolves only through its own
+ * shape: `$t` is unambiguous on any receiver, and `t` proves i18n only when
+ * the receiver itself is an i18n binding (`const i18n = useI18n(); i18n.t(…)`).
+ * A local `t` from `useI18n()` says nothing about `client.t(…)` — matching a
+ * member by its property name against local bindings would resolve exactly the
+ * calls this frontend exists to tell apart.
+ */
+function resolveCallee(node: Node | undefined, i18nNames: Set<string>): { name: string, resolved: boolean } | undefined {
+  if (!node) return undefined
+
+  if (node.type === 'Identifier') {
+    return { name: node.name, resolved: i18nNames.has(node.name) || ALWAYS_I18N.has(node.name) }
+  }
+
+  if (node.type === 'MemberExpression' && node.property?.type === 'Identifier') {
+    const name = node.property.name
+    const receiverIsI18n = node.object?.type === 'Identifier' && i18nNames.has(node.object.name)
+    return { name, resolved: ALWAYS_I18N.has(name) || (receiverIsI18n && MAYBE_I18N.has(name)) }
+  }
+
+  return undefined
 }
 
 function readArgument(node: Node, constants: Map<string, string>): CallArgument {
@@ -326,11 +350,6 @@ function calleeName(node: Node | undefined): string | undefined {
   // this.$t / i18n.t / vm.$t — the property is what names the function.
   if (node.type === 'MemberExpression' && node.property?.type === 'Identifier') return node.property.name
   return undefined
-}
-
-/** `this.$t` and `$t` are the same function for our purposes. */
-function bareName(callee: string): string {
-  return callee.startsWith('this.') ? callee.slice(5) : callee
 }
 
 function walk(node: Node | undefined, visit: (node: Node) => void): void {
