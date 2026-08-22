@@ -28,7 +28,6 @@ function renderPage(source: ActionSource): string {
       description: 'Every input and output of the composite action, generated from the action manifest.',
     }),
     GENERATED_NOTICE,
-    '# GitHub Action',
     prose(source.description),
     `The action installs ${code(CLI_PACKAGE)} and the SDK matching the chosen provider, runs the [${code('translate')} command](${CLI_ROUTE}/translate), and opens a pull request with what it wrote. The command owns the pass/fail decision and reports it as an [exit code](${CLI_ROUTE}#exit-codes); the action reads counts for its outputs and the log only.`,
     `Inputs and outputs below are generated from ${code('action.yml')}, so a workflow that sets an input listed here is a workflow GitHub accepts.`,

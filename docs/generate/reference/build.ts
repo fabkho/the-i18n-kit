@@ -87,7 +87,6 @@ function renderIndex(): string {
       description: 'Generated reference material for the-i18n-kit.',
     }),
     GENERATED_NOTICE,
-    '# Reference',
     'Everything on these pages is generated from the source it documents, so it cannot describe a flag, tool or field that no longer exists. CI regenerates them on every pull request and fails when the committed output no longer matches.',
     table(['Reference', 'Covers'], rows),
   ])
