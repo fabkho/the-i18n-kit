@@ -91,6 +91,25 @@ describe('lifting', () => {
     expect(evidence?.usages.map(u => u.key)).toEqual(['list.item.label'])
   })
 
+  it('reads the inline @php form, and blocks do not swallow past it', async () => {
+    const evidence = await scan([
+      `@php($label = __('nav.home'))`,
+      `<p>{{ __('nav.about') }}</p>`,
+      `@php $x = __('nav.footer'); @endphp`,
+    ].join('\n'))
+
+    expect(evidence?.usages.map(u => u.key)).toEqual(['nav.home', 'nav.about', 'nav.footer'])
+  })
+
+  it('reads bound component attributes', async () => {
+    const evidence = await scan([
+      `<x-alert :message="__('alerts.saved')" />`,
+      `<x-button :label='trans("actions.retry")' ::class="plain.vue.stuff" />`,
+    ].join('\n'))
+
+    expect(evidence?.usages.map(u => u.key)).toEqual(['alerts.saved', 'actions.retry'])
+  })
+
   it('template text outside any construct is text, not code', async () => {
     const evidence = await scan(`__('just.text.in.the.page')`)
 

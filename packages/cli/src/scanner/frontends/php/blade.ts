@@ -78,6 +78,7 @@ function liftChunks(content: string): Chunk[] {
   return [
     ...echoChunks(source, lineAt),
     ...phpBlockChunks(source, lineAt),
+    ...boundAttributeChunks(source, lineAt),
     ...directiveChunks(source, lineAt),
   ]
 }
@@ -98,7 +99,7 @@ function echoChunks(source: string, lineAt: LineAt): Chunk[] {
 /** @php ... @endphp and raw <?php ... ?> — statements as written. */
 function phpBlockChunks(source: string, lineAt: LineAt): Chunk[] {
   const chunks: Chunk[] = []
-  for (const match of source.matchAll(/@php\b([\s\S]*?)@endphp/g)) {
+  for (const match of source.matchAll(/@php\b(?!\s*\()([\s\S]*?)@endphp/g)) {
     const body = match[1]
     if (body?.trim()) chunks.push({ source: body, lineOffset: lineAt(match.index ?? 0) })
   }
@@ -110,17 +111,33 @@ function phpBlockChunks(source: string, lineAt: LineAt): Chunk[] {
 }
 
 /**
+ * Bound component attributes — :message="__('alerts.saved')" compiles to a
+ * PHP expression. `::` escapes to a literal colon and carries none.
+ */
+function boundAttributeChunks(source: string, lineAt: LineAt): Chunk[] {
+  const chunks: Chunk[] = []
+  for (const match of source.matchAll(/(?<![:\w]):[\w-]+=(?:"([^"]*)"|'([^']*)')/g)) {
+    const expression = match[1] ?? match[2]
+    if (!expression?.trim()) continue
+    chunks.push({ source: `__args__(${expression});`, lineOffset: lineAt(match.index ?? 0), optional: true })
+  }
+  return chunks
+}
+
+/**
  * Directive arguments. @lang and @choice are thin wrappers over __ and
  * trans_choice — the argument list is the translation call, reported under
  * the directive's own name. Every other directive gets its arguments read
  * as an expression list (`@section('title', __('Forbidden'))` carries a
  * real call), best-effort: what is not an expression is Blade grammar.
+ * The inline @php($x = ...) form is an expression list like any other.
  */
 function directiveChunks(source: string, lineAt: LineAt): Chunk[] {
   const chunks: Chunk[] = []
   for (const match of source.matchAll(/@(\w+)\s*\(/g)) {
     const directive = match[1] ?? ''
-    if (directive === 'php') continue // handled as a block above
+    // Block @php ... @endphp is handled above; the inline form @php($x = ...)
+    // is an expression like any other directive argument and lifts here.
     const open = (match.index ?? 0) + match[0].length - 1
     const args = balancedParens(source, open)
     if (args === undefined) continue
