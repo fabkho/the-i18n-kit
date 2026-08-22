@@ -41,6 +41,7 @@ export {
   updateTranslations,
   removeTranslations,
   renameTranslationKey,
+  moveTranslationKey,
   scaffoldLocaleFiles,
 } from './ops-write.js'
 export { initProjectConfig } from './ops-init.js'

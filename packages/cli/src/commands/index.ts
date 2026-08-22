@@ -43,6 +43,7 @@ export const commands = {
   'search': command(() => import('./search.js')),
   'remove': command(() => import('./remove.js')),
   'rename': command(() => import('./rename.js')),
+  'move': command(() => import('./move.js')),
   'translate': command(() => import('./translate.js')),
   // Alias: same operation as `translate`, named to match the MCP tool
   // translate_missing so docs can use one name across both surfaces.

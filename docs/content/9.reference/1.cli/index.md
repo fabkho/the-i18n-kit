@@ -25,6 +25,7 @@ The command pages are generated from the command definitions, so a flag that no 
 | [`search`](/reference/cli/search) | Search translation files by key or value |
 | [`remove`](/reference/cli/remove) | Remove translation keys from all locale files in a layer |
 | [`rename`](/reference/cli/rename) | Rename/move a translation key across all locale files |
+| [`move`](/reference/cli/move) | Move a translation key from one layer to another, carrying every locale that defines it |
 | [`translate`](/reference/cli/translate) | Find missing translations and translate them via LLM. Requires --provider and --model for auto-translation. |
 | [`translate-key`](/reference/cli/translate-key) | Translate a single key from a source locale into target locales. Supports LLM translation with --provider. |
 | [`scan`](/reference/cli/scan) | Scan source code for translation key usage (file paths + line numbers) |
