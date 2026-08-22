@@ -71,25 +71,70 @@ Unscoped names appear only where documenting the deprecation itself.
 
 ## Page structure
 
-Every page opens with **one or two sentences stating what the reader will be
-able to do or understand**, before any heading. No throat-clearing, no restating
-the title.
+Modelled on the Vue documentation, which is the closest thing to a house
+reference for how a page should read.
 
-Then, by page type:
+### Open with content
 
-**Concept page** — what it is, why it works that way, what it cannot do. Lead
-with the mental model, not the API. Introduce jargon in bold on first use with
-its definition attached. End with limits, honestly stated; a concept page that
-lists no limits reads as marketing.
+**No description subtitle.** Put the sentence in `seo:` frontmatter, where it
+feeds the meta tag without rendering under the heading:
 
-**Guide / how-to** — numbered steps, each with a verifiable outcome. The reader
-should know after every step whether it worked. Close with what to do next.
+```mdc
+---
+title: Referring to Locales
+seo:
+  description: Codes, language tags and file names, and why the code is the one to use.
+---
+```
 
-**Framework page** — how detection recognises the project; which directories are
-probed; what is derived from which file; how to override. Same section order on
-every framework page so they can be compared at a glance.
+A bare `description:` renders as a subtitle. Nobody reads it — they have already
+read the title, and it says the same thing twice.
 
-**Reference page** — generated. Do not hand-edit. Fix the generator instead.
+**No paragraph describing the page.** Vue's props page opens with a prerequisite
+and then props. Its reactivity page opens with `data`. Neither spends a sentence
+on what the page is going to do.
+
+Delete these on sight:
+
+- *"This page tells you whether…"*
+- *"This page covers…"* / *"In this guide we will…"*
+- *"This page is about location, not fields."*
+
+Open with the first thing the reader needs. If a prerequisite genuinely matters,
+state it in one line and move on.
+
+### Show, then explain
+
+Vue puts the code first and the explanation after it. Do the same: the command
+or config a reader will copy, then what it does. A concept that cannot be shown
+gets its shortest true statement first, and the reasoning after.
+
+Paragraphs run two to four sentences.
+
+### Leave the internals out
+
+**The default is to omit.** A reader wants the tool to work; how it decides
+something is rarely part of that.
+
+Cut, unless a reader has to act on it:
+
+- how detection scores or ranks
+- how a graph, cache or resolver is built
+- why an implementation chose one approach over another
+- what happens in a degenerate case nobody will hit
+
+Keep it **only** when the reader has to do something with it — pin a locale,
+declare an ignore pattern, choose between two config files. Then state the
+consequence, not the mechanism: *"pin `defaultLocale` if the wrong one is
+picked"* rather than a paragraph on how the pick happens.
+
+Where the depth is genuinely valuable, it goes in **Extra Topics** — the last
+section in the nav, the way Vue keeps `Reactivity in Depth` under Extras rather
+than in the guide. Link to it from the page that raised the question. Do not
+inline it.
+
+A "Limits" section is not internals. What a tool cannot see, and what it will
+therefore get wrong, is something a reader has to act on. Keep those.
 
 ## Formatting
 
@@ -177,7 +222,8 @@ enough to write the sentence. Read the source or ask.
 
 ## Before you finish
 
-- [ ] Opens by telling the reader what they will be able to do
+- [ ] No description subtitle — the sentence is under `seo:`
+- [ ] Opens with content, not with a description of the page
 - [ ] No banned words; no unbacked adjectives
 - [ ] Every claim names its mechanism
 - [ ] Vocabulary matches the table above, and "layer" is defined if leaned on
@@ -187,4 +233,5 @@ enough to write the sentence. Read the source or ask.
 - [ ] Links are relative; nothing points at a README that is about to shrink
 - [ ] Reference material is linked, not restated
 - [ ] Limits and failure modes stated, not omitted
+- [ ] No mechanism a reader cannot act on; depth moved to Extra Topics
 - [ ] Read once end to end — does it sound like the rest of the site?
