@@ -537,10 +537,10 @@ export interface OrphanScanResult {
   uncertainByLayer: Record<string, string[]>
   uncertainCount: number
   /**
-   * Keys alive solely through the bare-candidate net — no call site references
-   * them, a dotted string somewhere merely shares their name (a comment, a
-   * data structure, a coincidence). Visible rather than silently kept: these
-   * are where dead references hide (#402).
+   * Keys alive solely through the bare-candidate net — a dotted string
+   * somewhere shares their name (a comment, a data structure, a coincidence),
+   * or an ambiguous bare call the rules would not commit to (#298). Visible
+   * rather than silently kept: dead references hide here (#402).
    */
   candidateOnlyByLayer: Record<string, string[]>
   candidateOnlyCount: number

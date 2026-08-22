@@ -28,7 +28,7 @@ const MISPLACED_USAGE_NOTE
   + 'Either the key belongs in a broader (shared) layer, or the usage is a bug. '
   + 'These keys are not counted as orphans and are never removed.'
 
-const CANDIDATE_ONLY_NOTE = 'These keys are protected only by the bare-candidate net: no call site references them, a dotted string somewhere merely shares their name (often a comment or a data structure). They are not offered for removal, but they are where dead references hide - review them when pruning.'
+const CANDIDATE_ONLY_NOTE = 'These keys are protected only by the bare-candidate net: either a dotted string somewhere merely shares their name (often a comment or a data structure), or a call too ambiguous to commit to references them (a bare t(...) that could be anything). They are not offered for removal, but dead references hide here - verify before pruning.'
 
 /** True when `child` equals `parent` or lies inside it. */
 function isWithin(child: string, parent: string): boolean {
