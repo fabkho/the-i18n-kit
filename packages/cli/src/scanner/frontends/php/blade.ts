@@ -87,11 +87,16 @@ type LineAt = (offset: number) => number
 
 /** {{ expr }} and {!! expr !!} — echoes of a PHP expression. */
 function echoChunks(source: string, lineAt: LineAt): Chunk[] {
+  return expressionChunks(source, /\{\{([\s\S]*?)\}\}|\{!!([\s\S]*?)!!\}/g, lineAt,
+    expression => ({ source: `${expression};` }))
+}
+
+function expressionChunks(source: string, pattern: RegExp, lineAt: LineAt, shape: (expression: string) => Pick<Chunk, 'source' | 'optional'>): Chunk[] {
   const chunks: Chunk[] = []
-  for (const match of source.matchAll(/\{\{([\s\S]*?)\}\}|\{!!([\s\S]*?)!!\}/g)) {
+  for (const match of source.matchAll(pattern)) {
     const expression = match[1] ?? match[2]
     if (!expression?.trim()) continue
-    chunks.push({ source: `${expression};`, lineOffset: lineAt(match.index ?? 0) })
+    chunks.push({ ...shape(expression), lineOffset: lineAt(match.index ?? 0) })
   }
   return chunks
 }
@@ -118,13 +123,8 @@ function bodyChunks(source: string, pattern: RegExp, lineAt: LineAt): Chunk[] {
  * PHP expression. `::` escapes to a literal colon and carries none.
  */
 function boundAttributeChunks(source: string, lineAt: LineAt): Chunk[] {
-  const chunks: Chunk[] = []
-  for (const match of source.matchAll(/(?<![:\w]):[\w-]+=(?:"([^"]*)"|'([^']*)')/g)) {
-    const expression = match[1] ?? match[2]
-    if (!expression?.trim()) continue
-    chunks.push({ source: `__args__(${expression});`, lineOffset: lineAt(match.index ?? 0), optional: true })
-  }
-  return chunks
+  return expressionChunks(source, /(?<![:\w]):[\w-]+=(?:"([^"]*)"|'([^']*)')/g, lineAt,
+    expression => ({ source: `__args__(${expression});`, optional: true }))
 }
 
 /**
