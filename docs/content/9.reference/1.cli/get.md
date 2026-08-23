@@ -1,5 +1,6 @@
 ---
 title: 'get'
+description: ''
 seo:
   description: 'Get translation values for specific keys'
 ---

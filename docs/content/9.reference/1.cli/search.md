@@ -1,5 +1,6 @@
 ---
 title: 'search'
+description: ''
 seo:
   description: 'Search translation files by key or value'
 ---

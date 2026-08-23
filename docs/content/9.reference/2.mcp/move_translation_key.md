@@ -1,5 +1,6 @@
 ---
 title: 'move_translation_key'
+description: ''
 seo:
   description: 'Move a key from one layer to another, carrying every locale that defines it — promoting an app-layer key to a shared layer once a second app needs it, or demoting a shared key that turned out to be app-specific. Call discover first: layerGraph.shared names the layers more than one app consumes. Writes nothing at all if the target layer already holds the key with a different value in any locale; if it holds the same value, that locale is deduplicated instead. Use dryRun to preview the plan.'
 ---

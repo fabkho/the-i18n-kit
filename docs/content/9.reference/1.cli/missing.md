@@ -1,5 +1,6 @@
 ---
 title: 'missing'
+description: ''
 seo:
   description: 'Find translation keys missing in target locales'
 ---

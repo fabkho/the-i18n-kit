@@ -1,5 +1,6 @@
 ---
 title: 'Reference'
+description: ''
 seo:
   description: 'Generated reference material for the-i18n-kit.'
 ---

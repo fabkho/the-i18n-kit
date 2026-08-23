@@ -1,5 +1,6 @@
 ---
 title: 'remove-orphans'
+description: ''
 seo:
   description: 'Find and remove orphan translation keys not referenced in source code'
 ---

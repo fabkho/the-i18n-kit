@@ -1,5 +1,6 @@
 ---
 title: 'translate-key'
+description: ''
 seo:
   description: 'Translate a single key from a source locale into target locales. Supports LLM translation with --provider.'
 ---

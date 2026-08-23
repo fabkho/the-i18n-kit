@@ -1,5 +1,6 @@
 ---
 title: 'find_empty_translations'
+description: ''
 seo:
   description: 'Find keys whose value is an empty string. These exist in the locale file, so they are not reported as missing, and they render as nothing in the UI. Use this after a scaffold or an interrupted translation run to find keys that were created but never filled.'
 ---

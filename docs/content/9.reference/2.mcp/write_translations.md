@@ -1,5 +1,6 @@
 ---
 title: 'write_translations'
+description: ''
 seo:
   description: 'Write translation key-value pairs to a layer. Mode "upsert" adds new keys and updates existing ones (default, most common). Mode "add" only creates new keys, skipping existing ones. Mode "update" only modifies existing keys, skipping missing ones. Keys are inserted in alphabetical order. Use dryRun to preview without writing.'
 ---

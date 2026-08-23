@@ -1,5 +1,6 @@
 ---
 title: 'get_translations'
+description: ''
 seo:
   description: 'Get translation values for given key paths from a specific locale and layer. Use "*" as locale to read from all locales.'
 ---

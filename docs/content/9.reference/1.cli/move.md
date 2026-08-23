@@ -1,5 +1,6 @@
 ---
 title: 'move'
+description: ''
 seo:
   description: 'Move a translation key from one layer to another, carrying every locale that defines it'
 ---

@@ -1,5 +1,6 @@
 ---
 title: 'init'
+description: ''
 seo:
   description: 'Create a schema-valid .i18n-mcp.json from framework detection. Non-interactive; refuses to overwrite without --force'
 ---

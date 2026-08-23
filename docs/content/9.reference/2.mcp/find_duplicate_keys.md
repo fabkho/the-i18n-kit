@@ -1,5 +1,6 @@
 ---
 title: 'find_duplicate_keys'
+description: ''
 seo:
   description: 'Find translation keys defined in BOTH a shared layer and an app layer that consumes it (e.g. the same key in a monorepo root layer and in app-shop). At runtime the app layer''s value shadows the shared one — collisions with divergent values are the dangerous case, because the shared value silently never shows. Compares one reference locale and reports each collision with both values and a divergent flag. Fix by deleting one side, never by moving.'
 ---

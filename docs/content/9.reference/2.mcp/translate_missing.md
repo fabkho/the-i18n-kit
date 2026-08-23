@@ -1,5 +1,6 @@
 ---
 title: 'translate_missing'
+description: ''
 seo:
   description: 'Find keys missing in target locales and translate them. Two modes: in provider mode (server env-configured with I18N_PROVIDER, I18N_MODEL, and an API key) the server calls the LLM provider directly and writes the results; in agent mode (no provider configured) it returns per-locale fallbackContexts — translate those inline and persist via write_translations. Check the discover output for the active mode. Uses project config (glossary, translation prompt, locale notes, examples) if available. Translates all locales concurrently by default — pass all targetLocales at once.'
 ---

@@ -1,5 +1,6 @@
 ---
 title: 'translate'
+description: ''
 seo:
   description: 'Find missing translations and translate them via LLM. Requires --provider and --model for auto-translation.'
 ---

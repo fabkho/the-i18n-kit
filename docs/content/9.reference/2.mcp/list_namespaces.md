@@ -1,5 +1,6 @@
 ---
 title: 'list_namespaces'
+description: ''
 seo:
   description: 'List the translation key tree grouped by namespace prefix. Returns a hierarchical view of all keys with counts per namespace node. Use this to explore available keys without guessing path prefixes.'
 ---

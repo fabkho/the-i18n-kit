@@ -1,5 +1,6 @@
 ---
 title: 'rename'
+description: ''
 seo:
   description: 'Rename/move a translation key across all locale files'
 ---

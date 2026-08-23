@@ -1,5 +1,6 @@
 ---
 title: 'find_orphan_keys'
+description: ''
 seo:
   description: 'Find translation keys that exist in locale JSON files but are not referenced in any Vue/TS source code. Scans a specific layer or all layers. Reports keys that can potentially be removed. Also detects dynamic key patterns and uncertain matches. Scope-aware: each layer is checked only against code of the apps that consume it (summary.scanScope shows each layer''s effective scope); keys referenced only from non-consuming apps are reported separately as misplacedUsages, not orphans.'
 ---

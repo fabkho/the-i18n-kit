@@ -1,5 +1,6 @@
 ---
 title: 'scaffold_locale'
+description: ''
 seo:
   description: 'Create empty locale files for new languages. Copies the key structure from the default locale with all values set to empty strings. Supports both JSON (Nuxt) and PHP (Laravel) formats. Does NOT modify framework config — the agent must add the locale to the framework config before calling this tool.'
 ---
