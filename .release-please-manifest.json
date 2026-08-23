@@ -1,5 +1,5 @@
 {
-  "packages/cli": "4.10.1",
-  "packages/mcp": "7.4.1",
+  "packages/cli": "5.0.0",
+  "packages/mcp": "7.5.0",
   "packages/nuxt": "0.1.4"
 }
