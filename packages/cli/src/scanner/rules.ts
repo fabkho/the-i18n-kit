@@ -27,6 +27,15 @@ export interface RuleContext {
   ambiguousCalleeNeedsDot: (callee: string) => boolean
 }
 
+/**
+ * The one callee whose dotless arguments are not evidence: a bare `t` is what
+ * `emit`, test helpers and local functions are also called. Every other name
+ * the pattern sets match (`$t`, `__`, `trans`, ...) is distinctive enough that
+ * its argument counts, dot or no dot. Formerly per-pattern-set configuration;
+ * it is a rule about meaning, so it lives with the rules.
+ */
+export const ambiguousCalleeNeedsDot = (callee: string): boolean => callee === 't'
+
 export function interpret(sites: CallSite[], ctx: RuleContext): FileEvidence {
   const usages: FileEvidence['usages'] = []
   const dynamicKeys: FileEvidence['dynamicKeys'] = []

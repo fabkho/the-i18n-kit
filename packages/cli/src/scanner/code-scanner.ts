@@ -3,8 +3,14 @@ import { isAbsolute, join, relative, sep } from 'node:path'
 import { glob } from 'tinyglobby'
 import { log } from '../utils/logger.js'
 import { createOxcFrontend } from './frontends/oxc.js'
+import { createPhpFrontend } from './frontends/php/index.js'
+import { collectBarePhpCandidates } from './frontends/php/patterns.js'
+import { createBladeFrontend } from './frontends/php/blade.js'
 import type { LanguageFrontend } from './frontends/types.js'
 import { interpret } from './rules.js'
+import type { RuleContext } from './rules.js'
+import { ambiguousCalleeNeedsDot } from './rules.js'
+import { createPatternsFrontend, readPatternSites, collectConstKeyTable, substituteConstIdentifiers } from './frontends/patterns.js'
 import type { ScanPatternSet } from './patterns.js'
 import { VUE_NUXT_PATTERNS } from './patterns.js'
 
@@ -28,6 +34,12 @@ export interface ScanResult {
   usages: KeyUsage[]
   dynamicKeys: DynamicKeyUsage[]
   filesScanned: number
+  /**
+   * Files an active syntax frontend handled but declined — unparseable, or a
+   * parser that would not load — so pattern matching read them instead. A
+   * broken parser install shows up here rather than as silently weaker scans.
+   */
+  declinedFiles: string[]
   uniqueKeys: Set<string>
   /**
    * All quoted strings containing at least one dot, extracted from source files.
@@ -45,166 +57,20 @@ export interface ScanResult {
 
 // ─── Const-table resolution (#284) ──────────────────────────────
 
-/**
- * Matches `const` declarations initialized to a key-shaped string literal
- * (≥1 dot). Scope is deliberately tight: identifier = literal only — no
- * object properties, no expressions, and no `let` (a reassigned binding
- * would substitute a stale literal and bypass the conservative widening).
- */
-const CONST_KEY_DECL = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(['"])((?:[\w-]+\.)+[\w-]+)\2/g
-
-/**
- * Collects same-file `const NAME = 'dotted.path'` declarations so
- * `${NAME}` interpolations can be substituted with the literal value.
- * Same-file only — imported/cross-file constants are NOT resolved and fall
- * back to the conservative `${_}` widening in buildDynamicKeyRegexes.
- * A name bound to different values (shadowing across scopes) is ambiguous
- * and dropped: substituting one of several possible values could narrow a
- * pattern past a live key.
- */
-function collectConstKeyTable(content: string): Map<string, string> {
-  const table = new Map<string, string>()
-  const ambiguous = new Set<string>()
-  CONST_KEY_DECL.lastIndex = 0
-  for (const match of content.matchAll(CONST_KEY_DECL)) {
-    const name = match[1]
-    const value = match[3]
-    if (!name || !value || ambiguous.has(name)) continue
-    const existing = table.get(name)
-    if (existing !== undefined && existing !== value) {
-      table.delete(name)
-      ambiguous.add(name)
-      continue
-    }
-    table.set(name, value)
-  }
-  return table
-}
-
-/**
- * Substitutes `${NAME}` interpolations with the const table's literal value,
- * producing an exact or narrower pattern: `${i18nBase}.title` +
- * `const i18nBase = 'a.b.c'` → `a.b.c.title`. Only plain-identifier
- * interpolations qualify; member expressions and anything else stay dynamic.
- */
-function substituteConstIdentifiers(expr: string, table: Map<string, string>): string {
-  if (table.size === 0 || !expr.includes('${')) return expr
-  return expr.replace(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g, (whole, name: string) => table.get(name) ?? whole)
-}
-
 // ─── Extraction ─────────────────────────────────────────────────
 
 /**
- * Extract all i18n key references from file content.
- * Returns static usages and dynamic (unresolvable) references.
- *
- * When `patterns` is omitted, defaults to Vue/Nuxt patterns.
+ * One file's evidence through the pattern frontend — the sync contract the
+ * scanner suites are written against. Same pipeline as every scan: the
+ * frontend reports call sites, the rules decide what they mean.
  */
-interface LineExtraction {
-  pat: ScanPatternSet
-  constTable: Map<string, string>
-  filePath: string
-  usages: KeyUsage[]
-  dynamicKeys: DynamicKeyUsage[]
-  /** Arguments to an ambiguous callee — see extractStaticMatches. */
-  bareCandidates: Set<string>
-}
-
-function extractStaticMatches(line: string, lineNumber: number, ctx: LineExtraction): void {
-  for (const regex of ctx.pat.staticKeyPatterns) {
-    regex.lastIndex = 0
-    for (const match of line.matchAll(regex)) {
-      const callee = match[1] ?? ''
-      const key = match[3]
-      if (!key) continue
-      if (key.includes('{$')) continue
-      // A bare `t('word')` is ambiguous — `emit('save')` is not a translation —
-      // so it is not evidence of usage. Dropping it entirely was worse: a flat
-      // catalogue's keys then look unreferenced and remove-orphans offers a live
-      // key for deletion (#298). Kept as a candidate instead, which protects a
-      // key only when one of that exact name exists.
-      if (ctx.pat.requiresDotForCallee?.(callee) && !key.includes('.')) {
-        ctx.bareCandidates.add(key)
-        continue
-      }
-      ctx.usages.push({ key, file: ctx.filePath, line: lineNumber, callee })
-    }
-  }
-}
-
-/**
- * Normalizes every interpolation syntax (JS `${expr}`, PHP `{$expr}` and
- * bare `$var->prop`) to `${_}` slots. Returns undefined when the expression
- * contains no interpolation at all.
- */
-function normalizeDynamicExpression(expression: string): string | undefined {
-  const hasDollarBrace = expression.includes('${')
-  const hasBraceDollar = expression.includes('{$')
-  const hasBarePHP = !hasDollarBrace && !hasBraceDollar && /\$[a-zA-Z_]/.test(expression)
-  if (!hasDollarBrace && !hasBraceDollar && !hasBarePHP) return undefined
-  return hasBraceDollar
-    ? expression.replace(/\{\$[^}]+\}/g, '${_}')
-    : hasBarePHP
-      ? expression.replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
-      : expression
-}
-
-function extractDynamicMatches(line: string, lineNumber: number, ctx: LineExtraction): void {
-  for (const regex of ctx.pat.dynamicKeyPatterns) {
-    regex.lastIndex = 0
-    for (const match of line.matchAll(regex)) {
-      const callee = match[1] ?? ''
-      const raw = match[2]
-      if (!raw) continue
-      // Const-resolved expressions lose their interpolation and, with
-      // promoteStaticDynamicMatches, become exact static usages below.
-      const expression = substituteConstIdentifiers(raw, ctx.constTable)
-      const normalized = normalizeDynamicExpression(expression)
-      if (normalized === undefined) {
-        if (!ctx.pat.promoteStaticDynamicMatches) continue
-        if (!expression) continue
-        if (ctx.pat.requiresDotForCallee?.(callee) && !expression.includes('.')) continue
-        ctx.usages.push({ key: expression, file: ctx.filePath, line: lineNumber, callee })
-        continue
-      }
-      ctx.dynamicKeys.push({ expression: `\`${normalized}\``, file: ctx.filePath, line: lineNumber, callee })
-    }
-  }
-}
-
-function extractConcatMatches(line: string, lineNumber: number, ctx: LineExtraction): void {
-  for (const regex of ctx.pat.concatKeyPatterns) {
-    regex.lastIndex = 0
-    for (const match of line.matchAll(regex)) {
-      const callee = match[1] ?? ''
-      const prefix = match[3]
-      if (!prefix) continue
-      if (ctx.pat.requiresDotForCallee?.(callee) && !prefix.includes('.')) continue
-      ctx.dynamicKeys.push({ expression: `\`${prefix}\${_}\``, file: ctx.filePath, line: lineNumber, callee })
-    }
-  }
-}
-
-export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet, constTable?: Map<string, string>): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[]; bareStringCandidates: Set<string> } {
+export function extractKeys(content: string, filePath: string, patterns?: ScanPatternSet): { usages: KeyUsage[]; dynamicKeys: DynamicKeyUsage[]; bareStringCandidates: Set<string> } {
   const pat = patterns ?? VUE_NUXT_PATTERNS
-  const ctx: LineExtraction = {
-    pat,
-    constTable: constTable ?? (pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()),
-    filePath,
-    usages: [],
-    dynamicKeys: [],
-    bareCandidates: new Set<string>(),
-  }
+  return interpret(readPatternSites(content, filePath, pat), ruleContext(filePath))
+}
 
-  const lines = content.split('\n')
-  for (const [i, line] of lines.entries()) {
-    const lineNumber = i + 1
-    extractStaticMatches(line, lineNumber, ctx)
-    extractDynamicMatches(line, lineNumber, ctx)
-    extractConcatMatches(line, lineNumber, ctx)
-  }
-
-  return { usages: ctx.usages, dynamicKeys: ctx.dynamicKeys, bareStringCandidates: ctx.bareCandidates }
+function ruleContext(filePath: string): RuleContext {
+  return { filePath, ambiguousCalleeNeedsDot }
 }
 
 // ─── Dynamic key pattern matching ───────────────────────────────
@@ -339,16 +205,6 @@ const BARE_DYNAMIC_TEMPLATE = /`([\w.-]*(?:\$\{(?:[^`{}\n]|\{[^`{}\n]*\})*\}[\w.
 /** Longer candidates cannot plausibly be i18n keys — drop, don't truncate. */
 const MAX_BARE_TEMPLATE_LENGTH = 120
 /**
- * Matches PHP double-quoted interpolated strings with i18n-key shape,
- * regardless of call context — `$transKey = "api.x.{$key}"` assigned first
- * and passed to Lang::get() later must still suppress api.x.* orphans.
- * Content is restricted to key-like chars plus {$expr} / $var->prop
- * interpolations: a permissive "any double-quoted string containing $"
- * match swallows the code BETWEEN quoted strings (PHP code is full of $),
- * shifting quote parity past the real candidates.
- */
-const BARE_PHP_DYNAMIC = /"((?:[\w.-]|\{\$[^}]+\}|\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*)+)"/g
-/**
  * Matches prefix-shaped string literals (≥1 key-like segment, trailing dot,
  * closing quote right after the dot) regardless of call context: concat
  * prefixes ('menu.' + var, __('a.b.' . $x) — incl. multiline t() calls where
@@ -392,21 +248,6 @@ function collectBareTemplateCandidates(content: string, constTable: Map<string, 
   }
 }
 
-function collectBarePhpCandidates(content: string, bareDynamics: Set<string>): void {
-  BARE_PHP_DYNAMIC.lastIndex = 0
-  for (const match of content.matchAll(BARE_PHP_DYNAMIC)) {
-    const expr = match[1]
-    // The $-check keeps plain dotted strings out (BARE_DOTTED_STRING's job);
-    // the dot must survive interpolation stripping so `{$a}$b` (no literal
-    // key segment) does not become an everything-matches candidate.
-    if (!expr?.includes('$')) continue
-    const normalized = expr
-      .replace(/\{\$[^}]+\}/g, '${_}')
-      .replace(/\$[a-zA-Z_][a-zA-Z0-9_]*(?:->[a-zA-Z_][a-zA-Z0-9_]*)*/g, '${_}')
-    if (!normalized.replace(/\$\{_\}/g, '').includes('.')) continue
-    bareDynamics.add(`\`${normalized}\``)
-  }
-}
 
 function collectBarePrefixCandidates(content: string, bareDynamics: Set<string>): void {
   BARE_PREFIX_LITERAL.lastIndex = 0
@@ -472,24 +313,27 @@ function collectBareCandidates(content: string, constTable: Map<string, string>,
 async function extractFileEvidence(
   content: string,
   filePath: string,
+  frontends: LanguageFrontend[],
   patterns?: ScanPatternSet,
-  constTable?: Map<string, string>,
-): Promise<{ usages: KeyUsage[], dynamicKeys: DynamicKeyUsage[], bareStringCandidates: Set<string> }> {
+): Promise<{ usages: KeyUsage[], dynamicKeys: DynamicKeyUsage[], bareStringCandidates: Set<string>, declined: boolean }> {
   const pat = patterns ?? VUE_NUXT_PATTERNS
+  let declined = false
 
-  for (const frontend of activeFrontends()) {
+  for (const frontend of frontends) {
     if (!frontend.handles(filePath)) continue
 
     const sites = await frontend.read(content, filePath)
-    if (!sites) break
+    if (!sites) {
+      // Declining is not an error: the next frontend — ultimately the pattern
+      // one, which never declines — reads the file instead.
+      declined = true
+      continue
+    }
 
-    return interpret(sites, {
-      filePath,
-      ambiguousCalleeNeedsDot: callee => pat.requiresDotForCallee?.(callee) ?? false,
-    })
+    return { ...interpret(sites, ruleContext(filePath)), declined }
   }
 
-  return extractKeys(content, filePath, pat, constTable)
+  return { ...extractKeys(content, filePath, pat), declined }
 }
 
 /**
@@ -504,14 +348,33 @@ async function extractFileEvidence(
  *
  * Flip it once `scripts/scanner-diff.mjs` reports nothing in that direction.
  */
-function activeFrontends(): LanguageFrontend[] {
-  return process.env.I18N_SCANNER === 'ast' ? [oxcFrontend] : []
+let warnedRegexHatch = false
+
+/**
+ * The syntax frontends are the default (#402 for JS/TS/Vue, #405 for
+ * PHP/Blade); patterns read only what they decline. `I18N_SCANNER=regex`
+ * restores the old scanner for exactly one release — an escape hatch for
+ * reporting a regression, not a mode.
+ */
+function defaultFrontends(pat: ScanPatternSet): LanguageFrontend[] {
+  if (process.env.I18N_SCANNER === 'regex') {
+    if (!warnedRegexHatch) {
+      warnedRegexHatch = true
+      log.warn('I18N_SCANNER=regex is deprecated and will be removed in the next major. If the default scanner misses something the regex found, please file it: https://github.com/fabkho/the-i18n-kit/issues')
+    }
+    return [createPatternsFrontend(pat)]
+  }
+  const syntax = pat.bareShapes === 'php' ? [phpFrontend, bladeFrontend] : [oxcFrontend]
+  return [...syntax, createPatternsFrontend(pat)]
 }
 
 const oxcFrontend = createOxcFrontend()
+const phpFrontend = createPhpFrontend()
+const bladeFrontend = createBladeFrontend()
 
-export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], patterns?: ScanPatternSet): Promise<ScanResult> {
+export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], patterns?: ScanPatternSet, frontends?: LanguageFrontend[]): Promise<ScanResult> {
   const pat = patterns ?? VUE_NUXT_PATTERNS
+  const active = frontends ?? defaultFrontends(pat)
   const ignore = [...pat.ignoreDirs, ...(excludeDirs ?? [])]
 
   let relativePaths: string[]
@@ -523,13 +386,14 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     // unit tests miss, read as thousands of lines of noise (#327).
     relativePaths = (await glob(pat.filePatterns, { cwd: rootDir, ignore, dot: false, absolute: false })).sort()
   } catch {
-    return { usages: [], dynamicKeys: [], filesScanned: 0, uniqueKeys: new Set(), bareStringCandidates: new Set(), bareDynamicCandidates: new Set() }
+    return { usages: [], dynamicKeys: [], filesScanned: 0, declinedFiles: [], uniqueKeys: new Set(), bareStringCandidates: new Set(), bareDynamicCandidates: new Set() }
   }
 
   const allUsages: KeyUsage[] = []
   const allDynamicKeys: DynamicKeyUsage[] = []
   const bareStringCandidates = new Set<string>()
   const bareDynamicCandidates = new Set<string>()
+  const declinedFiles: string[] = []
   let filesScanned = 0
 
   for (const relPath of relativePaths) {
@@ -542,8 +406,9 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
       continue
     }
 
-    const constTable = pat.resolveLocalConsts ? collectConstKeyTable(content) : new Map<string, string>()
-    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls } = await extractFileEvidence(content, filePath, pat, constTable)
+    const constTable = (pat.bareShapes ?? 'js') === 'js' ? collectConstKeyTable(content) : new Map<string, string>()
+    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls, declined } = await extractFileEvidence(content, filePath, active, pat)
+    if (declined) declinedFiles.push(relPath)
     allUsages.push(...usages)
     allDynamicKeys.push(...dynamicKeys)
     for (const candidate of bareFromCalls) bareStringCandidates.add(candidate)
@@ -556,7 +421,7 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   const uniqueKeys = new Set(allUsages.map(u => u.key))
   log.debug(`Scanned ${filesScanned} files, found ${uniqueKeys.size} unique keys, ${allDynamicKeys.length} dynamic references, ${bareStringCandidates.size} bare string candidates, ${bareDynamicCandidates.size} bare dynamic candidates`)
 
-  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, uniqueKeys, bareStringCandidates, bareDynamicCandidates }
+  return { usages: allUsages, dynamicKeys: allDynamicKeys, filesScanned, declinedFiles, uniqueKeys, bareStringCandidates, bareDynamicCandidates }
 }
 
 // ─── Utilities ──────────────────────────────────────────────────
@@ -671,7 +536,17 @@ export interface OrphanScanResult {
   orphanCount: number
   uncertainByLayer: Record<string, string[]>
   uncertainCount: number
+  /**
+   * Keys alive solely through the bare-candidate net — a dotted string
+   * somewhere shares their name (a comment, a data structure, a coincidence),
+   * or an ambiguous bare call the rules would not commit to (#298). Visible
+   * rather than silently kept: dead references hide here (#402).
+   */
+  candidateOnlyByLayer: Record<string, string[]>
+  candidateOnlyCount: number
   totalFilesScanned: number
+  /** Files a syntax frontend declined; pattern matching read them instead. */
+  totalFilesDeclined: number
   /** Accumulated across layers — a key present in several layers counts once per layer. */
   dynamicMatchedCount: number
   /** Accumulated across layers, like dynamicMatchedCount. */
@@ -727,10 +602,13 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
   const allDynamicKeysRaw: DynamicKeyUsage[] = []
   let totalFilesScanned = 0
 
+  let totalFilesDeclined = 0
+
   for (const unit of units) {
     const ignores = globalScope ? [] : nestedUnitIgnores(unit, units)
     const result = await scanSourceFiles(unit.dir, [...(excludeDirs ?? []), ...ignores], patterns)
     totalFilesScanned += result.filesScanned
+    totalFilesDeclined += result.declinedFiles.length
     const dynamicRaw: DynamicKeyUsage[] = [
       ...result.dynamicKeys,
       ...[...result.bareDynamicCandidates].map(bd => ({ expression: bd, file: '', line: 0, callee: '' })),
@@ -774,6 +652,8 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
 
   const orphansByLayer: Record<string, string[]> = {}
   let orphanCount = 0
+  const candidateOnlyByLayer: Record<string, string[]> = {}
+  let candidateOnlyCount = 0
   const uncertainByLayer: Record<string, string[]> = {}
   let uncertainCount = 0
   let dynamicMatchedCount = 0
@@ -795,9 +675,14 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
     const ignorePatterns = resolveIgnorePatterns(layerName)
     const ignoreRegexes = ignorePatterns ? buildIgnorePatternRegexes(ignorePatterns) : []
 
+    const candidateOnly: string[] = []
     const orphans = keys.filter((k) => {
       if (scope.unique.has(k)) return false
-      if (scope.bare.has(k)) return false
+      if (scope.bare.has(k)) {
+        // Protected, but by nothing a frontend could call a usage.
+        if (!scope.dynRegexes.some(re => re.test(k))) candidateOnly.push(k)
+        return false
+      }
       if (scope.dynRegexes.some(re => re.test(k))) {
         dynamicMatchedCount++
         return false
@@ -839,6 +724,10 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
       uncertainByLayer[layerName] = uncertain
       uncertainCount += uncertain.length
     }
+    if (candidateOnly.length > 0) {
+      candidateOnlyByLayer[layerName] = candidateOnly.sort()
+      candidateOnlyCount += candidateOnly.length
+    }
   }
 
   misplacedUsages.sort((a, b) => a.layer.localeCompare(b.layer) || a.key.localeCompare(b.key))
@@ -855,7 +744,10 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
     orphanCount,
     uncertainByLayer,
     uncertainCount,
+    candidateOnlyByLayer,
+    candidateOnlyCount,
     totalFilesScanned,
+    totalFilesDeclined,
     dynamicMatchedCount,
     ignoredCount,
     allDynamicKeys: allDynamicKeysRaw,

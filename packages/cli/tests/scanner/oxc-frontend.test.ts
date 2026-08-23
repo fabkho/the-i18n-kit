@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createOxcFrontend } from '../../src/scanner/frontends/oxc.js'
-import { interpret } from '../../src/scanner/rules.js'
-import { VUE_NUXT_PATTERNS } from '../../src/scanner/patterns.js'
+import { interpret, ambiguousCalleeNeedsDot } from '../../src/scanner/rules.js'
 
 /**
  * The AST frontend (#332). It exists to answer the one question a regex
@@ -19,10 +18,7 @@ async function scan(source: string, filePath = 'a.ts') {
   const sites = await frontend.read(source, filePath)
   if (!sites) return null
 
-  return interpret(sites, {
-    filePath,
-    ambiguousCalleeNeedsDot: callee => VUE_NUXT_PATTERNS.requiresDotForCallee?.(callee) ?? false,
-  })
+  return interpret(sites, { filePath, ambiguousCalleeNeedsDot })
 }
 
 /** Not a usage, but net-protected — the #298 posture for ambiguity. */
@@ -117,11 +113,13 @@ describe('reading the argument', () => {
     expect(evidence?.dynamicKeys).toHaveLength(2)
   })
 
-  it('reports a template it cannot resolve as a dynamic key', async () => {
+  it('reports a template it cannot resolve as a dynamic key, spelled as written', async () => {
     const evidence = await scan('const label = t(`common.metrics.${metric}`)')
 
     expect(evidence?.usages).toEqual([])
-    expect(evidence?.dynamicKeys[0]?.expression).toBe('`common.metrics.${_}`')
+    // The original interpolation text, not a normalised slot: reports must be
+    // byte-identical with the pattern scanner's for unchanged code.
+    expect(evidence?.dynamicKeys[0]?.expression).toBe('`common.metrics.${metric}`')
   })
 
   it('bounds a concatenation by its literal prefix', async () => {
@@ -185,7 +183,7 @@ describe('Vue single-file components', () => {
     )
 
     expect(evidence?.usages).toEqual([])
-    expect(evidence?.dynamicKeys[0]?.expression).toBe('`\${_}.title`')
+    expect(evidence?.dynamicKeys[0]?.expression).toBe('`\${base}.title`')
   })
 
   it('reports the line a key was used on, not the line of its block', async () => {
@@ -214,6 +212,19 @@ describe('declining a file', () => {
   // someone's translations.
   it('declines a file it cannot parse rather than reporting it as empty', async () => {
     expect(await frontend.read('const = = =', 'broken.ts')).toBeNull()
+  })
+
+  it('declines a .vue file with neither a template nor a script tag', async () => {
+    // Not an SFC at all — bare statements the block splitter cannot see into.
+    // Declining hands the whole file to the fallback; reading only fragments
+    // would silently drop the keys outside them.
+    const sites = await frontend.read(
+      `{{ $t('a.b') }}
+const label = t(\`admin.dyn.\${variant}\`)`,
+      'A.vue',
+    )
+
+    expect(sites).toBeNull()
   })
 
   it('declines an SFC with no block it recognises', async () => {

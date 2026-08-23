@@ -49,6 +49,12 @@ export type { LayerGraph, SerializedLayerGraph } from './config/layer-graph.js'
 // Exported for the scanner differential harness (#332).
 export { scanSourceFiles } from './scanner/code-scanner.js'
 export type { ScanResult } from './scanner/code-scanner.js'
+export { createOxcFrontend } from './scanner/frontends/oxc.js'
+export { createPatternsFrontend } from './scanner/frontends/patterns.js'
+export { createPhpFrontend } from './scanner/frontends/php/index.js'
+export { createBladeFrontend } from './scanner/frontends/php/blade.js'
+export { getPatternSet, VUE_NUXT_PATTERNS, LARAVEL_PATTERNS } from './scanner/patterns.js'
+export type { LanguageFrontend, CallSite, CallArgument, FileEvidence } from './scanner/frontends/types.js'
 
 // IO
 export { readLocaleData } from './io/locale-data.js'

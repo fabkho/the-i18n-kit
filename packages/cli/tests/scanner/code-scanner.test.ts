@@ -324,40 +324,18 @@ describe('extractKeys', () => {
       expect(dynamicKeys.map(d => d.expression)).toContain('`${base}.title`')
     })
 
-    it('resolves a same-file const prefix into an exact static usage', () => {
-      const content = [
-        "const i18nBase = 'pages.organization.settings.tabs.aiAgent.widgetConfigurator'",
-        'const title = t(`${i18nBase}.title`)',
-      ].join('\n')
-      const { usages, dynamicKeys } = extract(content)
-      expect(dynamicKeys).toHaveLength(0)
-      expect(usages).toHaveLength(1)
-      expect(usages[0]).toMatchObject({
-        key: 'pages.organization.settings.tabs.aiAgent.widgetConfigurator.title',
-        callee: 't',
-        line: 2,
-      })
-    })
-
-    it('resolves double-quoted const values', () => {
-      const content = [
-        'const base = "components.integrations"',
-        'const label = $t(`${base}.title`)',
-      ].join('\n')
-      const { usages, dynamicKeys } = extract(content)
-      expect(dynamicKeys).toHaveLength(0)
-      expect(usages[0].key).toBe('components.integrations.title')
-    })
-
-    it('narrows partially resolvable templates instead of leaving them fully dynamic', () => {
-      const content = [
-        "const base = 'components.integrations'",
-        'const label = t(`${base}.${type}.label`)',
-      ].join('\n')
-      const { usages, dynamicKeys } = extract(content)
+    // Exact const resolution moved to the syntax frontend (#402), which
+    // follows the real binding. The pattern path reports the template as
+    // written — a wildcard is the conservative reading for a fallback.
+    it.each([
+      ['single-quoted const prefix', "const i18nBase = 'pages.organization.settings.tabs.aiAgent.widgetConfigurator'", 'const title = t(`${i18nBase}.title`)', '`${i18nBase}.title`'],
+      ['double-quoted const value', 'const base = "components.integrations"', 'const label = $t(`${base}.title`)', '`${base}.title`'],
+      ['partially resolvable template', "const base = 'components.integrations'", 'const label = t(`${base}.${type}.label`)', '`${base}.${type}.label`'],
+    ])('reports a template as written, protection stays wide: %s', (_case, decl, call, expected) => {
+      const { usages, dynamicKeys } = extract([decl, call].join('\n'))
       expect(usages).toHaveLength(0)
       expect(dynamicKeys).toHaveLength(1)
-      expect(dynamicKeys[0].expression).toBe('`components.integrations.${type}.label`')
+      expect(dynamicKeys[0]).toMatchObject({ expression: expected, line: 2 })
     })
 
     it('leaves member expressions and unknown identifiers dynamic', () => {

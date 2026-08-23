@@ -55,6 +55,8 @@ export interface CheckUndefinedKeysSummary {
   /** Unresolvable keys excluded by orphanScan ignorePatterns. */
   ignoredCount: number
   filesScanned: number
+  /** Files a syntax frontend declined; pattern matching read them instead. */
+  filesDeclined: number
   locale: string
   /** Scan unit → layers searched for that unit's key usages. */
   searchedLayersByApp: Record<string, string[]>
@@ -375,12 +377,14 @@ export async function checkUndefinedKeys(opts: {
   const searchedLayersByApp: Record<string, string[]> = {}
   const checkedKeys = new Set<string>()
   let filesScanned = 0
+  let filesDeclined = 0
   let ignoredCount = 0
 
   for (const unit of units) {
     const ignores = globalScope ? [] : nestedUnitIgnores(unit, units)
     const scan = await scanSourceFiles(unit.dir, [...(opts.excludeDirs ?? []), ...ignores], patterns)
     filesScanned += scan.filesScanned
+    filesDeclined += scan.declinedFiles.length
 
     const searchedLayers = layersForUnit(unit.name)
     searchedLayersByApp[unit.name] = searchedLayers
@@ -409,6 +413,7 @@ export async function checkUndefinedKeys(opts: {
     uncertainCount: uncertainKeys.length,
     ignoredCount,
     filesScanned,
+    filesDeclined,
     locale: localeCode,
     searchedLayersByApp,
     message: buildCheckMessage(undefinedKeys.length, uncertainKeys.length),

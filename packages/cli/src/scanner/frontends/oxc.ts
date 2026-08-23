@@ -52,40 +52,54 @@ export function createOxcFrontend(): LanguageFrontend {
       const parse = await loadParser()
       if (!parse) return null
 
-      const blocks = filePath.endsWith('.vue') ? vueBlocks(content) : [{ source: content, lineOffset: 0 }]
+      const blocks = readableBlocks(content, filePath)
+      if (!blocks) return null
 
-      // No blocks means the file was not understood at all, not that it has no
-      // translations. Declining sends it to the fallback; returning nothing
-      // would silently drop every key it contains.
-      if (blocks.length === 0) return null
-
-      const parsed: Array<{ block: { source: string, lineOffset: number }, ast: ParsedBlock }> = []
+      const parsed: ParsedBlockPair[] = []
       for (const block of blocks) {
         const ast = parseBlock(parse, block.source, filePath)
         if (!ast) return null
         parsed.push({ block, ast })
       }
 
-      // An SFC is one scope split across blocks: a template uses what the
-      // script declared. Collecting per block would leave `t(`${base}.title`)`
-      // in the template unresolvable, and it is the same file.
-      const i18nNames = new Set(parsed.flatMap(p => [...p.ast.i18nNames]))
-      const constants: ConstantTable = new Map()
-      for (const { ast } of parsed) {
-        for (const [name, value] of ast.constants) addConstant(constants, name, value)
-      }
-
-      const sites: CallSite[] = []
-      for (const { block, ast } of parsed) {
-        collect(
-          { ...ast, i18nNames, constants },
-          sites,
-          lineResolver(block.source, block.lineOffset),
-        )
-      }
-      return sites
+      return collectAcrossBlocks(parsed)
     },
   }
+}
+
+interface ParsedBlockPair { block: VueBlock, ast: ParsedBlock }
+
+/**
+ * The parseable blocks of a file, or null to decline it. A .vue file with
+ * neither a template nor a script tag is not an SFC: the block splitter would
+ * read only the fragments it recognises and silently drop everything between
+ * them — declining hands the whole file to the fallback instead. The same
+ * goes for an SFC yielding no blocks at all.
+ */
+function readableBlocks(content: string, filePath: string): VueBlock[] | null {
+  if (!filePath.endsWith('.vue')) return [{ source: content, lineOffset: 0 }]
+  if (!/<template[\s>]|<script[\s>]/.test(content)) return null
+  const blocks = vueBlocks(content)
+  return blocks.length === 0 ? null : blocks
+}
+
+/**
+ * An SFC is one scope split across blocks: a template uses what the script
+ * declared. Collecting per block would leave `t(`${base}.title`)` in the
+ * template unresolvable, and it is the same file.
+ */
+function collectAcrossBlocks(parsed: ParsedBlockPair[]): CallSite[] {
+  const i18nNames = new Set(parsed.flatMap(p => [...p.ast.i18nNames]))
+  const constants: ConstantTable = new Map()
+  for (const { ast } of parsed) {
+    for (const [name, value] of ast.constants) addConstant(constants, name, value)
+  }
+
+  const sites: CallSite[] = []
+  for (const { block, ast } of parsed) {
+    collect({ ...ast, i18nNames, constants }, sites, lineResolver(block.source, block.lineOffset))
+  }
+  return sites
 }
 
 type ParseSync = typeof import('oxc-parser').parseSync
@@ -116,6 +130,7 @@ function loadParser(): Promise<ParseSync | null> {
  */
 interface ParsedBlock {
   program: Node
+  source: string
   i18nNames: Set<string>
   constants: ConstantTable
 }
@@ -130,6 +145,7 @@ function parseBlock(parseSync: ParseSync, source: string, filePath: string): Par
 
   return {
     program: result.program as Node,
+    source,
     i18nNames: collectI18nNames(result.program as Node),
     constants: collectStringConstants(result.program as Node),
   }
@@ -275,7 +291,7 @@ function toCallSite(node: Node, parsed: ParsedBlock, lineAt: (offset: number) =>
   return {
     callee: callee.name,
     binding: callee.resolved ? 'resolved' : 'ambiguous',
-    argument: readArgument(first, parsed.constants),
+    argument: readArgument(first, parsed),
     line: lineAt(node.start ?? 0),
   }
 }
@@ -309,13 +325,13 @@ function resolveMemberCallee(node: Node, i18nNames: Set<string>): ResolvedCallee
   return { name, resolved: ALWAYS_I18N.has(name) || (receiverIsI18n && MAYBE_I18N.has(name)) }
 }
 
-function readArgument(node: Node, constants: ConstantTable): CallArgument {
+function readArgument(node: Node, parsed: ParsedBlock): CallArgument {
   if (node.type === 'Literal' && typeof node.value === 'string') {
     return { kind: 'static', value: node.value }
   }
 
   if (node.type === 'TemplateLiteral') {
-    return readTemplateArgument(node, constants)
+    return readTemplateArgument(node, parsed)
   }
 
   // `'common.' + name` — the literal side bounds what the call can produce.
@@ -326,7 +342,7 @@ function readArgument(node: Node, constants: ConstantTable): CallArgument {
   return { kind: 'unknown' }
 }
 
-function readTemplateArgument(node: Node, constants: ConstantTable): CallArgument {
+function readTemplateArgument(node: Node, parsed: ParsedBlock): CallArgument {
   // No expressions is a plain string written with backticks.
   if ((node.expressions ?? []).length === 0) {
     const only = node.quasis?.[0]?.value?.cooked
@@ -334,10 +350,14 @@ function readTemplateArgument(node: Node, constants: ConstantTable): CallArgumen
   }
 
   // Every slot filled by a known constant makes the whole thing a literal.
-  const resolved = resolveTemplate(node, constants)
+  const resolved = resolveTemplate(node, parsed.constants)
   if (resolved !== undefined) return { kind: 'static', value: resolved }
 
-  const expression = (node.quasis ?? []).map((q: Node) => q.value?.cooked ?? '').join('${_}')
+  // As written in the file, backticks excluded — reports stay byte-identical
+  // with the pattern scanner's for unchanged code.
+  const expression = typeof node.start === 'number' && typeof node.end === 'number'
+    ? parsed.source.slice(node.start + 1, node.end - 1)
+    : (node.quasis ?? []).map((q: Node) => q.value?.cooked ?? '').join('${_}')
   return { kind: 'template', expression }
 }
 
