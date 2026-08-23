@@ -1,46 +1,40 @@
 ---
 description: ''
 seo:
-  title: The i18n toolkit for AI agents and large monorepos
-  description: Find missing keys, remove dead ones, and rename across every locale
-    and layer at once — from your agent, your terminal, or your pipeline.
+  title: i18n tooling for AI agents and monorepos
+  description: Find missing keys, remove dead ones, and rename across every locale and layer at once.
 ---
 
 ::u-page-hero
 #title
-The i18n toolkit for AI agents and large monorepos
+i18n tooling for agents and monorepos
 
 #description
-Find missing keys, remove dead ones, and rename across every locale and layer at
-once. One engine behind a CLI, an MCP server, a Nuxt module and two CI
-integrations — so your terminal and your agent give the same answers.
+Find missing keys, remove dead ones, and rename across every locale at once.
 
 #links
   :::u-button
   ---
   color: neutral
   size: xl
-  to: /getting-started/agent-setup
+  to: /getting-started/cold-start
   trailing-icon: i-lucide-arrow-right
   ---
-  Set up the MCP server
+  Get started
   :::
 
   :::u-button
   ---
   color: neutral
   size: xl
-  to: /getting-started/cold-start
+  to: /getting-started/agent-setup
   variant: outline
   ---
-  Start from an unconfigured repo
+  Set up MCP
   :::
 ::
 
 ::u-page-section
-#title
-Built for agents, and for repositories nobody can hold in their head
-
 #features
   :::u-page-feature
   ---
@@ -48,13 +42,10 @@ Built for agents, and for repositories nobody can hold in their head
   to: /introduction/built-for-agents
   ---
   #title
-  Agent-native, with receipts
+  Built for agents
 
   #description
-  Reports divert to disk on request, so a thousand-key result never enters a
-  context window. Machine output cannot be corrupted by a library logging to
-  stdout. Failures carry a reason from a closed set, so an agent branches on a
-  value instead of pattern-matching English.
+  Small, parseable output. Large reports go to disk instead of your context window.
   :::
 
   :::u-page-feature
@@ -63,27 +54,22 @@ Built for agents, and for repositories nobody can hold in their head
   to: /monorepos/layers
   ---
   #title
-  Monorepo-native
+  Monorepo-aware
 
   #description
-  Usage is counted per consuming app, so a key used in one app is never treated
-  as protecting a key in another. Keys with ambiguous evidence go in their own
-  bucket and are never deleted, which is what makes an automated cleanup safe to
-  review.
+  Usage is counted per app, so a key used in one is not treated as used in another.
   :::
 
   :::u-page-feature
   ---
   icon: i-lucide-git-pull-request
-  to: /reference/cli/check
+  to: /ci-cd/github-actions
   ---
   #title
-  CI-native
+  Runs in CI
 
   #description
-  Findings gate a pipeline through exit codes, so a run that translated nothing
-  cannot go green. A GitHub Action and a GitLab template ship with the kit,
-  provider-agnostic, with your own API key.
+  Exit codes gate a pipeline. A GitHub Action and a GitLab template ship with it.
   :::
 
   :::u-page-feature
@@ -92,45 +78,9 @@ Built for agents, and for repositories nobody can hold in their head
   to: /frameworks/detection
   ---
   #title
-  Reads your project rather than asking you to restate it
+  Reads your setup
 
   #description
-  Nuxt, Laravel, Vue, React and Next, or anything with JSON or PHP locale files.
-  Where a project already declares its locales — a next-intl routing file, a Vite
-  plugin, a Nuxt config — the kit executes that file and reads it.
-  :::
-::
-
-::u-page-section
-#title
-Start where you are
-
-#features
-  :::u-page-feature
-  ---
-  icon: i-lucide-terminal
-  to: /reference/cli
-  ---
-  #title
-  From the terminal
-
-  #description
-  Install `@the-i18n-kit/cli`, then run `the-i18n-cli status` for coverage per
-  locale and per layer. Every command is documented from its own definition, so
-  the reference cannot describe a flag that no longer exists.
-  :::
-
-  :::u-page-feature
-  ---
-  icon: i-lucide-settings-2
-  to: /configuration/where-config-lives
-  ---
-  #title
-  From your config
-
-  #description
-  Declare a glossary, tone notes and protected locales once, typed, with no build
-  step — so the policy applies in an unbuilt checkout too, where a build artifact
-  would not have reached the tool.
+  Nuxt, Laravel, Vue, React and Next, or any JSON or PHP locale files.
   :::
 ::
