@@ -68,14 +68,13 @@ function calleeName(what: PhpNode | undefined): string | undefined {
     return what.name
   }
   // Lang::get('key') — the facade spelling of the same helper.
-  if (
-    what.kind === 'staticlookup'
-    && (what.what as PhpNode | undefined)?.name === 'Lang'
+  return isLangGet(what) ? 'Lang::get' : undefined
+}
+
+function isLangGet(what: PhpNode): boolean {
+  if (what.kind !== 'staticlookup') return false
+  return (what.what as PhpNode | undefined)?.name === 'Lang'
     && (what.offset as PhpNode | undefined)?.name === 'get'
-  ) {
-    return 'Lang::get'
-  }
-  return undefined
 }
 
 function readArgument(node: PhpNode): CallArgument {
@@ -83,18 +82,8 @@ function readArgument(node: PhpNode): CallArgument {
     return { kind: 'static', value: node.value }
   }
 
-  // Double-quoted or heredoc string with interpolation: known literal parts
-  // around `${_}` slots — or a plain string after all, when nothing
-  // interpolates.
   if (node.kind === 'encapsed' && Array.isArray(node.value)) {
-    const parts = (node.value as PhpNode[]).map((part) => {
-      const expression = part.expression as PhpNode | undefined
-      return expression?.kind === 'string' && typeof expression.value === 'string' ? expression.value : '${_}'
-    })
-    const expression = parts.join('')
-    return expression.includes('${_}')
-      ? { kind: 'template', expression }
-      : { kind: 'static', value: expression }
+    return readEncapsed(node.value as PhpNode[])
   }
 
   // `'orders.status.' . $status` — the literal side bounds what the call can produce.
@@ -106,6 +95,21 @@ function readArgument(node: PhpNode): CallArgument {
   }
 
   return { kind: 'unknown' }
+}
+
+/**
+ * Double-quoted or heredoc string with interpolation: known literal parts
+ * around `${_}` slots — or a plain string after all, when nothing
+ * interpolates.
+ */
+function readEncapsed(parts: PhpNode[]): CallArgument {
+  const rendered = parts.map((part) => {
+    const expression = part.expression as PhpNode | undefined
+    return expression?.kind === 'string' && typeof expression.value === 'string' ? expression.value : '${_}'
+  }).join('')
+  return rendered.includes('${_}')
+    ? { kind: 'template', expression: rendered }
+    : { kind: 'static', value: rendered }
 }
 
 // ─── Parser loading ─────────────────────────────────────────────
