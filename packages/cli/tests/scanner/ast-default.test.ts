@@ -65,6 +65,26 @@ describe('the syntax frontend is the default', () => {
   })
 })
 
+describe('inline string templates (options API)', () => {
+  // defineComponent({ template: '...' }) — the $t inside is a string, not a
+  // call site, and the scanner will not claim a call it cannot prove. The
+  // key is not a usage; the dotted string keeps it out of the orphan bucket
+  // via the bare-candidate net, same as a comment reference.
+  it('reads the template as the string it is, net-protected', async () => {
+    await writeFile(join(tmpDir, 'options-api.ts'), [
+      `import { defineComponent } from 'vue'`,
+      `export default defineComponent({`,
+      `  template: '<p>{{ $t("inline.template.key") }}</p>',`,
+      `})`,
+    ].join('\n'))
+
+    const result = await scanSourceFiles(tmpDir)
+
+    expect(result.uniqueKeys.has('inline.template.key')).toBe(false)
+    expect(result.bareStringCandidates.has('inline.template.key')).toBe(true)
+  })
+})
+
 describe('protected only by candidates (#402)', () => {
   it('surfaces keys alive solely through the bare-candidate net', async () => {
     const dir = join(tmpDir, 'candidate-only')
