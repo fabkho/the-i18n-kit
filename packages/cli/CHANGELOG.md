@@ -1,5 +1,27 @@
 # Changelog
 
+## [5.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.10.1...the-i18n-cli-5.0.0) (2026-08-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **scanner:** scan conclusions change — comment references no longer count as usage (see candidateOnlyKeys), additional keys are recognised via real binding resolution, and Laravel projects must install the PHP peers explicitly (npm i -D php-parser php-array-reader) since php-array-reader left the dependency tree.
+
+### Features
+
+* find keys that carry the same value, not just the same path ([#396](https://github.com/fabkho/the-i18n-kit/issues/396)) ([02e60d1](https://github.com/fabkho/the-i18n-kit/commit/02e60d10bce4bda5623ff0d11d924bd1e41127e1))
+* **mcp:** surface the layer graph from discover ([#388](https://github.com/fabkho/the-i18n-kit/issues/388)) ([8753ee3](https://github.com/fabkho/the-i18n-kit/commit/8753ee3f423dcad31fb27c9a80c6e187c0cf5958)), closes [#342](https://github.com/fabkho/the-i18n-kit/issues/342)
+* move a translation key between layers in one operation ([#393](https://github.com/fabkho/the-i18n-kit/issues/393)) ([79a108e](https://github.com/fabkho/the-i18n-kit/commit/79a108ed741da71617db437f9f702bc1f823ffe9)), closes [#341](https://github.com/fabkho/the-i18n-kit/issues/341)
+* **scanner:** AST-only scanning — the full stack ([#419](https://github.com/fabkho/the-i18n-kit/issues/419)) ([6cff408](https://github.com/fabkho/the-i18n-kit/commit/6cff408e9a141ccd79e9f2fed34956a0cfed9a64))
+* **scanner:** pluggable language frontends, and an AST one for JS/TS/Vue ([#345](https://github.com/fabkho/the-i18n-kit/issues/345)) ([53577c4](https://github.com/fabkho/the-i18n-kit/commit/53577c4c5685718be22109012ad0f31636d7df3b))
+
+
+### Bug Fixes
+
+* **cli:** report check's findings as a tripped gate, not a failed run ([#381](https://github.com/fabkho/the-i18n-kit/issues/381)) ([7b53387](https://github.com/fabkho/the-i18n-kit/commit/7b53387f382a7f577454f312fa58f46c1170b92b))
+* **config:** require a key on every translation example ([#383](https://github.com/fabkho/the-i18n-kit/issues/383)) ([cdc3418](https://github.com/fabkho/the-i18n-kit/commit/cdc341813e98e8c36d36eb814148da80d17d93aa)), closes [#367](https://github.com/fabkho/the-i18n-kit/issues/367)
+* the config surface described nuxt.config.ts policy that [#372](https://github.com/fabkho/the-i18n-kit/issues/372) removed ([#384](https://github.com/fabkho/the-i18n-kit/issues/384)) ([7220e7b](https://github.com/fabkho/the-i18n-kit/commit/7220e7b19b7a3105930ad441df71b435612ce9a1)), closes [#380](https://github.com/fabkho/the-i18n-kit/issues/380) [#300](https://github.com/fabkho/the-i18n-kit/issues/300)
+
 ## [4.10.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.10.0...the-i18n-cli-4.10.1) (2026-08-17)
 
 
