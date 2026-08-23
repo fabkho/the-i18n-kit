@@ -63,17 +63,31 @@ const BLADE_COMMENT = /\{\{--[\s\S]*?--\}\}/g
 function liftChunks(content: string): Chunk[] {
   // Comments may contain anything, including things shaped like echoes.
   const source = content.replace(BLADE_COMMENT, m => m.replace(/[^\n]/g, ' '))
-  const chunks: Chunk[] = []
   const lineAt = (offset: number) => source.slice(0, offset).split('\n').length - 1
 
-  // {{ expr }} and {!! expr !!} — echoes of a PHP expression.
+  return [
+    ...echoChunks(source, lineAt),
+    ...phpBlockChunks(source, lineAt),
+    ...directiveChunks(source, lineAt),
+  ]
+}
+
+type LineAt = (offset: number) => number
+
+/** {{ expr }} and {!! expr !!} — echoes of a PHP expression. */
+function echoChunks(source: string, lineAt: LineAt): Chunk[] {
+  const chunks: Chunk[] = []
   for (const match of source.matchAll(/\{\{([\s\S]*?)\}\}|\{!!([\s\S]*?)!!\}/g)) {
     const expression = match[1] ?? match[2]
     if (!expression?.trim()) continue
     chunks.push({ source: `${expression};`, lineOffset: lineAt(match.index ?? 0) })
   }
+  return chunks
+}
 
-  // @php ... @endphp and raw <?php ... ?> — statements as written.
+/** @php ... @endphp and raw <?php ... ?> — statements as written. */
+function phpBlockChunks(source: string, lineAt: LineAt): Chunk[] {
+  const chunks: Chunk[] = []
   for (const match of source.matchAll(/@php\b([\s\S]*?)@endphp/g)) {
     const body = match[1]
     if (body?.trim()) chunks.push({ source: body, lineOffset: lineAt(match.index ?? 0) })
@@ -82,9 +96,15 @@ function liftChunks(content: string): Chunk[] {
     const body = match[1]
     if (body?.trim()) chunks.push({ source: body, lineOffset: lineAt(match.index ?? 0) })
   }
+  return chunks
+}
 
-  // @lang(...) / @choice(...) — thin wrappers over __ and trans_choice.
-  // Reported under the directive's own name, as the reports always have.
+/**
+ * @lang(...) / @choice(...) — thin wrappers over __ and trans_choice.
+ * Reported under the directive's own name, as the reports always have.
+ */
+function directiveChunks(source: string, lineAt: LineAt): Chunk[] {
+  const chunks: Chunk[] = []
   for (const match of source.matchAll(/@(lang|choice)\s*\(/g)) {
     const open = (match.index ?? 0) + match[0].length - 1
     const args = balancedParens(source, open)
@@ -92,7 +112,6 @@ function liftChunks(content: string): Chunk[] {
     const helper = match[1] === 'lang' ? '__' : 'trans_choice'
     chunks.push({ source: `${helper}(${args});`, lineOffset: lineAt(match.index ?? 0), callee: `@${match[1]}` })
   }
-
   return chunks
 }
 
@@ -103,20 +122,25 @@ function liftChunks(content: string): Chunk[] {
  */
 function balancedParens(source: string, openIndex: number): string | undefined {
   let depth = 0
-  let quote: string | undefined
   for (let i = openIndex; i < source.length; i++) {
     const ch = source[i]
-    if (quote) {
-      if (ch === '\\') i++
-      else if (ch === quote) quote = undefined
-      continue
-    }
-    if (ch === '\'' || ch === '"') quote = ch
-    else if (ch === '(') depth++
-    else if (ch === ')') {
-      depth--
-      if (depth === 0) return source.slice(openIndex + 1, i)
+    if (ch === '\'' || ch === '"') {
+      i = skipString(source, i)
+    } else if (ch === '(') {
+      depth++
+    } else if (ch === ')' && --depth === 0) {
+      return source.slice(openIndex + 1, i)
     }
   }
   return undefined
+}
+
+/** The index of a string literal's closing quote, escapes respected. */
+function skipString(source: string, start: number): number {
+  const quote = source[start]
+  for (let i = start + 1; i < source.length; i++) {
+    if (source[i] === '\\') i++
+    else if (source[i] === quote) return i
+  }
+  return source.length
 }
