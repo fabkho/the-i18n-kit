@@ -140,7 +140,7 @@ export function substituteConstIdentifiers(expr: string, table: Map<string, stri
  * bare `$var->prop`) to `${_}` slots. Returns undefined when the expression
  * contains no interpolation at all.
  */
-export function normalizeDynamicExpression(expression: string): string | undefined {
+function normalizeDynamicExpression(expression: string): string | undefined {
   const hasDollarBrace = expression.includes('${')
   const hasBraceDollar = expression.includes('{$')
   const hasBarePHP = !hasDollarBrace && !hasBraceDollar && /\$[a-zA-Z_]/.test(expression)
