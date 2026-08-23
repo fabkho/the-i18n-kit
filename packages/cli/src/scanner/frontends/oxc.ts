@@ -52,46 +52,54 @@ export function createOxcFrontend(): LanguageFrontend {
       const parse = await loadParser()
       if (!parse) return null
 
-      // A .vue file with neither a template nor a script tag is not an SFC.
-      // The block splitter would read only the fragments it recognises and
-      // silently drop everything between them; declining hands the whole file
-      // to the fallback instead.
-      if (filePath.endsWith('.vue') && !/<template[\s>]|<script[\s>]/.test(content)) return null
+      const blocks = readableBlocks(content, filePath)
+      if (!blocks) return null
 
-      const blocks = filePath.endsWith('.vue') ? vueBlocks(content) : [{ source: content, lineOffset: 0 }]
-
-      // No blocks means the file was not understood at all, not that it has no
-      // translations. Declining sends it to the fallback; returning nothing
-      // would silently drop every key it contains.
-      if (blocks.length === 0) return null
-
-      const parsed: Array<{ block: { source: string, lineOffset: number }, ast: ParsedBlock }> = []
+      const parsed: ParsedBlockPair[] = []
       for (const block of blocks) {
         const ast = parseBlock(parse, block.source, filePath)
         if (!ast) return null
         parsed.push({ block, ast })
       }
 
-      // An SFC is one scope split across blocks: a template uses what the
-      // script declared. Collecting per block would leave `t(`${base}.title`)`
-      // in the template unresolvable, and it is the same file.
-      const i18nNames = new Set(parsed.flatMap(p => [...p.ast.i18nNames]))
-      const constants: ConstantTable = new Map()
-      for (const { ast } of parsed) {
-        for (const [name, value] of ast.constants) addConstant(constants, name, value)
-      }
-
-      const sites: CallSite[] = []
-      for (const { block, ast } of parsed) {
-        collect(
-          { ...ast, i18nNames, constants },
-          sites,
-          lineResolver(block.source, block.lineOffset),
-        )
-      }
-      return sites
+      return collectAcrossBlocks(parsed)
     },
   }
+}
+
+interface ParsedBlockPair { block: VueBlock, ast: ParsedBlock }
+
+/**
+ * The parseable blocks of a file, or null to decline it. A .vue file with
+ * neither a template nor a script tag is not an SFC: the block splitter would
+ * read only the fragments it recognises and silently drop everything between
+ * them — declining hands the whole file to the fallback instead. The same
+ * goes for an SFC yielding no blocks at all.
+ */
+function readableBlocks(content: string, filePath: string): VueBlock[] | null {
+  if (!filePath.endsWith('.vue')) return [{ source: content, lineOffset: 0 }]
+  if (!/<template[\s>]|<script[\s>]/.test(content)) return null
+  const blocks = vueBlocks(content)
+  return blocks.length === 0 ? null : blocks
+}
+
+/**
+ * An SFC is one scope split across blocks: a template uses what the script
+ * declared. Collecting per block would leave `t(`${base}.title`)` in the
+ * template unresolvable, and it is the same file.
+ */
+function collectAcrossBlocks(parsed: ParsedBlockPair[]): CallSite[] {
+  const i18nNames = new Set(parsed.flatMap(p => [...p.ast.i18nNames]))
+  const constants: ConstantTable = new Map()
+  for (const { ast } of parsed) {
+    for (const [name, value] of ast.constants) addConstant(constants, name, value)
+  }
+
+  const sites: CallSite[] = []
+  for (const { block, ast } of parsed) {
+    collect({ ...ast, i18nNames, constants }, sites, lineResolver(block.source, block.lineOffset))
+  }
+  return sites
 }
 
 type ParseSync = typeof import('oxc-parser').parseSync
