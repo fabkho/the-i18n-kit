@@ -98,12 +98,15 @@ function echoChunks(source: string, lineAt: LineAt): Chunk[] {
 
 /** @php ... @endphp and raw <?php ... ?> — statements as written. */
 function phpBlockChunks(source: string, lineAt: LineAt): Chunk[] {
+  return [
+    ...bodyChunks(source, /@php\b(?!\s*\()([\s\S]*?)@endphp/g, lineAt),
+    ...bodyChunks(source, /<\?php\b([\s\S]*?)(?:\?>|$)/g, lineAt),
+  ]
+}
+
+function bodyChunks(source: string, pattern: RegExp, lineAt: LineAt): Chunk[] {
   const chunks: Chunk[] = []
-  for (const match of source.matchAll(/@php\b(?!\s*\()([\s\S]*?)@endphp/g)) {
-    const body = match[1]
-    if (body?.trim()) chunks.push({ source: body, lineOffset: lineAt(match.index ?? 0) })
-  }
-  for (const match of source.matchAll(/<\?php\b([\s\S]*?)(?:\?>|$)/g)) {
+  for (const match of source.matchAll(pattern)) {
     const body = match[1]
     if (body?.trim()) chunks.push({ source: body, lineOffset: lineAt(match.index ?? 0) })
   }
@@ -134,25 +137,24 @@ function boundAttributeChunks(source: string, lineAt: LineAt): Chunk[] {
  */
 function directiveChunks(source: string, lineAt: LineAt): Chunk[] {
   const chunks: Chunk[] = []
+  // Block @php ... @endphp is handled elsewhere; the inline form
+  // @php($x = ...) is an expression list like any other directive argument.
   for (const match of source.matchAll(/@(\w+)\s*\(/g)) {
-    const directive = match[1] ?? ''
-    // Block @php ... @endphp is handled above; the inline form @php($x = ...)
-    // is an expression like any other directive argument and lifts here.
     const open = (match.index ?? 0) + match[0].length - 1
     const args = balancedParens(source, open)
     if (args === undefined) continue
-    const lineOffset = lineAt(match.index ?? 0)
-
-    if (directive === 'lang' || directive === 'choice') {
-      const helper = directive === 'lang' ? '__' : 'trans_choice'
-      chunks.push({ source: `${helper}(${args});`, lineOffset, callee: `@${directive}` })
-      continue
-    }
-    if (args.trim()) {
-      chunks.push({ source: `__args__(${args});`, lineOffset, optional: true })
-    }
+    const chunk = directiveChunk(match[1] ?? '', args, lineAt(match.index ?? 0))
+    if (chunk) chunks.push(chunk)
   }
   return chunks
+}
+
+function directiveChunk(directive: string, args: string, lineOffset: number): Chunk | undefined {
+  if (directive === 'lang' || directive === 'choice') {
+    const helper = directive === 'lang' ? '__' : 'trans_choice'
+    return { source: `${helper}(${args});`, lineOffset, callee: `@${directive}` }
+  }
+  return args.trim() ? { source: `__args__(${args});`, lineOffset, optional: true } : undefined
 }
 
 /**
