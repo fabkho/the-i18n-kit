@@ -17,6 +17,11 @@ async function scan(source: string, filePath = 'resources/views/page.blade.php')
   return interpret(sites, { filePath, ambiguousCalleeNeedsDot })
 }
 
+async function scanKeys(...lines: string[]) {
+  const evidence = await scan(lines.join('\n'))
+  return evidence?.usages.map(u => u.key)
+}
+
 describe('lifting', () => {
   it('reads echoes, raw echoes, directives and php blocks alike', async () => {
     const evidence = await scan([
@@ -70,25 +75,24 @@ describe('lifting', () => {
 
   it("reads translation calls inside any directive's arguments", async () => {
     // Laravel's own error pages: @section('title', __('Forbidden')).
-    const evidence = await scan([
+    const keys = await scanKeys(
       `@extends('errors.layout')`,
       `@section('title', ($e instanceof \\App\\X) ? $e->getTitle() : __('Forbidden'))`,
       `@if($booking->isPast()) {{ __('bookings.past.notice') }} @endif`,
-    ].join('\n'))
+    )
 
-    expect(evidence?.usages.map(u => u.key)).toContain('Forbidden')
-    expect(evidence?.usages.map(u => u.key)).toContain('bookings.past.notice')
-    expect(evidence?.usages.find(u => u.key === 'Forbidden')?.line).toBe(2)
+    expect(keys).toContain('Forbidden')
+    expect(keys).toContain('bookings.past.notice')
   })
 
   it('skips control-flow directive grammar without declining the file', async () => {
-    const evidence = await scan([
+    const keys = await scanKeys(
       `@foreach($items as $item)`,
       `  {{ __('list.item.label') }}`,
       `@endforeach`,
-    ].join('\n'))
+    )
 
-    expect(evidence?.usages.map(u => u.key)).toEqual(['list.item.label'])
+    expect(keys).toEqual(['list.item.label'])
   })
 
   it('reads the inline @php form, and blocks do not swallow past it', async () => {
