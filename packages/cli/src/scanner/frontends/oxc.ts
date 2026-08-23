@@ -291,20 +291,22 @@ function toCallSite(node: Node, parsed: ParsedBlock, lineAt: (offset: number) =>
  * member by its property name against local bindings would resolve exactly the
  * calls this frontend exists to tell apart.
  */
-function resolveCallee(node: Node | undefined, i18nNames: Set<string>): { name: string, resolved: boolean } | undefined {
+function resolveCallee(node: Node | undefined, i18nNames: Set<string>): ResolvedCallee | undefined {
   if (!node) return undefined
-
   if (node.type === 'Identifier') {
     return { name: node.name, resolved: i18nNames.has(node.name) || ALWAYS_I18N.has(node.name) }
   }
-
-  if (node.type === 'MemberExpression' && node.property?.type === 'Identifier') {
-    const name = node.property.name
-    const receiverIsI18n = node.object?.type === 'Identifier' && i18nNames.has(node.object.name)
-    return { name, resolved: ALWAYS_I18N.has(name) || (receiverIsI18n && MAYBE_I18N.has(name)) }
-  }
-
+  if (node.type === 'MemberExpression') return resolveMemberCallee(node, i18nNames)
   return undefined
+}
+
+interface ResolvedCallee { name: string, resolved: boolean }
+
+function resolveMemberCallee(node: Node, i18nNames: Set<string>): ResolvedCallee | undefined {
+  if (node.property?.type !== 'Identifier') return undefined
+  const name = node.property.name
+  const receiverIsI18n = node.object?.type === 'Identifier' && i18nNames.has(node.object.name)
+  return { name, resolved: ALWAYS_I18N.has(name) || (receiverIsI18n && MAYBE_I18N.has(name)) }
 }
 
 function readArgument(node: Node, constants: ConstantTable): CallArgument {
@@ -397,25 +399,34 @@ function walkChild(child: unknown, visit: (node: Node) => void): void {
  * JavaScript, so its interpolations are lifted out and parsed as expressions —
  * the same trick the PHP frontend uses for Blade directives.
  */
-function vueBlocks(content: string): Array<{ source: string, lineOffset: number }> {
-  const blocks: Array<{ source: string, lineOffset: number }> = []
+function vueBlocks(content: string): VueBlock[] {
+  return [...scriptBlocks(content), ...templateExpressionBlocks(content)]
+}
 
+interface VueBlock { source: string, lineOffset: number }
+
+const lineOffsetAt = (content: string, offset: number): number =>
+  content.slice(0, offset).split('\n').length - 1
+
+function scriptBlocks(content: string): VueBlock[] {
+  const blocks: VueBlock[] = []
   for (const match of content.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)) {
     // Offset to the block body, not the tag: an opening tag written across
     // several lines (`<script\n  setup\n  lang="ts">`) otherwise shifts every
     // line the block reports.
     const openTagLength = match[0].length - (match[1]?.length ?? 0) - '</script>'.length
-    const before = content.slice(0, (match.index ?? 0) + openTagLength)
-    blocks.push({ source: match[1] ?? '', lineOffset: before.split('\n').length - 1 })
+    blocks.push({ source: match[1] ?? '', lineOffset: lineOffsetAt(content, (match.index ?? 0) + openTagLength) })
   }
+  return blocks
+}
 
+function templateExpressionBlocks(content: string): VueBlock[] {
+  const blocks: VueBlock[] = []
   for (const match of content.matchAll(/\{\{([\s\S]*?)\}\}|(?:v-[a-z-]+|:[\w-]+|@[\w-]+)=(?:"([^"]*)"|'([^']*)')/g)) {
     const expression = match[1] ?? match[2] ?? match[3]
     if (!expression?.trim()) continue
-    const before = content.slice(0, match.index ?? 0)
     // Wrapped so a bare expression parses as a statement.
-    blocks.push({ source: `(${expression})`, lineOffset: before.split('\n').length - 1 })
+    blocks.push({ source: `(${expression})`, lineOffset: lineOffsetAt(content, match.index ?? 0) })
   }
-
   return blocks
 }

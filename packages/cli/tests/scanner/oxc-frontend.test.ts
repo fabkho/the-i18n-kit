@@ -25,6 +25,12 @@ async function scan(source: string, filePath = 'a.ts') {
   })
 }
 
+/** Not a usage, but net-protected — the #298 posture for ambiguity. */
+function expectProtectedOnly(evidence: Awaited<ReturnType<typeof scan>>, key: string) {
+  expect(evidence?.usages).toEqual([])
+  expect(evidence?.bareStringCandidates.has(key)).toBe(true)
+}
+
 describe('resolving what t is bound to', () => {
   // The #298 case. A regex has to guess from the dot; this knows.
   it('counts a dotless key as used when t came from useI18n', async () => {
@@ -39,11 +45,8 @@ describe('resolving what t is bound to', () => {
   })
 
   it('does not count a dotless key from a t it cannot place', async () => {
-    const evidence = await scan(`const label = t('save')`)
-
-    expect(evidence?.usages).toEqual([])
     // Protected rather than dropped: a key of that name still exists (#298).
-    expect(evidence?.bareStringCandidates.has('save')).toBe(true)
+    expectProtectedOnly(await scan(`const label = t('save')`), 'save')
   })
 
   it('ignores a call that is not a translation, however its argument looks', async () => {
@@ -56,15 +59,12 @@ describe('resolving what t is bound to', () => {
   })
 
   it('does not let a local t vouch for an unrelated member call', async () => {
-    const evidence = await scan(`
+    // `client.t` shares a property name with the binding, nothing more.
+    expectProtectedOnly(await scan(`
       import { useI18n } from 'vue-i18n'
       const { t } = useI18n()
       client.t('save')
-    `)
-
-    // `client.t` shares a property name with the binding, nothing more.
-    expect(evidence?.usages).toEqual([])
-    expect(evidence?.bareStringCandidates.has('save')).toBe(true)
+    `), 'save')
   })
 
   it('resolves t on a receiver that is itself an i18n binding', async () => {
