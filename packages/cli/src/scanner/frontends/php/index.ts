@@ -81,19 +81,21 @@ function readArgument(node: PhpNode): CallArgument {
   if ((node.kind === 'string' || node.kind === 'nowdoc') && typeof node.value === 'string') {
     return { kind: 'static', value: node.value }
   }
-
   if (node.kind === 'encapsed' && Array.isArray(node.value)) {
     return readEncapsed(node.value as PhpNode[])
   }
-
-  // `'orders.status.' . $status` — the literal side bounds what the call can produce.
   if (node.kind === 'bin' && node.type === '.') {
-    const left = node.left as PhpNode | undefined
-    if (left?.kind === 'string' && typeof left.value === 'string') {
-      return { kind: 'concat', prefix: left.value }
-    }
+    return readConcat(node)
   }
+  return { kind: 'unknown' }
+}
 
+/** `'orders.status.' . $status` — the literal side bounds what the call can produce. */
+function readConcat(node: PhpNode): CallArgument {
+  const left = node.left as PhpNode | undefined
+  if (left?.kind === 'string' && typeof left.value === 'string') {
+    return { kind: 'concat', prefix: left.value }
+  }
   return { kind: 'unknown' }
 }
 
