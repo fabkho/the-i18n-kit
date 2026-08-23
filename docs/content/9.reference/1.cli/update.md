@@ -1,5 +1,6 @@
 ---
 title: 'update'
+description: ''
 seo:
   description: 'Update existing translation keys (skips keys that do not exist)'
 ---

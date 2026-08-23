@@ -1,5 +1,6 @@
 ---
 title: 'status'
+description: ''
 seo:
   description: 'Translation coverage per locale and per layer, with an overall completion percentage'
 ---

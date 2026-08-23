@@ -1,5 +1,6 @@
 ---
 title: 'remove'
+description: ''
 seo:
   description: 'Remove translation keys from all locale files in a layer'
 ---

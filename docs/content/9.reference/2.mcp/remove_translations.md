@@ -1,5 +1,6 @@
 ---
 title: 'remove_translations'
+description: ''
 seo:
   description: 'Remove one or more translation keys from ALL locale files in the specified layer. Use dryRun to preview changes before applying them.'
 ---

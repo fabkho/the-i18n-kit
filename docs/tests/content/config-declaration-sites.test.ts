@@ -13,13 +13,11 @@
  * are meant to be rewritten. If it does not, no page may say it does.
  */
 
-import { readFileSync, readdirSync } from 'node:fs'
-import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { contentPages } from './pages.js'
 import type { ModuleOptions } from '../../../packages/nuxt/src/module.js'
 import { renderConfigJsonSchema } from '../../../packages/cli/src/config/schema-json.js'
 
-const CONTENT_DIR = join(import.meta.dirname, '../../content')
 
 /**
  * Options the Nuxt module accepts. Declared as a type-level assertion so this
@@ -31,15 +29,6 @@ const MODULE_OPTIONS = ['enabled', 'failOnInvalidConfig'] as const satisfies rea
 /** Fails to compile if `ModuleOptions` grows an option this list does not name. */
 type Unlisted = Exclude<keyof ModuleOptions, typeof MODULE_OPTIONS[number]>
 export type ModuleOptionsAreFullyListed = Unlisted extends never ? true : Unlisted
-
-function configPages(): { name: string, text: string }[] {
-  return readdirSync(CONTENT_DIR, { recursive: true, withFileTypes: true })
-    .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
-    .map((entry) => {
-      const path = join(entry.parentPath, entry.name)
-      return { name: relative(CONTENT_DIR, path), text: readFileSync(path, 'utf-8') }
-    })
-}
 
 /**
  * The property names an `i18nKit: { … }` block in the page sets.
@@ -69,7 +58,7 @@ describe('the configuration pages against the module the kit ships', () => {
 
   it('never presents an i18nKit block as a place policy is declared', () => {
     const allowed = new Set<string>(MODULE_OPTIONS)
-    for (const { name, text } of configPages()) {
+    for (const { name, text } of contentPages()) {
       // The module's own options may be named; anything else in that block is
       // policy the module stopped reading in #372.
       const policyKeys = i18nKitKeys(text).filter(key => !allowed.has(key))
@@ -78,7 +67,7 @@ describe('the configuration pages against the module the kit ships', () => {
   })
 
   it('never counts nuxt.config.ts among the places policy lives', () => {
-    for (const { name, text } of configPages()) {
+    for (const { name, text } of contentPages()) {
       expect(text, `${name} still counts three declaration sites`)
         .not.toMatch(/declared in three places|## The Three Places/i)
     }

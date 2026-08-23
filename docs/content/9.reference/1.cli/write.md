@@ -1,5 +1,6 @@
 ---
 title: 'write'
+description: ''
 seo:
   description: 'Write translation keys (add/update/upsert). Default mode: upsert.'
 ---

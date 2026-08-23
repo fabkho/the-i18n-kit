@@ -1,5 +1,6 @@
 ---
 title: 'translate_key'
+description: ''
 seo:
   description: 'Add/update one source translation key and translate it into target locales. Unlike translate_missing, this can overwrite existing stale target translations. Same two modes as translate_missing: provider mode (server env-configured) translates directly; agent mode returns a fallbackContext — translate it inline and persist via write_translations.'
 ---

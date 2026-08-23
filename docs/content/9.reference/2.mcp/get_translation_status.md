@@ -1,5 +1,6 @@
 ---
 title: 'get_translation_status'
+description: ''
 seo:
   description: 'Translation coverage in one call: per-locale and per-layer counts of total, translated, missing and empty keys, plus an overall completion percentage. Use this instead of calling get_missing_translations per layer and counting keys yourself. Empty-string values count as untranslated. Locales listed in protectedLocales are reported but excluded from the overall figure, since they are maintained by hand.'
 ---

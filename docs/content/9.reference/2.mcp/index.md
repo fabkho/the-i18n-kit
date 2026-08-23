@@ -1,5 +1,6 @@
 ---
 title: 'MCP Tools'
+description: ''
 seo:
   description: 'Every tool @the-i18n-kit/mcp advertises to an MCP host, generated from the server''s own tool listing.'
 ---

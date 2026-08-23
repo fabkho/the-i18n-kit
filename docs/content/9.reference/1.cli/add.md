@@ -1,5 +1,6 @@
 ---
 title: 'add'
+description: ''
 seo:
   description: 'Add new translation keys (skips keys that already exist)'
 ---

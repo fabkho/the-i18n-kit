@@ -1,5 +1,6 @@
 ---
 title: 'search_translations'
+description: ''
 seo:
   description: 'Search translation files by key path or value. Simple case-insensitive substring match — not fuzzy or regex. Useful for finding existing translations before adding duplicates.'
 ---

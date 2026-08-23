@@ -1,5 +1,6 @@
 ---
 title: 'CLI Commands'
+description: ''
 seo:
   description: 'Every command @the-i18n-kit/cli registers, the flags they all share, and the exit codes that tell a tripped gate apart from a failed run.'
 ---

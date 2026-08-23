@@ -1,5 +1,6 @@
 ---
 title: 'get_missing_translations'
+description: ''
 seo:
   description: 'Find translation keys that exist in the reference locale but are missing in other locales. Scans a specific layer or all layers.'
 ---

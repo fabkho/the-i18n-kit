@@ -1,5 +1,6 @@
 ---
 title: 'scan'
+description: ''
 seo:
   description: 'Scan source code for translation key usage (file paths + line numbers)'
 ---

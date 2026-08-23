@@ -1,5 +1,6 @@
 ---
 title: 'check'
+description: ''
 seo:
   description: 'Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); findings trip an always-on gate and exit 2, distinct from exit 1 for a run that failed'
 ---

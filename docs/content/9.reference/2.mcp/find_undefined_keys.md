@@ -1,5 +1,6 @@
 ---
 title: 'find_undefined_keys'
+description: ''
 seo:
   description: 'The inverse of find_orphan_keys: find keys referenced in source code but defined in NO locale file of the using app''s consumed layers — the direction that ships raw keys to production. Scope-aware: each scan unit (app) is checked against the layers it consumes (summary.searchedLayersByApp); a key defined only in a layer the using app does not consume is still undefined for that app. Known limitation: extraction is line-based and static — dynamically built keys (template literals, concatenation) cannot be verified and are reported as uncertainKeys, never as hard findings.'
 ---

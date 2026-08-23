@@ -1,4 +1,5 @@
 ---
+description: ''
 seo:
   title: The i18n toolkit for AI agents and large monorepos
   description: Find missing keys, remove dead ones, and rename across every locale

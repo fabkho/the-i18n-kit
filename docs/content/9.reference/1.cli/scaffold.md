@@ -1,5 +1,6 @@
 ---
 title: 'scaffold'
+description: ''
 seo:
   description: 'Create empty locale files for new languages'
 ---

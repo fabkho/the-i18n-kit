@@ -1,5 +1,6 @@
 ---
 title: 'discover'
+description: ''
 seo:
   description: 'Discover the complete i18n setup. Returns project config (locales, default locale, layers, fallback chain, glossary, translation style) plus per-layer directory listings with file counts and top-level key namespaces, and the active translation mode ("provider" when the server has an env-configured LLM provider, "agent" otherwise). Call this first to understand the project before reading or writing translations. layerGraph answers where a new key belongs: a key used by more than one app belongs in a layer those apps share, and layerGraph.shared names those layers.'
 ---

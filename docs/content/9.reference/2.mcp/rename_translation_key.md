@@ -1,5 +1,6 @@
 ---
 title: 'rename_translation_key'
+description: ''
 seo:
   description: 'Rename/move a translation key across ALL locale files in a layer. Preserves the value in every locale. Use dryRun to preview changes before applying them.'
 ---
