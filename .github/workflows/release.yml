@@ -66,6 +66,7 @@ jobs:
           # nobody has to choose between a package that stops moving and one
           # they have not heard of.
           targets="cli:cli:the-i18n-cli mcp:mcp:the-i18n-mcp nuxt:nuxt:@the-i18n-kit/nuxt"
+          targets="$targets eslint_plugin_vue:eslint-plugin-vue:@the-i18n-kit/eslint-plugin-vue"
           targets="$targets cli_scoped:cli:@the-i18n-kit/cli mcp_scoped:mcp:@the-i18n-kit/mcp"
 
           for target in $targets; do
@@ -128,5 +129,9 @@ jobs:
       - name: Publish @the-i18n-kit/nuxt
         if: ${{ steps.targets.outputs.nuxt == 'true' }}
         run: pnpm --filter @the-i18n-kit/nuxt publish --no-git-checks --access public
+
+      - name: Publish @the-i18n-kit/eslint-plugin-vue
+        if: ${{ steps.targets.outputs.eslint_plugin_vue == 'true' }}
+        run: pnpm --filter @the-i18n-kit/eslint-plugin-vue publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
