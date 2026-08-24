@@ -101,22 +101,37 @@ function isI18nMember(name: string, object: Node, context: Rule.RuleContext): bo
  */
 function resolvesToI18n(id: Node & { name: string }, context: Rule.RuleContext, kind: 'name' | 'instance'): boolean {
   const bindings = fileBindings(context)
-  const fallback = kind === 'name' ? bindings.names : bindings.instances
+  const resolved = resolveVariableDef(id, context)
+  if (resolved === 'unresolvable') {
+    const fallback = kind === 'name' ? bindings.names : bindings.instances
+    return fallback.has(id.name)
+  }
+  if (!resolved) return false
+  if (resolved.type === 'ImportBinding') {
+    return I18N_MODULES.has(String((resolved.parent as { source?: { value?: unknown } }).source?.value))
+  }
+  return resolved.node.type === 'VariableDeclarator' && isUseI18nCall(resolved.node.init as Node | null)
+}
 
+/**
+ * The scope-chain definition of an identifier: a definition, undefined for a
+ * declared-but-defless variable, or 'unresolvable' when no scope in the chain
+ * knows the name — template bodies, where callers fall back to file-level
+ * knowledge. Shared by both rules; one walk, one meaning.
+ */
+export type VariableDef = { type: string, node: Node & { type: string, init?: Node | null }, parent: unknown }
+
+export function resolveVariableDef(
+  id: Node & { name: string },
+  context: Rule.RuleContext,
+): VariableDef | undefined | 'unresolvable' {
   let scope: ReturnType<typeof context.sourceCode.getScope> | null = context.sourceCode.getScope(id)
   while (scope) {
     const variable = scope.variables.find(v => v.name === id.name)
-    if (variable) {
-      const def = variable.defs[0]
-      if (!def) return false
-      if (def.type === 'ImportBinding') {
-        return I18N_MODULES.has(String((def.parent as { source?: { value?: unknown } }).source?.value))
-      }
-      return def.node.type === 'VariableDeclarator' && isUseI18nCall(def.node.init as Node | null)
-    }
+    if (variable) return variable.defs[0] as VariableDef | undefined
     scope = scope.upper
   }
-  return fallback.has(id.name)
+  return 'unresolvable'
 }
 
 export function firstArgument(node: CallExpression): Node | undefined {
