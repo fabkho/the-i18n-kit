@@ -178,6 +178,9 @@ importers:
         specifier: ^2.4.2
         version: 2.7.0
     devDependencies:
+      '@intlify/eslint-plugin-vue-i18n':
+        specifier: ^4.5.1
+        version: 4.5.1(eslint@10.1.0(jiti@2.7.0))(jsonc-eslint-parser@2.4.2)(vue-eslint-parser@10.4.1(eslint@10.1.0(jiti@2.7.0)))(yaml-eslint-parser@1.3.2)
       '@nuxt/module-builder':
         specifier: ^1.0.3
         version: 1.0.3(@nuxt/cli@3.37.0(@nuxt/schema@4.4.2)(@parcel/watcher@2.5.6)(cac@6.7.14)(magicast@0.5.2))(@volar/typescript@2.4.28)(@vue/compiler-core@3.5.41)(@vue/language-core@3.3.10)(esbuild@0.28.2)(rolldown@1.2.4)(typescript@5.9.3)(vue@3.5.41(typescript@5.9.3))
@@ -10051,7 +10054,7 @@ snapshots:
   '@apidevtools/json-schema-ref-parser@14.2.1(@types/json-schema@7.0.15)':
     dependencies:
       '@types/json-schema': 7.0.15
-      js-yaml: 4.1.1
+      js-yaml: 4.3.1
 
   '@babel/code-frame@7.29.0':
     dependencies:
@@ -10523,7 +10526,7 @@ snapshots:
     dependencies:
       '@simple-libs/child-process-utils': 1.0.2
       '@simple-libs/stream-utils': 1.2.0
-      semver: 7.7.4
+      semver: 7.8.5
     optionalDependencies:
       conventional-commits-parser: 6.3.0
 
@@ -11167,7 +11170,7 @@ snapshots:
 
   '@intlify/bundle-utils@11.0.7(vue-i18n@11.3.0(vue@3.5.41(typescript@5.9.3)))':
     dependencies:
-      '@intlify/message-compiler': 11.3.0
+      '@intlify/message-compiler': 11.4.8
       '@intlify/shared': 11.3.0
       acorn: 8.16.0
       esbuild: 0.25.12
@@ -11224,6 +11227,30 @@ snapshots:
     dependencies:
       '@intlify/core-base': 11.4.8
       '@intlify/shared': 11.4.8
+
+  '@intlify/eslint-plugin-vue-i18n@4.5.1(eslint@10.1.0(jiti@2.7.0))(jsonc-eslint-parser@2.4.2)(vue-eslint-parser@10.4.1(eslint@10.1.0(jiti@2.7.0)))(yaml-eslint-parser@1.3.2)':
+    dependencies:
+      '@eslint/eslintrc': 3.3.6
+      '@intlify/core-base': 11.4.8
+      '@intlify/message-compiler': 11.4.8
+      debug: 4.4.3
+      eslint: 10.1.0(jiti@2.7.0)
+      eslint-compat-utils: 0.6.5(eslint@10.1.0(jiti@2.7.0))
+      glob: 10.5.0
+      globals: 17.11.0
+      ignore: 7.0.6
+      import-fresh: 4.0.0
+      is-language-code: 3.1.0
+      js-yaml: 4.3.1
+      json5: 2.2.3
+      jsonc-eslint-parser: 2.4.2
+      parse5: 7.3.0
+      semver: 7.8.5
+      synckit: 0.11.13
+      vue-eslint-parser: 10.4.1(eslint@10.1.0(jiti@2.7.0))
+      yaml-eslint-parser: 1.3.2
+    transitivePeerDependencies:
+      - supports-color
 
   '@intlify/eslint-plugin-vue-i18n@4.5.1(eslint@9.39.5(jiti@2.7.0))(jsonc-eslint-parser@2.4.2)(vue-eslint-parser@10.4.1(eslint@9.39.5(jiti@2.7.0)))(yaml-eslint-parser@1.3.2)':
     dependencies:
@@ -15805,7 +15832,7 @@ snapshots:
     dependencies:
       entities: 8.0.0
       htmlparser2: 12.0.0
-      js-yaml: 4.1.1
+      js-yaml: 4.3.1
       markdown-exit: 1.0.0-beta.9
     optionalDependencies:
       shiki: 4.4.3
@@ -16557,6 +16584,11 @@ snapshots:
       esutils: 2.0.3
     optionalDependencies:
       source-map: 0.6.1
+
+  eslint-compat-utils@0.6.5(eslint@10.1.0(jiti@2.7.0)):
+    dependencies:
+      eslint: 10.1.0(jiti@2.7.0)
+      semver: 7.8.5
 
   eslint-compat-utils@0.6.5(eslint@9.39.5(jiti@2.7.0)):
     dependencies:
@@ -18557,7 +18589,7 @@ snapshots:
       rollup: 4.62.4
       rollup-plugin-visualizer: 7.0.1(rolldown@1.2.4)(rollup@4.62.4)
       scule: 1.3.0
-      semver: 7.7.4
+      semver: 7.8.5
       serve-placeholder: 2.0.2
       serve-static: 2.2.1
       source-map: 0.7.6
@@ -22032,6 +22064,18 @@ snapshots:
       vue: 3.5.41(typescript@5.9.3)
 
   vue-devtools-stub@0.1.0: {}
+
+  vue-eslint-parser@10.4.1(eslint@10.1.0(jiti@2.7.0)):
+    dependencies:
+      debug: 4.4.3
+      eslint: 10.1.0(jiti@2.7.0)
+      eslint-scope: 9.1.2
+      eslint-visitor-keys: 5.0.1
+      espree: 11.2.0
+      esquery: 1.7.0
+      semver: 7.8.5
+    transitivePeerDependencies:
+      - supports-color
 
   vue-eslint-parser@10.4.1(eslint@9.39.5(jiti@2.7.0)):
     dependencies:
