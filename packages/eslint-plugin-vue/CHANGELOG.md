@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-eslint-plugin-vue-0.1.1...the-i18n-kit-eslint-plugin-vue-0.1.2) (2026-08-24)
+
+
+### Bug Fixes
+
+* **eslint-plugin-vue:** accept const-resolved template prefixes ([#430](https://github.com/fabkho/the-i18n-kit/issues/430)) ([c53868e](https://github.com/fabkho/the-i18n-kit/commit/c53868ed7709dbe3aa5a226af8572d522037955d))
+
 ## [0.1.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-eslint-plugin-vue-0.1.0...the-i18n-kit-eslint-plugin-vue-0.1.1) (2026-08-24)
 
 
