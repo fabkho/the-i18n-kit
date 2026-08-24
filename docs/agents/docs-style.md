@@ -57,7 +57,7 @@ learnable.
 | **layer** | A scoped locale directory | **Define framework-neutrally on first use in any page that leans on it**: a Nuxt layer, a workspace package, a shared UI library, or an app in a monorepo. Readers on React or Laravel abandon the page if it reads as Nuxt-only. |
 | **consumer graph** | Which apps consume which layers | The thing that makes usage evidence app-scoped. |
 | **adapter** | Per-framework detection and resolution | Not "plugin", not "driver". |
-| **surface** | CLI, MCP server, Nuxt module, CI integrations | Four surfaces, one engine. |
+| **surface** | CLI, MCP server, Nuxt module, ESLint plugin, CI integrations | Five surfaces, one engine. |
 | **orphan key** | Defined, with no usage evidence in any consuming app | Only orphans are ever removed. |
 | **uncertain key** | Ambiguous evidence | Never removed. Say so every time it appears. |
 | **misplaced usage** | Used only from a non-consuming app | Reported, never removed. |
