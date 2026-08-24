@@ -36,6 +36,18 @@
       "include-component-in-tag": true,
       "include-v-in-tag": false,
       "component": "the-i18n-kit-nuxt"
+    },
+    "packages/eslint-plugin-vue": {
+      "release-type": "node",
+      "package-name": "@the-i18n-kit/eslint-plugin-vue",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "draft": false,
+      "prerelease": false,
+      "include-component-in-tag": true,
+      "include-v-in-tag": false,
+      "component": "the-i18n-kit-eslint-plugin-vue"
     }
   }
 }
