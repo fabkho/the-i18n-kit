@@ -146,7 +146,13 @@ function constInitializer(id: Node & { name: string }, context: Rule.RuleContext
     const variable = current.variables.find(v => v.name === id.name)
     if (variable) {
       const def = variable.defs[0]
-      if (def?.node.type === 'VariableDeclarator' && def.node.init) {
+      // Only an immutable binding is scanner-safe: a reassigned `let` can
+      // hold anything by the time the call runs.
+      if (
+        def?.node.type === 'VariableDeclarator'
+        && def.node.init
+        && (def.parent as { kind?: string } | undefined)?.kind === 'const'
+      ) {
         return def.node.init as Expression
       }
       return undefined

@@ -47,7 +47,7 @@
       "prerelease": false,
       "include-component-in-tag": true,
       "include-v-in-tag": false,
-      "component": "eslint-plugin-vue"
+      "component": "the-i18n-kit-eslint-plugin-vue"
     }
   }
 }

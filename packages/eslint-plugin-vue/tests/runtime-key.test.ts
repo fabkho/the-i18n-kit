@@ -57,6 +57,8 @@ tester.run('runtime-key-needs-declared-namespace', rule, {
     { code: `client.t(item.labelKey)`, filename: inProject },
     // An existence check commits to nothing; only t() owes a declaration.
     { code: bound(`te(breadcrumb)`), filename: inProject },
+    // A shadowed t is not an i18n call — nothing to declare.
+    { code: bound(`function fmt(t) { return t(item.labelKey) }`), filename: inProject },
     { code: `$te(route.meta.breadcrumb)`, filename: inProject },
   ],
   invalid: [
@@ -70,6 +72,9 @@ tester.run('runtime-key-needs-declared-namespace', rule, {
       filename: inProject,
       errors: [{ messageId: 'notDeclared' }],
     },
+    // A reassignable binding can hold anything by call time — not scanner-safe.
+    { code: bound(`let key = 'a.b'\nkey = compute()\nt(key)`), filename: inProject, errors: [{ messageId: 'undeclared' }] },
+    { code: bound(`let LABELS = { a: 'x.a' }\nLABELS = remote()\nt(LABELS[state])`), filename: inProject, errors: [{ messageId: 'undeclared' }] },
     // A conditional with one runtime branch is runtime.
     { code: bound(`t(ok ? 'a.b' : item.key)`), filename: inProject, errors: [{ messageId: 'undeclared' }] },
     // Annotated, but no kit config exists to hold the declaration.

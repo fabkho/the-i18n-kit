@@ -26,6 +26,8 @@ tester.run('literal-key-prefix', rule, {
     bound(`t(item.labelKey)`),
     // A bare t with no vue-i18n in the file is not an i18n call.
     't(`${section}.title`)',
+    // A shadowed t is whatever shadows it, however many useI18n calls exist.
+    bound('function fmt(t) { return t(`${section}.title`) }'),
     // $t is unambiguous anywhere.
     '$t(`pages.${page}.title`)',
   ],
@@ -36,6 +38,11 @@ tester.run('literal-key-prefix', rule, {
     { code: bound('t(`x${rest}`)'), errors: [{ messageId: 'templatePrefix' }] },
     { code: bound(`t(prefix + '.title')`), errors: [{ messageId: 'concatPrefix' }] },
     { code: `this.$t(\`\${section}.title\`)`, errors: [{ messageId: 'templatePrefix' }] },
+    // composer.t resolves through the useI18n() instance.
+    {
+      code: `import { useI18n } from 'vue-i18n'\nconst composer = useI18n()\ncomposer.t(\`\${section}.title\`)`,
+      errors: [{ messageId: 'templatePrefix' }],
+    },
   ],
 })
 

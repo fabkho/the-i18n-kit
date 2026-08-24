@@ -1,4 +1,4 @@
-import { relative, isAbsolute } from 'node:path'
+import { relative, isAbsolute, sep } from 'node:path'
 import type { Linter } from 'eslint'
 
 /**
@@ -40,7 +40,8 @@ export async function layerAware(options: LayerAwareOptions = {}): Promise<Linte
 
   const refFile = options.referenceLocaleFile ?? `${config.defaultLocale ?? 'en'}*.json`
   const dirs = config.localeDirs ?? []
-  const rel = (p: string) => (isAbsolute(p) ? relative(projectDir, p) : p)
+  // Globs are always /-separated; on Windows, relative() is not.
+  const rel = (p: string) => (isAbsolute(p) ? relative(projectDir, p) : p).split(sep).join('/')
 
   const rootCatalogs = dirs.filter(d => d.layer === 'root').map(d => `${rel(d.path)}/${refFile}`)
   const appDirs = dirs.filter(d => d.layer !== 'root' && d.layerRootDir && rel(d.layerRootDir) !== '')
