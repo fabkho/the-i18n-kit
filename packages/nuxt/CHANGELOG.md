@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-nuxt-0.1.4...the-i18n-kit-nuxt-0.1.5) (2026-08-24)
+
+
+### Features
+
+* **eslint-plugin-vue:** authoring rules, layer-aware preset, and Nuxt zero-config lint ([#423](https://github.com/fabkho/the-i18n-kit/issues/423)) ([172c9bf](https://github.com/fabkho/the-i18n-kit/commit/172c9bffdae237c0a404a91be33012a1f5cc6d8b))
+
+
+### Bug Fixes
+
+* sync the lockfile, and reference the eslint plugin peer via workspace protocol ([#428](https://github.com/fabkho/the-i18n-kit/issues/428)) ([55dcbba](https://github.com/fabkho/the-i18n-kit/commit/55dcbba5ab1dce58c2bc7359654acb1b647462f3))
+
 ## [0.1.4](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-nuxt-0.1.3...the-i18n-kit-nuxt-0.1.4) (2026-08-17)
 
 
