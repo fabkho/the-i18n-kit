@@ -4,6 +4,7 @@ import type { NuxtModule } from '@nuxt/schema'
 
 import { version } from '../package.json'
 import { buildArtifact } from './artifact'
+import { i18nKitEslintAddon } from './eslint-addon'
 import { protectedLocalesFrom, readConfigSources } from './project-config'
 import type { LoggerLike } from './project-config'
 import { checkOwnedKeys, checkProtectedLocales } from './validate'
@@ -52,6 +53,14 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({
     if (!options.enabled) return
 
     const logger = useLogger('i18n-kit')
+
+    // When @nuxt/eslint is generating a config, contribute the layer-aware
+    // i18n lint (#424). Hooking a hook nobody fires is a no-op, so this costs
+    // nothing without @nuxt/eslint; the addon itself decides inject/defer/skip.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the hook is @nuxt/eslint's, not in Nuxt's own hook table
+    ;(nuxt.hook as any)('eslint:config:addons', (addons: unknown[]) => {
+      addons.push(i18nKitEslintAddon(nuxt.options.rootDir, message => logger.info(message)))
+    })
 
     // modules:done, not setup: @nuxtjs/i18n normalises nuxt.options.i18n during
     // its own setup, and module order is not ours to assume. Reading it here
