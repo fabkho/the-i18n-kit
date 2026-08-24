@@ -24,6 +24,11 @@ tester.run('literal-key-prefix', rule, {
     bound('t(`common.save`)'),
     // Runtime data is the other rule's turf.
     bound(`t(item.labelKey)`),
+    // A same-file const prefix resolves to exact keys — the #284 fix, which
+    // the scanner protects and the rule therefore accepts.
+    bound("const i18nBase = 'pages.settings.widget'\nt(`${i18nBase}.title`)"),
+    // A slotless backtick is a literal in every sense, concat included.
+    bound('t(`components.actions.` + action)'),
     // A bare t with no vue-i18n in the file is not an i18n call.
     't(`${section}.title`)',
     // A shadowed t is whatever shadows it, however many useI18n calls exist.
@@ -34,6 +39,12 @@ tester.run('literal-key-prefix', rule, {
   invalid: [
     { code: bound('t(`${section}.title`)'), errors: [{ messageId: 'templatePrefix' }] },
     { code: bound('t(`${base}.${type}.label`)'), errors: [{ messageId: 'templatePrefix' }] },
+    // A cross-file prefix resolves to nothing the scanner can bound.
+    { code: bound('t(`${config.translationPrefix}.totalRevenue`)'), errors: [{ messageId: 'templatePrefix' }] },
+    // A dotless const bounds nothing either.
+    { code: bound("const word = 'title'\nt(`${word}.${x}`)"), errors: [{ messageId: 'templatePrefix' }] },
+    // A reassignable binding is not a prefix.
+    { code: bound("let base = 'a.b'\nt(`${base}.title`)"), errors: [{ messageId: 'templatePrefix' }] },
     // A prefix without a dot bounds nothing.
     { code: bound('t(`x${rest}`)'), errors: [{ messageId: 'templatePrefix' }] },
     { code: bound(`t(prefix + '.title')`), errors: [{ messageId: 'concatPrefix' }] },
