@@ -4,7 +4,8 @@ name: i18n Playground E2E
 # LOCAL build of @the-i18n-kit/cli (not the npm release).
 #
 # - pull_request: dry run only — no secrets needed, verifies install/invoke/JSON plumbing.
-# - workflow_dispatch: real translation + PR creation. Requires the provider's
+# - workflow_dispatch: real translation, then the follow-up commit step the docs
+#   show (peter-evans/create-pull-request). Requires the provider's
 #   API key as a repo secret (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY)
 #   and "Allow GitHub Actions to create and approve pull requests" enabled in
 #   Settings → Actions → General.
@@ -149,15 +150,24 @@ jobs:
           working_directory: ${{ github.workspace }}/playground/nuxt
           dry_run: ${{ steps.config.outputs.dry_run }}
           cli_version: skip
-          pr_branch: i18n-playground/run-${{ github.run_id }}
-          pr_title: 'test(playground): auto-translated keys (run ${{ github.run_id }})'
-          commit_message: 'test(playground): translate seeded keys via ${{ steps.config.outputs.provider }}'
+
+      # The pattern the docs prescribe: committing is a step of the workflow, and
+      # `!cancelled()` keeps a tripped gate from discarding what the run wrote.
+      - name: Open a pull request with the translations
+        id: pr
+        if: ${{ !cancelled() && steps.config.outputs.dry_run != 'true' }}
+        uses: peter-evans/create-pull-request@v7
+        with:
+          add-paths: playground/nuxt/i18n/locales
+          branch: i18n-playground/run-${{ github.run_id }}
+          title: 'test(playground): auto-translated keys (run ${{ github.run_id }})'
+          commit-message: 'test(playground): translate seeded keys via ${{ steps.config.outputs.provider }}'
 
       - name: Assert results
         env:
           TRANSLATED: ${{ steps.translate.outputs.translated_count }}
           FAILED: ${{ steps.translate.outputs.failed_count }}
-          PR_URL: ${{ steps.translate.outputs.pr_url }}
+          PR_URL: ${{ steps.pr.outputs.pull-request-url }}
           DRY_RUN: ${{ steps.config.outputs.dry_run }}
         run: |
           set -euo pipefail

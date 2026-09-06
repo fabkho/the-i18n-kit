@@ -143,14 +143,14 @@ export function fixtureActionSource(overrides: Partial<ActionSource> = {}): Acti
         default: '${{ github.workspace }}',
       },
       {
-        name: 'pr_branch',
-        description: 'Branch name for the PR (default: i18n/translate-missing-<timestamp>)',
+        name: 'source_locale',
+        description: 'Reference locale (default: the project default from <config>)',
         required: false,
       },
     ],
     outputs: [
-      { name: 'gate_tripped', description: 'Names of any CI gates that tripped.' },
-      { name: 'pr_url', description: 'URL of the created PR (only when create_pr is true)' },
+      { name: 'translated_count', description: 'Number of keys translated' },
+      { name: 'failed_count', description: 'Number of keys that failed to translate' },
     ],
     ...overrides,
   }

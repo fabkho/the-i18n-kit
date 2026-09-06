@@ -1,450 +1,150 @@
-# the-i18n-kit — GitLab CI template
+# the-i18n-kit — GitLab CI template. Three jobs to `extends:`:
 #
-# Provides three reusable jobs:
-#   .i18n-translate  – find missing keys and auto-translate via LLM
-#   .i18n-cleanup    – find orphan keys, report them as a Code Quality artifact
-#   .i18n-check      – find used-but-undefined keys (render as raw keys),
-#                      report them as a Code Quality artifact
+#   .i18n-translate  translate the missing keys, commit and push them
+#   .i18n-cleanup    report orphan keys as a Code Quality report
+#   .i18n-check      report keys that render as their raw key
 #
-# Usage in your .gitlab-ci.yml:
-#
-#   include:
-#     - remote: 'https://raw.githubusercontent.com/fabkho/the-i18n-kit/main/gitlab-ci.yml'
-#
-#   i18n-translate:
-#     extends: .i18n-translate
-#     variables:
-#       I18N_PROVIDER: google
-#       I18N_MODEL: gemini-2.5-flash
-#       I18N_API_KEY: $GEMINI_API_KEY
-#       # I18N_LAYER is optional. Leave it EMPTY (the default) to translate
-#       # every locale-backed layer in one run — the recommended setup for
-#       # layered projects (Nuxt layers, app-* dirs): one job, one
-#       # auto-commit, no per-layer push races. Set it to pin a single layer.
-#       I18N_LOCALE_PATHS: "i18n/locales/ app-*/i18n/locales/"
-#     rules:
-#       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-#         changes:
-#           - i18n/locales/en.json
-#           - app-*/i18n/locales/en.json
-#
-#   i18n-cleanup:
-#     extends: .i18n-cleanup
-#     rules:
-#       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-#         changes:
-#           - components/**/*.vue
-#           - i18n/locales/*.json
-#           - app-*/components/**/*
-#           - app-*/i18n/locales/*.json
-#       # Default-branch baseline — REQUIRED for the MR widget, see below.
-#       - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-#
-#   i18n-check:
-#     extends: .i18n-check
-#     rules:
-#       - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-#       - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-#
-# ── Shell ────────────────────────────────────────────────────────────────────
-# These scripts are POSIX sh: `set -eu`, no `pipefail`, no arrays, no
-# PIPESTATUS. The default image is alpine, whose busybox ash accepts
-# `set -o pipefail`, but plain POSIX shells (dash) reject it outright and abort
-# the job with exit 2 before running a line. Staying POSIX keeps the templates
-# working whichever shell an overriding image provides. Commands whose status
-# matters are run unpiped so `$?` is theirs alone.
-#
-# ── Exit codes and gates ─────────────────────────────────────────────────────
-# Every job decides pass/fail from the CLI's exit code, never by parsing counts
-# out of the JSON result. Reading result fields to decide an outcome is what
-# coupled earlier versions of this template to undocumented output shapes.
-#
-#   0  the run succeeded and no gate tripped
-#   1  the run itself failed — bad API key, unreadable project, nothing translated
-#   2  the run succeeded but a requested gate tripped (findings exist)
-#
-# .i18n-cleanup gates on orphans when you opt in, and distinguishes the two:
-#
-#   i18n-cleanup:
-#     extends: .i18n-cleanup
-#     variables:
-#       I18N_FAIL_ON_ORPHANS: "true"   # adds --fail-on-orphans → exit 2 on findings
-#     allow_failure: false             # make orphans block the merge
-#
-# By default the job allows exit 2 only (a yellow warning), so orphans are
-# informational while a genuinely broken scan still fails the job red. Setting
-# `allow_failure: false` turns findings into a hard gate.
-#
-# .i18n-check has no opt-in flag: its gate is always evaluated, because a key
-# that renders raw in production is a defect rather than a threshold. It is
-# still a gate — findings exit 2, a scan that fell over exits 1 — so the job
-# below allows 2 only.
-#
-# ── Code Quality widget (MR findings) ────────────────────────────────────────
-# .i18n-cleanup and .i18n-check emit `gl-codequality.json` declared as
-# artifacts:reports:codequality. GitLab's MR widget shows the DIFF between the
-# MR pipeline's report and the report of the latest default-branch pipeline.
-# WITHOUT A DEFAULT-BRANCH BASELINE THE WIDGET STAYS BLANK — by design:
-# there is nothing to diff against. So every job you adopt needs a rule that
-# also runs it on the default branch, WITHOUT a `changes:` filter (a filtered
-# rule would skip the baseline whenever the MR that just merged didn't touch
-# those paths, leaving the widget blank for the next MRs):
-#
-#   rules:
-#     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-#
-# Artifact expiry: the widget reads the newest default-branch report; when it
-# has expired (expire_in below is 7 days), the widget is blank again until the
-# next default-branch pipeline refreshes the baseline. Raise expire_in on the
-# extending job if your default branch is quieter than that.
-#
-# ── Pushing translations back to the branch ──────────────────────────────────
-# Requires ONE of:
-#   a) Project setting: Settings → CI/CD → Job token permissions →
-#      "Allow Git push requests to the repository" (GitLab ≥ 17.2).
-#      Then the default CI_JOB_TOKEN push just works.
-#   b) A project access token with `write_repository` scope (plus `api` to
-#      enable the widget-healing pipeline trigger, see next section) in the
-#      I18N_PUSH_TOKEN CI variable — the push alternative when (a) is not
-#      available.
-#
-# ── Report widgets on translated MRs (head/base pipeline requirements) ───────
-# GitLab renders the Code Quality MR widget only when BOTH sides satisfy its
-# comparer (GitLab Rails, MergeRequest#compare_codequality_reports — the guard
-# is `diff_head_pipeline.complete_and_has_self_or_descendant_reports?`):
-#   head: an MR pipeline at the CURRENT head sha whose jobs (or child
-#         pipelines) produced the codequality report.
-#   base: ANY ci-source pipeline — any status, api-triggered included — with
-#         the report at the MR's base sha.
-# Pushes made with CI tokens (job token or access token) NEVER trigger
-# pipelines — a GitLab rule. So the translate job's auto-commit advances the
-# MR head to a sha without a pipeline: the comparer errors (or, with external
-# commit-status integrations, latches onto a job-less `external` pipeline that
-# can never carry reports) and the widget disappears for that MR.
-# Heal: when I18N_PUSH_TOKEN has the `api` scope, the translate job POSTs
-# /projects/:id/merge_requests/:iid/pipelines after a successful push,
-# creating an MR pipeline at the new head that regenerates the reports.
-# Loop-safe: that pipeline's translate finds nothing missing and pushes
-# nothing. Without an api-scope token, use the MR's "Run pipeline" button.
+# Each takes its outcome from the CLI's exit code: 0 pass, 1 the run failed, 2 a
+# gate tripped. Variables, the `lint` stage, the default-branch rule the Code
+# Quality widget needs and the two ways to let the translate job push:
+# https://fabkho.github.io/the-i18n-kit/ci-cd/gitlab-ci
 
-# ─── Base image used by all jobs ─────────────────────────────────────────────
+# ─── Image and install, shared by every job. Scripts are POSIX sh: dash aborts
+# a job before running a line on a bash-ism. ─────────────────────────────────
 .i18n-base:
   image: node:22-alpine
+  stage: lint
+  variables:
+    I18N_CLI_VERSION: "latest"   # pin @the-i18n-kit/cli (npm version or dist-tag)
+    I18N_INSTALL_PEER_DEPS: ""   # extra npm packages to install globally alongside the CLI
+  # `|| exit 1`: allow_failure.exit_codes covers before_script too, so an
+  # installer that happened to exit 2 would pass the job yellow, unscanned.
+  before_script:
+    - if command -v apk >/dev/null; then apk add --no-cache git curl || exit 1; fi
+    - npm install -g --legacy-peer-deps "@the-i18n-kit/cli@${I18N_CLI_VERSION}" $I18N_INSTALL_PEER_DEPS || exit 1
 
-# ─── Translate missing keys ──────────────────────────────────────────────────
+# ─── Translate missing keys, then commit and push them ──────────────────────
 .i18n-translate:
   extends: .i18n-base
-  stage: lint
   allow_failure: true
   variables:
-    # Optional — translation
-    I18N_LAYER: ""            # layer to translate (empty = all locale-backed layers, aggregated)
-    I18N_LOCALES: ""          # comma-separated target locales (default: all except source)
+    I18N_LAYER: ""            # layer to translate (empty = every locale-backed layer, one commit)
+    I18N_LOCALES: ""          # comma-separated target locales (default: all except the reference)
     I18N_SOURCE_LOCALE: ""    # reference locale (default: from .i18n-mcp.json)
     I18N_KEYS: ""             # comma-separated keys (default: all missing)
     I18N_BATCH_SIZE: "50"     # keys per LLM call
-    I18N_DRY_RUN: "false"     # preview without writing files
-    I18N_FAIL_ON_FAILED: ""   # set "true" to add --fail-on-failed → exit 2 when any key
-                              # failed. Off by default: a partly failed run still
-                              # writes and commits what succeeded, and the keys that
-                              # failed stay missing for the next run to retry. Pair
-                              # with `allow_failure: false` to make it block.
-
-    # Optional — dependencies
-    I18N_CLI_VERSION: "latest"  # pin @the-i18n-kit/cli (npm version or dist-tag)
-    I18N_INSTALL_PEER_DEPS: ""  # extra npm packages to install globally alongside the CLI
-
-    # Optional — push behaviour
-    I18N_PUSH_TOKEN: ""       # project access token (write_repository, optionally + api) — push alternative
-                              # to the job token. The api scope additionally lets the job trigger the
-                              # widget-healing follow-up MR pipeline after pushing. See header comment.
-    I18N_LOCALE_PATHS: "i18n/locales/"  # space-separated globs for locale directories. With empty I18N_LAYER on a
-                                        # layered project this MUST cover every layer's dir (e.g. "i18n/locales/
-                                        # app-*/i18n/locales/") or their translations are written but never committed.
-    I18N_COMMIT_MESSAGE: ""   # custom commit message (overrides the default entirely)
-    I18N_AUTOCOMMIT_SKIP_CI: ""  # set "true" to append [skip ci] to the auto-commit. Off by default:
-                                 # [skip ci] leaves the MR head without a pipeline, which breaks the
-                                 # Code Quality widget (comparer error). A re-run is loop-safe — it
-                                 # finds nothing missing and pushes nothing.
-                                 # NOTE: CI-token pushes never trigger pipelines (GitLab rule), so
-                                 # the follow-up pipeline — and the widget on translated MRs —
-                                 # additionally requires an api-scoped I18N_PUSH_TOKEN, which the
-                                 # job uses to create the MR pipeline itself after pushing.
-
-  before_script:
-    - if command -v apk >/dev/null; then apk add --no-cache git jq; fi
-    - npm install -g "@the-i18n-kit/cli@${I18N_CLI_VERSION}" $I18N_INSTALL_PEER_DEPS
-
+    I18N_DRY_RUN: "false"     # "true" previews without writing or committing
+    I18N_FAIL_ON_FAILED: ""   # "true" exits 2 when any key failed to translate
+    I18N_LOCALE_PATHS: "i18n/locales/"  # space-separated globs to stage — must cover every layer's locale dir
+    I18N_COMMIT_MESSAGE: ""   # replaces the generated commit message
+    I18N_PUSH_TOKEN: ""       # access token to push with instead of the job token; with the api
+                              # scope it also refreshes the MR pipeline after the push
   script:
     - |
       set -eu
 
-      MISSING=""
-      [ -z "${I18N_PROVIDER:-}" ] && MISSING="$MISSING I18N_PROVIDER"
-      [ -z "${I18N_MODEL:-}" ]    && MISSING="$MISSING I18N_MODEL"
-      [ -z "${I18N_API_KEY:-}" ]  && MISSING="$MISSING I18N_API_KEY"
-      if [ -n "$MISSING" ]; then
-        echo "ERROR: missing required variables:$MISSING"
-        exit 1
-      fi
+      [ -n "${I18N_PROVIDER:-}" ] && [ -n "${I18N_MODEL:-}" ] && [ -n "${I18N_API_KEY:-}" ] \
+        || { echo "ERROR: I18N_PROVIDER, I18N_MODEL and I18N_API_KEY are required."; exit 1; }
 
-      # Route API key to provider-specific env var
-      case "$I18N_PROVIDER" in
-        openai)    export OPENAI_API_KEY="$I18N_API_KEY" ;;
-        anthropic) export ANTHROPIC_API_KEY="$I18N_API_KEY" ;;
-        google)    export GEMINI_API_KEY="$I18N_API_KEY" ;;
-        *)
-          echo "ERROR: Unknown provider: $I18N_PROVIDER"
-          echo "Must be one of: openai, anthropic, google"
-          exit 1
-          ;;
-      esac
+      # The CLI reads the env var of the provider it was asked for, so all three
+      # carry the same value and only one of them is ever used.
+      export OPENAI_API_KEY="$I18N_API_KEY" ANTHROPIC_API_KEY="$I18N_API_KEY" GEMINI_API_KEY="$I18N_API_KEY"
 
       args="--provider $I18N_PROVIDER --model $I18N_MODEL --batch-size $I18N_BATCH_SIZE"
-
       [ -n "$I18N_LAYER" ]         && args="$args --layer $I18N_LAYER"
       [ -n "$I18N_LOCALES" ]       && args="$args --targets $I18N_LOCALES"
       [ -n "$I18N_SOURCE_LOCALE" ] && args="$args --ref $I18N_SOURCE_LOCALE"
       [ -n "$I18N_KEYS" ]          && args="$args --keys $I18N_KEYS"
       [ "$I18N_DRY_RUN" = "true" ] && args="$args --dry-run"
-      [ "${I18N_FAIL_ON_FAILED:-}" = "true" ] && args="$args --fail-on-failed"
+      [ "$I18N_FAIL_ON_FAILED" = "true" ] && args="$args --fail-on-failed"
 
+      # The CLI owns the pass/fail decision and reports it as an exit code: 0
+      # success, 1 the run itself failed, 2 a requested gate tripped. Redirect
+      # rather than pipe — PIPESTATUS is bash-only.
       mkdir -p .i18n-reports
-      # The CLI owns the pass/fail decision and reports it as an exit code:
-      # 0 success, 1 the run itself failed, 2 a requested gate tripped. Deciding
-      # that from parsed counts is what coupled this template to output field
-      # names and broke it — the counts below are for the log only.
-      # Redirect rather than pipe: PIPESTATUS is bash-only and these jobs run
-      # on busybox sh in the default alpine image.
       set +e
-      the-i18n-cli translate $args > .i18n-reports/translate-output.json
+      the-i18n-cli translate $args > .i18n-reports/translate.json
       STATUS=$?
       set -e
-      cat .i18n-reports/translate-output.json
+      cat .i18n-reports/translate.json
 
-      # Tolerant parse: older CLI versions (< 1.5.4) mixed logs into stdout.
-      # Dry runs report their counts as totalWouldTranslate.
-      TRANSLATED=$(jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)' .i18n-reports/translate-output.json 2>/dev/null || echo "?")
-      FAILED=$(jq -r '.summary.totalFailed // 0' .i18n-reports/translate-output.json 2>/dev/null || echo "?")
-      echo "Translated: $TRANSLATED, failed: $FAILED"
-      # No branch on $FAILED here on purpose: the CLI reports a partial failure
-      # as summary.message in the payload printed above, naming the affected
-      # locales. Branching on a parsed count is what this template stopped doing.
+      if [ "$STATUS" != "0" ] && [ "$STATUS" != "2" ]; then echo "ERROR: translate failed (exit ${STATUS}) — check I18N_PROVIDER, I18N_MODEL and I18N_API_KEY."; exit "$STATUS"; fi
 
-      # A tripped gate is recorded, not acted on yet. Exiting here would throw
-      # away the translations the run did produce: the commit is further down,
-      # so a partial success would be reported red AND lost, and the next run
-      # would redo all of it. The gate still fails the job — after the work is
-      # safe. A failed run (exit 1) translated nothing, so there is nothing to
-      # keep and it exits immediately.
-      GATE_TRIPPED=0
-      GATE_NAMES=""
-      case "$STATUS" in
-        0) ;;
-        2)
-          GATE_TRIPPED=1
-          GATE_NAMES=$(jq -rc '[.gatesTripped[]?.name] | join(", ")' .i18n-reports/translate-output.json 2>/dev/null || echo "unknown")
-          # The exit code decides; the names only shape the message, and an
-          # absent or empty gatesTripped joins to "".
-          GATE_NAMES=${GATE_NAMES:-unnamed gate}
-          ;;
-        *)
-          echo "ERROR: translate failed (exit ${STATUS}) — check provider, model, and API key."
-          exit "$STATUS"
-          ;;
-      esac
+      # A tripped gate is carried past the commit: exiting here would report the
+      # translations the run did produce as red AND throw them away.
+      if [ "$I18N_DRY_RUN" = "true" ]; then echo "Dry run complete. No files written."; exit "$STATUS"; fi
+      if git diff --quiet -- $I18N_LOCALE_PATHS && git diff --cached --quiet -- $I18N_LOCALE_PATHS; then echo "No translation changes to commit."; exit "$STATUS"; fi
 
-      # Every exit below goes through this, so no path can drop the gate.
-      finish() {
-        if [ "$GATE_TRIPPED" = "1" ]; then
-          echo "GATE: ${GATE_NAMES} tripped. The run itself succeeded and anything it translated has been committed — this is a findings gate, not a failure."
-          exit 2
-        fi
-        exit 0
-      }
-
-      if [ "$I18N_DRY_RUN" = "true" ]; then
-        echo "Dry run complete. No files written."
-        finish
-      fi
-
-      # Check if there are locale file changes (configurable path pattern)
-      if git diff --quiet -- $I18N_LOCALE_PATHS && git diff --cached --quiet -- $I18N_LOCALE_PATHS; then
-        echo "No translation changes to commit."
-        finish
-      fi
-
-      CHANGED_FILES=$(git status --porcelain -- $I18N_LOCALE_PATHS | wc -l | tr -d ' ')
-
-      # Configure git and push to the triggering branch.
-      # Runs in `script` (not after_script) so a failed push fails the job.
       git config user.name "${GITLAB_USER_NAME:-i18n CI}"
       git config user.email "${GITLAB_USER_EMAIL:-ci@the-i18n-kit.dev}"
-
-      if [ -n "${I18N_COMMIT_MESSAGE:-}" ]; then
-        COMMIT_MSG="$I18N_COMMIT_MESSAGE"
-      else
-        COMMIT_MSG="i18n: auto-translate missing keys (${I18N_LAYER:-all layers}) via $I18N_PROVIDER"
-        if [ "${I18N_AUTOCOMMIT_SKIP_CI:-}" = "true" ]; then
-          COMMIT_MSG="$COMMIT_MSG [skip ci]"
-        fi
-      fi
-
-      if [ -n "${I18N_PUSH_TOKEN:-}" ]; then
-        PUSH_URL="https://oauth2:${I18N_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-      else
-        PUSH_URL="https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-      fi
-
       git add $I18N_LOCALE_PATHS
-      git commit -m "$COMMIT_MSG"
-      if ! git push "$PUSH_URL" "HEAD:${CI_COMMIT_REF_NAME}"; then
-        echo "ERROR: git push failed."
-        if [ -z "${I18N_PUSH_TOKEN:-}" ]; then
-          echo "The default CI_JOB_TOKEN can only push when the project allows it:"
-          echo "  Settings → CI/CD → Job token permissions → 'Allow Git push requests to the repository'"
-          echo "Alternatively set I18N_PUSH_TOKEN to a project access token with write_repository scope."
-        fi
-        exit 1
+      git commit -m "${I18N_COMMIT_MESSAGE:-i18n: auto-translate missing keys (${I18N_LAYER:-all layers}) via $I18N_PROVIDER}"
+
+      PUSH_URL="https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      [ -z "$I18N_PUSH_TOKEN" ] || PUSH_URL="https://oauth2:${I18N_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git push "$PUSH_URL" "HEAD:${CI_COMMIT_REF_NAME}" || {
+        echo "ERROR: git push failed. Allow it under Settings → CI/CD → Job token permissions, or set I18N_PUSH_TOKEN to a token with the write_repository scope."; exit 1
+      }
+      echo "Pushed to ${CI_COMMIT_REF_NAME}"
+
+      # A CI-token push never starts a pipeline, so the new MR head has none and
+      # the report widgets have nothing to read. An api-scoped token creates one.
+      if [ -n "${CI_MERGE_REQUEST_IID:-}" ] && [ -n "$I18N_PUSH_TOKEN" ]; then
+        curl --fail-with-body -sS -X POST -H "PRIVATE-TOKEN: $I18N_PUSH_TOKEN" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/pipelines" \
+          || echo "WARN: could not trigger a follow-up MR pipeline — does I18N_PUSH_TOKEN have the api scope?"
       fi
 
-      echo "Pushed ${CHANGED_FILES} locale file(s) to ${CI_COMMIT_REF_NAME}"
-
-      # The push moved the MR head to a sha that has no pipeline (CI-token
-      # pushes never trigger one — GitLab rule). Create a follow-up MR
-      # pipeline so the report widgets pick up the new head; see the
-      # "Report widgets on translated MRs" section in the header.
-      if [ -n "${CI_MERGE_REQUEST_IID:-}" ]; then
-        if [ -n "${I18N_PUSH_TOKEN:-}" ]; then
-          echo "Triggering a follow-up MR pipeline at the new head..."
-          curl --fail-with-body -s -X POST -H "PRIVATE-TOKEN: $I18N_PUSH_TOKEN" \
-            "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/pipelines" \
-            || echo "WARN: could not trigger a follow-up MR pipeline (does I18N_PUSH_TOKEN have the api scope?). Report widgets will not reflect this MR until a pipeline runs on the new head (MR page -> Run pipeline)."
-        else
-          echo "NOTICE: the new head sha has no pipeline, so GitLab's report comparers error out and this MR shows no Code Quality widget."
-          echo "Fix: give I18N_PUSH_TOKEN the api scope (the job then auto-triggers a follow-up MR pipeline), or press 'Run pipeline' on the MR."
-        fi
-      fi
-
-      finish
-
+      exit "$STATUS"
   artifacts:
     paths:
-      - .i18n-reports/translate-output.json
+      - .i18n-reports/translate.json
     expire_in: 7 days
     when: always
 
-# ─── Find orphan keys ───────────────────────────────────────────────────────
-.i18n-cleanup:
+# ─── Report findings, one command per extending job ─────────────────────────
+.i18n-scan:
   extends: .i18n-base
-  stage: lint
-  # Exit 2 (orphans found, only when I18N_FAIL_ON_ORPHANS=true) is a warning;
-  # any other non-zero is a real failure and fails the job red. Set
-  # `allow_failure: false` on the extending job to make orphans block the merge.
+  # Findings (exit 2) stay a yellow warning that still reaches the merge request
+  # widget, a scan that fell over fails red. `allow_failure: false` on the
+  # extending job makes findings block the merge instead.
   allow_failure:
     exit_codes:
       - 2
   variables:
-    # Optional
-    I18N_LAYER: ""            # layer to scan (empty = all layers), e.g. root, common
-    I18N_FAIL_ON_ORPHANS: "false"  # "true" → exit 2 when orphans are found
-    I18N_CLI_VERSION: "latest"
-    I18N_INSTALL_PEER_DEPS: ""
-
-  # `|| exit 1` on the setup lines: allow_failure.exit_codes covers the whole
-  # job, before_script included, so an installer that happened to exit 2 would
-  # be read as findings and pass the job yellow having never run the scan.
-  before_script:
-    - if command -v apk >/dev/null; then apk add --no-cache jq || exit 1; fi
-    - npm install -g --legacy-peer-deps "@the-i18n-kit/cli@${I18N_CLI_VERSION}" $I18N_INSTALL_PEER_DEPS || exit 1
-
+    I18N_COMMAND: ""               # set by the two jobs below
+    I18N_LAYER: ""                 # layer to scan (empty = all layers), e.g. root, common
+    I18N_FAIL_ON_ORPHANS: "false"  # "true" → exit 2 when orphans are found (.i18n-cleanup only)
   script:
     - |
       set -eu
 
-      mkdir -p .i18n-reports
-
       # `orphans` only reports; deleting takes an explicit --remove.
-      # --codequality-output feeds the MR Code Quality widget (needs the
-      # default-branch baseline rule, see header comment).
-      args="--codequality-output gl-codequality.json"
+      # --codequality-output feeds the merge request widget, --output-file keeps
+      # the full report as an artifact and leaves a summary in the log.
+      args="--codequality-output gl-codequality.json --output-file .i18n-reports/${I18N_COMMAND}.json"
       [ -n "$I18N_LAYER" ] && args="$args --layer $I18N_LAYER"
       [ "$I18N_FAIL_ON_ORPHANS" = "true" ] && args="$args --fail-on-orphans"
 
-      # Exit code, not a parsed count, decides the job outcome: 2 means orphans
-      # were found and the gate was requested, anything else non-zero means the
-      # scan itself failed. The count below is for the summary banner only.
-      set +e
-      the-i18n-cli orphans $args > .i18n-reports/orphans.json
-      STATUS=$?
-      set -e
-
-      if [ "$STATUS" != "0" ] && [ "$STATUS" != "2" ]; then
-        echo "ERROR: orphan scan failed (exit ${STATUS})."
-        cat .i18n-reports/orphans.json
-        exit "$STATUS"
-      fi
-
-      ORPHAN_COUNT=$(jq '.summary.orphanCount // 0' .i18n-reports/orphans.json 2>/dev/null || echo "?")
-
-      echo ""
-      echo "============================================"
-      echo "  i18n Cleanup Report — layer: ${I18N_LAYER:-all}"
-      echo "  Orphan keys found: ${ORPHAN_COUNT}"
-      echo "============================================"
-      echo "Findings appear in the MR Code Quality widget."
-      echo "Full report: ${CI_JOB_URL}/artifacts/browse/.i18n-reports/"
-
-      # Propagate the gate: 2 surfaces as a warning via allow_failure.exit_codes
-      # above, or as a hard failure if the extending job sets allow_failure:false.
-      exit "$STATUS"
-
+      the-i18n-cli "$I18N_COMMAND" $args
   artifacts:
     paths:
-      - .i18n-reports/orphans.json
+      - .i18n-reports/
       - gl-codequality.json
     reports:
       codequality: gl-codequality.json
     expire_in: 7 days
     when: always
 
-# ─── Check for used-but-undefined keys ──────────────────────────────────────
-.i18n-check:
-  extends: .i18n-base
-  stage: lint
-  # `check` gates unconditionally — a key that renders raw in production is a
-  # defect, not a threshold, so the gate has no opt-in flag. It is still a
-  # gate: findings exit 2, a scan that fell over exits 1. Allowing only 2 keeps
-  # findings informational (they still reach the MR widget) while a broken scan
-  # fails the job red rather than passing for a project with no findings.
-  # Remove allow_failure on the extending job to make findings block too.
-  allow_failure:
-    exit_codes: [2]
+# Orphan keys: reported, never deleted.
+.i18n-cleanup:
+  extends: .i18n-scan
   variables:
-    I18N_CLI_VERSION: "latest"
-    I18N_INSTALL_PEER_DEPS: ""
+    I18N_COMMAND: "orphans"
 
-  # `|| exit 1` on the setup lines: allow_failure.exit_codes covers the whole
-  # job, before_script included, so an installer that happened to exit 2 would
-  # be read as findings and pass the job yellow having never run the scan.
-  before_script:
-    - npm install -g --legacy-peer-deps "@the-i18n-kit/cli@${I18N_CLI_VERSION}" $I18N_INSTALL_PEER_DEPS || exit 1
-
-  script:
-    - |
-      set -eu
-
-      mkdir -p .i18n-reports
-
-      the-i18n-cli check \
-        --codequality-output gl-codequality.json \
-        > .i18n-reports/check.json
-
-  artifacts:
-    paths:
-      - .i18n-reports/check.json
-      - gl-codequality.json
-    reports:
-      codequality: gl-codequality.json
-    expire_in: 7 days
-    when: always
+# Used-but-undefined keys. Its gate is always evaluated: a key that renders raw
+# in production is a defect, not a threshold, so there is nothing to opt into.
+.i18n-check:
+  extends: .i18n-scan
+  variables:
+    I18N_COMMAND: "check"
