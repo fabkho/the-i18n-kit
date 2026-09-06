@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-eslint-plugin-vue-0.2.0...the-i18n-kit-eslint-plugin-vue-0.2.1) (2026-09-06)
+
+
+### Features
+
+* **eslint-plugin-vue:** ship the @nuxt/eslint addon as the /nuxt entry point ([f6ed7af](https://github.com/fabkho/the-i18n-kit/commit/f6ed7afa41f79680527b1471745156d3a886da37))
+
 ## [0.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-eslint-plugin-vue-0.1.2...the-i18n-kit-eslint-plugin-vue-0.2.0) (2026-09-06)
 
 
