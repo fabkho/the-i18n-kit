@@ -11,9 +11,9 @@ import type { I18nConfig, LocaleDefinition, LocaleDir } from '../config/types.js
 import { readLocaleData, mutateLocaleData } from '../io/locale-data.js'
 import { getLeafKeys, removeNestedValue } from '../io/key-operations.js'
 import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from '../scanner/code-scanner.js'
-import type { OrphanScanPlan, OrphanScanResult } from '../scanner/code-scanner.js'
+import type { OrphanScanPlan, OrphanScanProgress, OrphanScanResult } from '../scanner/code-scanner.js'
 import { getPatternSet } from '../scanner/patterns.js'
-import type { FindOrphanKeysResult, RemoveOrphanKeysResult, CodeUsageResult } from './types.js'
+import type { FindOrphanKeysResult, RemoveOrphanKeysResult, CodeUsageResult, ProgressFn } from './types.js'
 import { ToolError } from '../utils/errors.js'
 
 import { log } from '../utils/logger.js'
@@ -119,6 +119,57 @@ function relativeScanScope(result: OrphanScanResult, projectDir: string): Record
   return scanScope
 }
 
+/** What a surface passes in to watch a scan. Only MCP does; the CLI reports nothing. */
+interface ScanProgressOptions {
+  progressFn?: ProgressFn
+  /** Called once with the number of progress steps, before the first `progressFn` call. */
+  onProgressTotal?: (total: number) => void
+}
+
+/**
+ * Most progress notifications one scan sends, whatever the project size.
+ * A monorepo with 12k source files reporting each one would put more traffic
+ * on the wire than the scan it describes, so files are reported in strides of
+ * `ceil(total / MAX_PROGRESS_STEPS)`.
+ */
+const MAX_PROGRESS_STEPS = 100
+
+/**
+ * Adapt the scanner's per-file hooks to a surface's progress callbacks.
+ *
+ * The reporter on the other end counts calls rather than files, so the total
+ * is announced in that same unit — one step per stride — and the last file
+ * always reports, which is what makes the final step equal the total.
+ *
+ * `ProgressFn` is async while the scanner's hooks are not, so calls are
+ * chained onto one promise: notifications keep the order the files completed
+ * in, a failing notification cannot fail a scan, and `drain` waits for the
+ * queue so no notification arrives after the result it describes.
+ */
+function scanProgress(opts: ScanProgressOptions): { progress?: OrphanScanProgress; drain: () => Promise<void> } {
+  const { progressFn, onProgressTotal } = opts
+  if (!progressFn && !onProgressTotal) return { drain: async () => {} }
+
+  let queue: Promise<void> = Promise.resolve()
+  let stride = 1
+
+  return {
+    progress: {
+      onTotal: (total) => {
+        stride = Math.max(1, Math.ceil(total / MAX_PROGRESS_STEPS))
+        onProgressTotal?.(Math.ceil(total / stride))
+      },
+      onFile: (done, total, unit, file) => {
+        if (!progressFn) return
+        if (done % stride !== 0 && done !== total) return
+        const message = `Scanning ${unit}: ${done}/${total} files (${file})`
+        queue = queue.then(() => progressFn(message)).catch(() => {})
+      },
+    },
+    drain: async () => { await queue },
+  }
+}
+
 /**
  * Shared scan entry for findOrphanKeys/removeOrphanKeys: explicit scanDirs
  * keep the global combined-scan behavior; otherwise a scope-aware plan is
@@ -127,16 +178,20 @@ function relativeScanScope(result: OrphanScanResult, projectDir: string): Record
 async function runOrphanScan(
   config: I18nConfig,
   keysByLayer: Map<string, { keys: string[]; localeDir: LocaleDir }>,
-  opts: { scanDirs?: string[]; excludeDirs?: string[]; dir: string },
+  opts: { scanDirs?: string[]; excludeDirs?: string[]; dir: string } & ScanProgressOptions,
 ): Promise<OrphanScanResult> {
-  return findOrphanKeysForConfig({
+  const { progress, drain } = scanProgress(opts)
+  const result = await findOrphanKeysForConfig({
     keysByLayer,
     // an empty scanDirs array means "not provided" (matches excludeDirs)
     ...(opts.scanDirs?.length ? { scanDirs: opts.scanDirs } : { scanPlan: buildOrphanScanPlan(config, opts.dir) }),
     excludeDirs: opts.excludeDirs || undefined,
     resolveIgnorePatterns: layerName => resolveOrphanIgnorePatterns(config, layerName),
     patterns: getPatternSet(config.localeFileFormat),
+    progress,
   })
+  await drain()
+  return result
 }
 
 /**
@@ -234,8 +289,12 @@ export async function findOrphanKeys(opts: {
   scanDirs?: string[]
   excludeDirs?: string[]
   projectDir?: string
+  /** Scanning every source file of every app takes seconds — a caller that asked for progress hears about each stride of files. */
+  progressFn?: ProgressFn
+  /** Called once with the number of progress steps, before the first `progressFn` call. */
+  onProgressTotal?: (total: number) => void
 }): Promise<FindOrphanKeysResult> {
-  const { layer, locale, scanDirs, excludeDirs } = opts
+  const { layer, locale, scanDirs, excludeDirs, progressFn, onProgressTotal } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
   warnUnknownOrphanScanLayers(config)
@@ -250,7 +309,7 @@ export async function findOrphanKeys(opts: {
     return { orphanKeys: {}, summary: { totalKeys: 0, orphanCount: 0, filesScanned: 0, message: 'No translation keys found in locale files.' } }
   }
 
-  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir })
+  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir, progressFn, onProgressTotal })
 
   const byLayer = orphanResult.orphansByLayer
   const allOrphanKeys: Array<{ key: string; layer: string }> = []
@@ -395,8 +454,12 @@ export async function removeOrphanKeys(opts: {
   excludeDirs?: string[]
   dryRun?: boolean
   projectDir?: string
+  /** Same scan as {@link findOrphanKeys}, same reporting. */
+  progressFn?: ProgressFn
+  /** Called once with the number of progress steps, before the first `progressFn` call. */
+  onProgressTotal?: (total: number) => void
 }): Promise<RemoveOrphanKeysResult> {
-  const { layer, locale, scanDirs, excludeDirs } = opts
+  const { layer, locale, scanDirs, excludeDirs, progressFn, onProgressTotal } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
   warnUnknownOrphanScanLayers(config)
@@ -412,7 +475,7 @@ export async function removeOrphanKeys(opts: {
     return { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
   }
 
-  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir })
+  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir, progressFn, onProgressTotal })
   const orphansByLayer = orphanResult.orphansByLayer
   const orphanCount = orphanResult.orphanCount
   const totalFilesScanned = orphanResult.totalFilesScanned

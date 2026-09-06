@@ -493,6 +493,41 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     }
   })
 
+  /**
+   * The scan reads every source file of every app, which is many seconds on a
+   * monorepo. A caller that passes a progress token gets told where it is —
+   * and, because the reporter counts the notifications it sends, the last one
+   * has to land exactly on the total announced before the first.
+   */
+  it('find_orphan_keys reports progress against a total set before the first notification', async () => {
+    const dir = await makeProject()
+    try {
+      await mkdir(join(dir, 'components'), { recursive: true })
+      for (let i = 0; i < 6; i++) {
+        await writeFile(join(dir, `components/C${i}.vue`), `{{ $t('greeting') }}`)
+      }
+
+      const notifications: Array<{ progress: number, total?: number, message?: string }> = []
+      const result = await client.callTool(
+        { name: 'find_orphan_keys', arguments: { projectDir: dir } },
+        { onprogress: p => void notifications.push({ progress: p.progress, total: p.total, message: p.message }) },
+      )
+      const json = JSON.parse((result.content as Array<{ text: string }>)[0]!.text) as Record<string, any>
+
+      expect(result.isError).toBeFalsy()
+      expect(notifications.length).toBeGreaterThan(0)
+      // A notification sent before onProgressTotal would carry no total at all.
+      const total = notifications[0]?.total
+      expect(total).toBe(json.summary.filesScanned)
+      expect(notifications.every(n => n.total === total)).toBe(true)
+      expect(notifications.map(n => n.progress)).toEqual([...Array(total).keys()].map(i => i + 1))
+      // Where the scan is, not just how far along it is.
+      expect(notifications.at(-1)?.message).toContain('.vue')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('rejects invalid tool input via schema validation', async () => {
     const { result } = await callTool('write_translations', {
       layer: 'root',
