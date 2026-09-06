@@ -337,33 +337,11 @@ async function extractFileEvidence(
 }
 
 /**
- * Opt-in, via `I18N_SCANNER=ast`.
- *
- * The architecture is settled; the migration is not. #332 gates each frontend
- * on a differential run showing it is at least as conservative as what it
- * replaces, and on anny-ui the AST frontend still misses 13 keys the patterns
- * find — most of them regex artifacts, a handful genuine. A key the outgoing
- * frontend saw and the incoming one does not becomes an orphan, and orphans
- * get deleted, so the default stays where the evidence is.
- *
- * Flip it once `packages/cli/scripts/scanner-diff.mjs` reports nothing in that direction.
- */
-let warnedRegexHatch = false
-
-/**
- * The syntax frontends are the default (#402 for JS/TS/Vue, #405 for
- * PHP/Blade); patterns read only what they decline. `I18N_SCANNER=regex`
- * restores the old scanner for exactly one release — an escape hatch for
- * reporting a regression, not a mode.
+ * Syntax decides what a translation usage is. The pattern frontend sits last
+ * and never declines, so a file no parser can read still contributes evidence
+ * instead of dropping out of the scan.
  */
 function defaultFrontends(pat: ScanPatternSet): LanguageFrontend[] {
-  if (process.env.I18N_SCANNER === 'regex') {
-    if (!warnedRegexHatch) {
-      warnedRegexHatch = true
-      log.warn('I18N_SCANNER=regex is deprecated and will be removed in the next major. If the default scanner misses something the regex found, please file it: https://github.com/fabkho/the-i18n-kit/issues')
-    }
-    return [createPatternsFrontend(pat)]
-  }
   const syntax = pat.bareShapes === 'php' ? [phpFrontend, bladeFrontend] : [oxcFrontend]
   return [...syntax, createPatternsFrontend(pat)]
 }
@@ -600,6 +578,13 @@ interface OrphanScanBaseOptions {
   keysByLayer: Map<string, { keys: string[]; localeDir: { layer: string } }>
   excludeDirs?: string[]
   resolveIgnorePatterns: (layerName: string) => string[] | undefined
+  /**
+   * Key patterns declared to exist by contract rather than by a call site.
+   * They hold in every layer — the contract is a property of the key set, not
+   * of one layer's scan — and are counted apart from the ignore patterns so a
+   * report can say which protection applied.
+   */
+  declaredNamespaces?: string[]
   patterns?: ScanPatternSet
   /** Set by a caller that wants to watch a scan that takes seconds. */
   progress?: OrphanScanProgress
@@ -651,6 +636,8 @@ export interface OrphanScanResult {
   dynamicMatchedCount: number
   /** Accumulated across layers, like dynamicMatchedCount. */
   ignoredCount: number
+  /** Keys withheld from the orphan list by a declared namespace. Accumulated across layers. */
+  declaredCount: number
   allDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }>
   dirsScanned: string[]
   unresolvedKeyWarnings: UnresolvedKeyWarning[]
@@ -688,6 +675,7 @@ export function nestedUnitIgnores(unit: ScanUnit, units: ScanUnit[]): string[] {
 
 export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promise<OrphanScanResult> {
   const { keysByLayer, excludeDirs, resolveIgnorePatterns, patterns } = options
+  const declaredRegexes = buildIgnorePatternRegexes(options.declaredNamespaces ?? [])
 
   // Explicit scanDirs = manual scope control: one combined usage set shared
   // by all layers, no misplaced-usage detection (pre-scope-aware behavior).
@@ -777,6 +765,7 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
   let uncertainCount = 0
   let dynamicMatchedCount = 0
   let ignoredCount = 0
+  let declaredCount = 0
   const misplacedUsages: MisplacedUsage[] = []
   const scanScopeByLayer: Record<string, string[]> = {}
 
@@ -804,6 +793,12 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
       }
       if (scope.dynRegexes.some(re => re.test(k))) {
         dynamicMatchedCount++
+        return false
+      }
+      // A declared namespace answers for the key before any layer's ignore
+      // patterns do, so the report attributes it to the declaration.
+      if (declaredRegexes.some(re => re.test(k))) {
+        declaredCount++
         return false
       }
       if (ignoreRegexes.length > 0 && ignoreRegexes.some(re => re.test(k))) {
@@ -869,6 +864,7 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
     totalFilesDeclined,
     dynamicMatchedCount,
     ignoredCount,
+    declaredCount,
     allDynamicKeys: allDynamicKeysRaw,
     dirsScanned: units.map(u => u.dir),
     unresolvedKeyWarnings: unresolvedWarnings,

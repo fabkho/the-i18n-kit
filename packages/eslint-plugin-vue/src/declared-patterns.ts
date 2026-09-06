@@ -3,10 +3,11 @@ import { dirname, join } from 'node:path'
 import { createJiti } from 'jiti'
 
 /**
- * The orphan-scan ignore patterns declared in the project's kit config —
- * the "wire-driven namespace" declarations the runtime-key rule verifies
- * against (#420). Loaded with jiti so the TS config needs no build, cached
- * by path + mtime so the editor sees a just-added declaration.
+ * The key patterns a project's kit config declares: `declaredNamespaces`
+ * entries — namespaces whose keys exist by contract rather than by a call
+ * site — plus the per-layer orphan-scan ignore patterns, which protect keys
+ * the same way. Loaded with jiti so the TS config needs no build, cached by
+ * path + mtime so the editor sees a just-added declaration.
  */
 
 const CONFIG_NAMES = ['i18n-kit.config.ts', 'i18n-kit.config.mjs', 'i18n-kit.config.js']
@@ -37,6 +38,9 @@ export function declaredPatterns(configPath: string): Set<string> {
     const load = createJiti(configPath)
     const mod = load(configPath) as { default?: KitConfigShape } | KitConfigShape
     const config = ('default' in mod ? mod.default : mod) as KitConfigShape | undefined
+    for (const declaration of config?.declaredNamespaces ?? []) {
+      if (declaration?.pattern) patterns.add(declaration.pattern)
+    }
     for (const layer of Object.values(config?.orphanScan ?? {})) {
       for (const pattern of layer?.ignorePatterns ?? []) patterns.add(pattern)
     }
@@ -49,6 +53,7 @@ export function declaredPatterns(configPath: string): Set<string> {
 }
 
 interface KitConfigShape {
+  declaredNamespaces?: Array<{ pattern?: string; reason?: string } | undefined>
   orphanScan?: Record<string, { ignorePatterns?: string[] } | undefined>
 }
 

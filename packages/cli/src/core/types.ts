@@ -630,6 +630,21 @@ export interface UnresolvedKeyWarningRef {
   suggestedIgnorePattern?: string
 }
 
+/**
+ * One `declaredNamespaces` entry with the keys it answers for.
+ *
+ * `matchedKeys` is what makes a declaration auditable in both directions: the
+ * keys a reader would otherwise see in the orphan list, and — when it is empty
+ * — a declaration whose namespace no longer exists.
+ */
+export interface DeclaredNamespaceRef {
+  pattern: string
+  /** What keeps these keys alive, as declared in the config. */
+  reason: string
+  /** Keys of the checked layers this pattern covers. Empty means the declaration is stale. */
+  matchedKeys: string[]
+}
+
 export interface FindOrphanKeysResult {
   orphanKeys: Record<string, string[]>
   uncertainKeys?: Record<string, string[]>
@@ -644,6 +659,9 @@ export interface FindOrphanKeysResult {
   /** Keys used only from apps that do not consume the owning layer. */
   misplacedUsages?: MisplacedUsageRef[]
   misplacedUsageNote?: string
+  /** Every declared namespace with the keys it covers. Present when any is declared. */
+  declaredNamespaces?: DeclaredNamespaceRef[]
+  declaredNamespaceNote?: string
   summary: {
     totalKeys: number
     orphanCount: number
@@ -652,6 +670,8 @@ export interface FindOrphanKeysResult {
     misplacedCount?: number
     dynamicMatchedCount?: number
     ignoredCount?: number
+    /** Keys withheld from the orphan list by a declared namespace. */
+    declaredCount?: number
     usedCount?: number
     filesScanned: number
     /** Files a syntax frontend declined; pattern matching read them instead. */
@@ -715,6 +735,9 @@ export interface RemoveOrphanKeysResult {
   uncertainKeys?: Record<string, string[]>
   misplacedUsages?: MisplacedUsageRef[]
   misplacedUsageNote?: string
+  /** Every declared namespace with the keys it covers — the keys this run will not delete. */
+  declaredNamespaces?: DeclaredNamespaceRef[]
+  declaredNamespaceNote?: string
   summary: {
     dryRun?: boolean
     totalKeys: number
@@ -724,6 +747,8 @@ export interface RemoveOrphanKeysResult {
     misplacedCount?: number
     dynamicMatchedCount?: number
     ignoredCount?: number
+    /** Keys withheld from the orphan list by a declared namespace. */
+    declaredCount?: number
     usedCount?: number
     remainingCount?: number
     filesScanned?: number
