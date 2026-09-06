@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { LaravelAdapter } from '../../src/adapters/laravel/index'
 import { registerAdapter, resetRegistry, detectFramework } from '../../src/adapters/registry'
 import { NuxtAdapter } from '../../src/adapters/nuxt/index'
+import { loadProjectConfig } from '../../src/config/project-config'
 
 function createLaravelProject(root: string, opts: {
   artisan?: boolean
@@ -167,7 +168,7 @@ describe('LaravelAdapter.resolve', () => {
     })
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.rootDir).toBe(tempDir)
     expect(config.defaultLocale).toBe('de')
@@ -191,7 +192,7 @@ describe('LaravelAdapter.resolve', () => {
     })
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales).toHaveLength(2)
     expect(config.locales.map(l => l.code)).toEqual(['en', 'es'])
@@ -204,7 +205,7 @@ describe('LaravelAdapter.resolve', () => {
     })
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.defaultLocale).toBe('fr')
     expect(config.fallbackLocale).toEqual({ default: ['en'] })
@@ -214,7 +215,7 @@ describe('LaravelAdapter.resolve', () => {
     createLaravelProject(tempDir, { configAppPhp: null })
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.defaultLocale).toBe('en')
     expect(config.fallbackLocale).toEqual({ default: ['en'] })
@@ -229,7 +230,7 @@ describe('LaravelAdapter.resolve', () => {
     )
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales).toHaveLength(1)
     expect(config.locales[0].code).toBe('en')
@@ -239,14 +240,14 @@ describe('LaravelAdapter.resolve', () => {
     writeFileSync(join(tempDir, 'artisan'), '#!/usr/bin/env php')
 
     const adapter = new LaravelAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('No lang/ or resources/lang/')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('No lang/ or resources/lang/')
   })
 
   it('throws ConfigError when lang/ has no locale subdirectories', async () => {
     mkdirSync(join(tempDir, 'lang'))
 
     const adapter = new LaravelAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('No locale subdirectories')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('No locale subdirectories')
   })
 
   it('skips locale subdirectories that contain no .php files', async () => {
@@ -255,7 +256,7 @@ describe('LaravelAdapter.resolve', () => {
     writeFileSync(join(tempDir, 'lang', 'empty-locale', 'readme.txt'), 'no php here')
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['en'])
   })
@@ -264,7 +265,7 @@ describe('LaravelAdapter.resolve', () => {
     createLaravelProject(tempDir, { locales: ['fr', 'en', 'de', 'zh'] })
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en', 'fr', 'zh'])
   })
@@ -276,7 +277,7 @@ describe('LaravelAdapter.resolve', () => {
     })
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'el', 'en', 'sv'])
   })
@@ -288,7 +289,7 @@ describe('LaravelAdapter.resolve', () => {
     })
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
   })
@@ -301,7 +302,7 @@ describe('LaravelAdapter.resolve', () => {
     )
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['en', 'de'])
   })
@@ -339,7 +340,7 @@ describe('Laravel JSON locale files', () => {
   it('resolve detects JSON format and discovers locales', async () => {
     createJsonProject()
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeFileFormat).toBe('json')
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
@@ -355,7 +356,7 @@ describe('Laravel JSON locale files', () => {
     writeFileSync(join(enDir, 'auth.php'), '<?php return [];')
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeFileFormat).toBe('php-array')
   })
@@ -373,7 +374,7 @@ describe('Laravel JSON locale files', () => {
     )
 
     const adapter = new LaravelAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeFileFormat).toBe('json')
   })
@@ -383,7 +384,7 @@ describe('Laravel JSON locale files', () => {
     mkdirSync(join(tempDir, 'lang'))
 
     const adapter = new LaravelAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('No locale')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('No locale')
   })
 })
 

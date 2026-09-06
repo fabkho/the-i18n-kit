@@ -2,8 +2,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
-import type { I18nConfig, LocaleDefinition, LocaleDir } from '../../config/types'
-import { loadProjectConfig } from '../../config/project-config'
+import type { I18nConfig, LocaleDefinition, LocaleDir, ProjectConfig } from '../../config/types'
 import { applyLocaleOverride } from '../../config/locale-override'
 import { log } from '../../utils/logger'
 import { ConfigError } from '../../utils/errors'
@@ -42,9 +41,7 @@ export class LaravelAdapter implements FrameworkAdapter {
     return score
   }
 
-  async resolve(projectDir: string): Promise<I18nConfig> {
-    const projectConfig = await loadProjectConfig(projectDir)
-
+  async resolve(projectDir: string, projectConfig: ProjectConfig | null): Promise<I18nConfig> {
     const langDir = findLangDir(projectDir)
     if (!langDir) {
       throw new ConfigError(

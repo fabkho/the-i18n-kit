@@ -33,13 +33,15 @@ export async function detectI18nConfig(projectDir: string): Promise<I18nConfig> 
 
   log.info(`Detecting i18n config from: ${projectDir}`)
 
+  // Read once for the whole detection and handed to the adapter, which is what
+  // makes the deprecated-key warning fire once rather than once per app.
   const projectConfig = await loadProjectConfig(projectDir)
   const hint = projectConfig?.framework
 
   const adapter = await detectFramework(projectDir, hint)
   log.info(`Detected framework: ${adapter.label}`)
 
-  const config = await adapter.resolve(projectDir)
+  const config = await adapter.resolve(projectDir, projectConfig)
   config.framework = adapter.name
   cacheConfig(canonDir, config)
 

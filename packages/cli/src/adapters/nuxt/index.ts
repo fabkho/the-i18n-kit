@@ -2,10 +2,9 @@ import { existsSync } from 'node:fs'
 import { readdir, readFile, realpath } from 'node:fs/promises'
 import { resolve, relative } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
-import type { I18nConfig, LocaleDefinition, LocaleDir, AppInfo } from '../../config/types'
+import type { I18nConfig, LocaleDefinition, LocaleDir, AppInfo, ProjectConfig } from '../../config/types'
 import { findNuxtConfig, discoverNuxtApps, deriveLayerName } from '../../config/discovery'
 import { loadKit } from '../../config/nuxt-loader'
-import { loadProjectConfig } from '../../config/project-config'
 import { applyLocaleOverride } from '../../config/locale-override'
 import { normalizeFallbackLocale } from '../../config/fallback-locale'
 import { artifactToConfig, readArtifact } from '../../config/artifact'
@@ -39,7 +38,7 @@ export class NuxtAdapter implements FrameworkAdapter {
     return appDirs.length > 0 ? 2 : 0
   }
 
-  async resolve(projectDir: string): Promise<I18nConfig> {
+  async resolve(projectDir: string, projectConfig: ProjectConfig | null): Promise<I18nConfig> {
     const appDirs = await discoverNuxtApps(projectDir)
 
     if (findNuxtConfig(projectDir) && !appDirs.includes(projectDir)) {
@@ -55,7 +54,7 @@ export class NuxtAdapter implements FrameworkAdapter {
 
     const [soleAppDir] = appDirs
     if (appDirs.length === 1 && soleAppDir !== undefined) {
-      const config = await loadApp(soleAppDir, projectDir)
+      const config = await loadApp(soleAppDir, projectDir, projectConfig)
       if (soleAppDir !== projectDir) {
         config.rootDir = projectDir
         const rootApp = config.apps[0]
@@ -68,7 +67,7 @@ export class NuxtAdapter implements FrameworkAdapter {
     }
 
     log.info(`Discovered ${appDirs.length} Nuxt app(s) with i18n: ${appDirs.map(d => relative(projectDir, d) || '.').join(', ')}`)
-    const config = await loadAndMergeApps(appDirs, projectDir)
+    const config = await loadAndMergeApps(appDirs, projectDir, projectConfig)
     log.info(`Detected ${config.locales.length} locales, ${config.localeDirs.length} locale directories from ${appDirs.length} app(s)`)
     return config
   }
@@ -81,11 +80,15 @@ export class NuxtAdapter implements FrameworkAdapter {
  * so a project without the module — or with a stale one — behaves as it always
  * has.
  */
-async function loadApp(appDir: string, discoveryRoot: string): Promise<I18nConfig> {
+async function loadApp(
+  appDir: string,
+  discoveryRoot: string,
+  projectConfig: ProjectConfig | null,
+): Promise<I18nConfig> {
   const artifact = await readArtifact(appDir)
-  if (!artifact) return loadSingleApp(appDir, discoveryRoot)
+  if (!artifact) return loadSingleApp(appDir, discoveryRoot, projectConfig)
 
-  const config = await artifactToConfig(artifact, appDir, discoveryRoot, await loadProjectConfig(discoveryRoot))
+  const config = await artifactToConfig(artifact, appDir, discoveryRoot, projectConfig)
 
   // An artifact describing no locale directory leaves nothing to read, which
   // the fallback path reports as a ConfigError naming what is missing. Silently
@@ -93,13 +96,17 @@ async function loadApp(appDir: string, discoveryRoot: string): Promise<I18nConfi
   // clear error into no output at all.
   if (config.localeDirs.length === 0) {
     log.warn(`The artifact for ${appDir} describes no locale directories — loading the app instead.`)
-    return loadSingleApp(appDir, discoveryRoot)
+    return loadSingleApp(appDir, discoveryRoot, projectConfig)
   }
 
   return config
 }
 
-async function loadSingleApp(appDir: string, discoveryRoot: string): Promise<I18nConfig> {
+async function loadSingleApp(
+  appDir: string,
+  discoveryRoot: string,
+  projectConfig: ProjectConfig | null,
+): Promise<I18nConfig> {
   const kit = await loadKit(appDir)
 
   let nuxt: Awaited<ReturnType<typeof kit.loadNuxt>>
@@ -135,15 +142,23 @@ async function loadSingleApp(appDir: string, discoveryRoot: string): Promise<I18
   }
 
   try {
-    return await extractI18nConfig(nuxt as unknown as { options: Record<string, unknown> }, appDir, discoveryRoot)
+    return await extractI18nConfig(
+      nuxt as unknown as { options: Record<string, unknown> },
+      appDir,
+      discoveryRoot,
+      projectConfig,
+    )
   }
   finally {
     await nuxt.close()
   }
 }
 
-async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promise<I18nConfig> {
-  const projectConfig = await loadProjectConfig(discoveryRoot)
+async function loadAndMergeApps(
+  appDirs: string[],
+  discoveryRoot: string,
+  projectConfig: ProjectConfig | null,
+): Promise<I18nConfig> {
   const merger = new AppMerger()
 
   for (const appDir of appDirs) {
@@ -151,7 +166,7 @@ async function loadAndMergeApps(appDirs: string[], discoveryRoot: string): Promi
 
     let appConfig: I18nConfig
     try {
-      appConfig = await loadApp(appDir, discoveryRoot)
+      appConfig = await loadApp(appDir, discoveryRoot, projectConfig)
     }
     catch (error) {
       // One unloadable app must not take the others with it: a monorepo where
@@ -181,9 +196,8 @@ async function extractI18nConfig(
   nuxt: { options: Record<string, unknown> },
   appDir: string,
   discoveryRoot: string,
+  projectConfig: ProjectConfig | null,
 ): Promise<I18nConfig> {
-  const projectConfig = await loadProjectConfig(discoveryRoot)
-
   const nuxtOptions = nuxt.options as Record<string, unknown>
   const i18nOptions = nuxtOptions.i18n as Record<string, unknown> | undefined
   const layers = (nuxtOptions._layers ?? []) as Array<{
