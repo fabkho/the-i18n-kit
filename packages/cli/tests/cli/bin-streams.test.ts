@@ -38,11 +38,9 @@ describe('bin stream routing', () => {
     expect(stdout).toContain('USAGE')
   })
 
-  it('translate-missing is an alias of translate', async () => {
-    const { stdout, code } = await runBin(['translate-missing', '--help'])
+  it('prints a subcommand\'s own flags, not just the shared ones', async () => {
+    const { stdout, code } = await runBin(['translate', '--help'])
     expect(code).toBe(0)
-    expect(stdout).toContain('translate-missing')
-    // same command definition: identical args surface
     expect(stdout).toContain('--provider')
     expect(stdout).toContain('--batchSize')
   })

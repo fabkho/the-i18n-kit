@@ -22,7 +22,8 @@ import { mcpOverview, pagedTools, rowNames, section, tableRow, toolPage } from '
 const cli = await loadCliSource()
 const mcp = await loadMcpSource()
 const output = buildReference(fixtureSources({ cli, mcp }))
-const model = buildMcpModel(mcp, cli.exposed)
+const commandNames = cli.entries.map(entry => entry.name)
+const model = buildMcpModel(mcp, commandNames)
 
 describe('the MCP reference against the advertised tool listing', () => {
   it('finds tools to document at all', () => {
@@ -76,7 +77,7 @@ describe('the MCP reference against the advertised tool listing', () => {
 
     for (const tool of paired) {
       const command = tool.command as string
-      expect(cli.exposed).toContain(command)
+      expect(commandNames).toContain(command)
       expect(toolPage(output, tool.name)).toContain(`(/reference/cli/${command})`)
       expect(mcpOverview(output)).toContain(`(/reference/cli/${command})`)
     }

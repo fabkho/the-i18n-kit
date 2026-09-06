@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/mcp)
 [![License](https://img.shields.io/npm/l/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
 
-MCP server for managing i18n translation files. Gives your agent 18 purpose-built
+MCP server for managing i18n translation files. Gives your agent 15 purpose-built
 tools so it can touch the keys it needs without reading whole locale files into
 context.
 

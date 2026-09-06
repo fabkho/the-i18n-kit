@@ -5,10 +5,10 @@
  * resolved before anything can be read off it. That is asynchronous, which is
  * why it lives here rather than in the builder.
  *
- * Which of those names the CLI actually exposes is read off the registry too.
- * It used to be recovered by regex-parsing `cli.ts` for a module-private set:
- * safe, in that a shape change threw rather than silently marking every command
- * reachable, but a generator parsing source text to recover a constant (#370).
+ * Every registered command is a command the CLI exposes, so the registry keys
+ * are the whole surface and there is nothing to filter. There used to be a
+ * hidden flag, and with it a generator that had to answer "documented but
+ * uninvokable" for commands nobody could run.
  *
  * The registry is imported from source rather than from `dist`, because
  * `tsdown` emits content-hashed chunks and the registry is not one of the
@@ -17,7 +17,7 @@
  * reference to go stale anyway.
  */
 
-import { commands, exposedCommandNames } from '../../../packages/cli/src/commands/index.js'
+import { commands } from '../../../packages/cli/src/commands/index.js'
 import {
   EXIT_GATE_TRIPPED,
   EXIT_RUN_FAILED,
@@ -28,7 +28,6 @@ import type { CliCommandEntry, CliSource, CommandDefLike } from '../reference/ty
 export async function loadCliSource(): Promise<CliSource> {
   return {
     entries: await resolveEntries(),
-    exposed: exposedCommandNames(),
     exitCodes: {
       success: EXIT_SUCCESS,
       runFailed: EXIT_RUN_FAILED,

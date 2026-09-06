@@ -45,9 +45,9 @@ const SECTIONS: Section[] = [
     title: 'MCP Tools',
     route: '/reference/mcp',
     summary: 'Every tool the MCP server advertises and the parameters it accepts, generated from the listing a host receives over stdio.',
-    // The CLI's exposed commands come along so a tool paired with a command
-    // links to a page that exists.
-    render: sources => renderMcpReference(sources.mcp, sources.cli.exposed),
+    // The CLI's registered command names come along so a tool paired with a
+    // command links to a page that exists.
+    render: sources => renderMcpReference(sources.mcp, sources.cli.entries.map(entry => entry.name)),
   },
   {
     title: 'GitHub Action',

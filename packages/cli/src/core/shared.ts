@@ -20,7 +20,7 @@ export function findLayerOrThrow(config: I18nConfig, layer: string): LocaleDir {
       ? ` Note: "${layer}" matches a layerRules entry in .i18n-mcp.json but is not an internal layer name.`
       : ''
     throw new ToolError(
-      `Layer not found: "${layer}". Available: ${available}.${fuzzyHint} Use list_locale_dirs to see all layers.`,
+      `Layer not found: "${layer}". Available: ${available}.${fuzzyHint} Use discover to see all layers.`,
       'LAYER_NOT_FOUND',
     )
   }
@@ -69,7 +69,7 @@ export function resolveLayersToScan(config: I18nConfig, layer?: string): LocaleD
     // Surfaces the better "layer not found, here are the valid ones" error.
     if (layer) findLayerOrThrow(config, layer)
     throw new ToolError(
-      'No locale directories found. Run detect_i18n_config to verify the project setup.',
+      'No locale directories found. Run discover to verify the project setup.',
       'LAYER_NOT_FOUND',
     )
   }

@@ -14,7 +14,6 @@ export { findLocaleImpl } from './shared.js'
 export { validateReportPath } from './report.js'
 
 export {
-  computeMaxTokens,
   computeProgressTotal,
   resolveProtectedLocales,
   validatePlaceholders,
@@ -26,6 +25,7 @@ export {
 } from './ops-translate.js'
 
 export {
+  describeProject,
   detectConfig,
   listLocaleDirs,
   getTranslations,
@@ -37,8 +37,6 @@ export {
 
 export {
   writeTranslations,
-  addTranslations,
-  updateTranslations,
   removeTranslations,
   renameTranslationKey,
   moveTranslationKey,

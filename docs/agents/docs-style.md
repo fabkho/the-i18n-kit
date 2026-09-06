@@ -133,8 +133,8 @@ section: material a reader cannot act on is deleted, not relocated.
 
 ### State behavior, not claims
 
-Not "safe by default" — "`remove-orphans` previews unless you pass
-`--no-dry-run`." Not "great for agents" — "a large report goes to a file and the
+Not "safe by default" — "`orphans` reports; nothing is deleted without
+`--remove`." Not "great for agents" — "a large report goes to a file and the
 caller gets a summary." Never name a function, module or file the reader cannot
 call.
 

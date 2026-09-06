@@ -14,3 +14,7 @@ Discover the complete i18n setup. Returns project config (locales, default local
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `projectDir` | `string` | no | Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. |
+
+## Paired CLI Command
+
+The same operation runs from a terminal as [`the-i18n-cli discover`](/reference/cli/discover), whose page documents its flags.

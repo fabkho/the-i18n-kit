@@ -8,6 +8,7 @@ import { NuxtAdapter } from '../../src/adapters/nuxt/index'
 import { VueAdapter } from '../../src/adapters/vue/index'
 import { readLocaleData, mutateLocaleData } from '../../src/io/locale-data'
 import { clearFileCache } from '../../src/io/json-reader'
+import { loadProjectConfig } from '../../src/config/project-config'
 
 function createReactProject(root: string, opts: {
   type?: 'next' | 'react'
@@ -151,7 +152,7 @@ describe('ReactAdapter.resolve', () => {
     createReactProject(tempDir)
 
     const adapter = new ReactAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.rootDir).toBe(tempDir)
     expect(config.defaultLocale).toBe('de')
@@ -168,7 +169,7 @@ describe('ReactAdapter.resolve', () => {
     createReactProject(tempDir, { localeDir: 'public/locales', hasNextConfig: false, i18nDep: 'react-i18next' })
 
     const adapter = new ReactAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeDirs[0].path).toBe(join(tempDir, 'public/locales'))
   })
@@ -177,7 +178,7 @@ describe('ReactAdapter.resolve', () => {
     createReactProject(tempDir, { localeDir: 'locales', i18nDep: 'next-translate' })
 
     const adapter = new ReactAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeDirs[0].path).toBe(join(tempDir, 'locales'))
   })
@@ -188,7 +189,7 @@ describe('ReactAdapter.resolve', () => {
     }))
 
     const adapter = new ReactAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('No locale directory found')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('No locale directory found')
   })
 
   it('throws ConfigError when locale dir has no locale subdirectories', async () => {
@@ -198,7 +199,7 @@ describe('ReactAdapter.resolve', () => {
     mkdirSync(join(tempDir, 'messages'))
 
     const adapter = new ReactAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('No locale files found')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('No locale files found')
   })
 
   it('honors locales override from .i18n-mcp.json', async () => {
@@ -209,7 +210,7 @@ describe('ReactAdapter.resolve', () => {
     )
 
     const adapter = new ReactAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['en', 'fr'])
   })
@@ -218,7 +219,7 @@ describe('ReactAdapter.resolve', () => {
     createReactProject(tempDir, { locales: ['fr', 'en', 'de', 'zh'] })
 
     const adapter = new ReactAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en', 'fr', 'zh'])
   })
@@ -233,7 +234,7 @@ describe('ReactAdapter.resolve', () => {
     writeFileSync(join(localeDir, 'de.json'), JSON.stringify({ hello: 'welt' }))
 
     const adapter = new ReactAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
   })
@@ -248,7 +249,7 @@ describe('ReactAdapter.resolve', () => {
     writeFileSync(join(localeDir, 'de.json'), JSON.stringify({ hello: 'welt' }))
 
     const adapter = new ReactAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.file)).toEqual(['de.json', 'en.json'])
   })
@@ -257,7 +258,7 @@ describe('ReactAdapter.resolve', () => {
     createReactProject(tempDir)
 
     const adapter = new ReactAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.every(l => l.file === undefined)).toBe(true)
   })
@@ -286,7 +287,7 @@ describe('ReactAdapter flat JSON layout end-to-end', () => {
     writeFileSync(join(localeDir, 'de.json'), '{\n  "zebra": "Zebra",\n  "apple": "Apfel"\n}\n')
 
     const adapter = new ReactAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
     const en = config.locales.find(l => l.code === 'en')!
 
     // Reads must surface the file contents, not silently return {}

@@ -26,7 +26,7 @@ the-i18n-cli init                    # write a config from what it detects
 the-i18n-cli status                  # coverage per locale and per layer
 the-i18n-cli missing                 # what is not translated yet
 the-i18n-cli check                   # keys used in code but defined nowhere
-the-i18n-cli remove-orphans          # keys defined but unused (previews by default)
+the-i18n-cli orphans                 # keys defined but unused (reports; --remove deletes)
 ```
 
 → [Cold start guide](https://fabkho.github.io/the-i18n-kit/getting-started/cold-start) ·

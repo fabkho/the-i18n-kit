@@ -18,6 +18,7 @@ vi.mock('../../src/config/detector.js', async () => {
         locales: string[]
         protectedLocales?: string[]
         layers?: string[]
+        apps?: Array<{ name: string; layers: string[] }>
       }
       const layers = cfg.layers ?? ['root']
       return {
@@ -32,7 +33,8 @@ vi.mock('../../src/config/detector.js', async () => {
         })),
         layerRootDirs: [projectDir],
         projectConfig: { protectedLocales: cfg.protectedLocales ?? [] },
-        apps: [{ name: 'root', rootDir: projectDir, layers }],
+        apps: (cfg.apps ?? [{ name: 'root', layers }])
+          .map(app => ({ name: app.name, rootDir: resolve(projectDir, app.name), layers: app.layers })),
       }
     }),
     clearConfigCache: vi.fn(),
@@ -54,12 +56,15 @@ async function project(opts: {
   locales: string[]
   protectedLocales?: string[]
   layers?: Record<string, Record<string, unknown>>
+  /** Consumption edges. Omitted, one app consumes every layer — the default shape. */
+  apps?: Array<{ name: string; layers: string[] }>
 }) {
   const layers = opts.layers ?? {}
   await writeFile(join(dir, '.i18n-mcp.json'), JSON.stringify({
     locales: opts.locales,
     protectedLocales: opts.protectedLocales,
     layers: Object.keys(layers),
+    apps: opts.apps,
   }))
   for (const [layer, files] of Object.entries(layers)) {
     await mkdir(join(dir, layer), { recursive: true })
@@ -185,6 +190,64 @@ describe('per-layer breakdown', () => {
 
     expect(result.summary.layersScanned).toEqual(['app-admin'])
     expect(result.summary.completionPercent).toBe(0)
+  })
+})
+
+describe('layer consumption', () => {
+  /**
+   * The consumer graph is the only place that knows a layer is dead weight: it
+   * can be fully translated and still be rendered by nothing. Coverage alone
+   * reads such a layer as healthy.
+   */
+  const multiApp = () => project({
+    locales: ['en', 'de'],
+    layers: {
+      root: { en: { a: '1' }, de: { a: '1' } },
+      'app-admin': { en: { x: '1' }, de: { x: '1' } },
+      'app-legacy': { en: { y: '1' }, de: {} },
+    },
+    apps: [
+      { name: 'admin', layers: ['app-admin', 'root'] },
+      { name: 'shop', layers: ['root'] },
+    ],
+  })
+
+  const layerNamed = (result: { layers?: Array<{ layer: string }> }, layer: string) =>
+    result.layers?.find(l => l.layer === layer)
+
+  it('names the apps consuming each layer', async () => {
+    await multiApp()
+
+    const result = await getTranslationStatus({ projectDir: dir })
+
+    expect(layerNamed(result, 'root')).toMatchObject({ consumedBy: ['admin', 'shop'] })
+    expect(layerNamed(result, 'app-admin')).toMatchObject({ consumedBy: ['admin'] })
+    expect(layerNamed(result, 'app-legacy')).toMatchObject({ consumedBy: [] })
+  })
+
+  it('lists the layers no app consumes', async () => {
+    await multiApp()
+
+    const result = await getTranslationStatus({ projectDir: dir })
+
+    expect(result.summary.unconsumedLayers).toEqual(['app-legacy'])
+  })
+
+  it('flags nothing in a single-app project, where the answer says nothing', async () => {
+    // The shape every single-locale-dir adapter builds: one 'default' app.
+    await project({
+      locales: ['en', 'de'],
+      layers: {
+        root: { en: { a: '1' }, de: { a: '1' } },
+        legacy: { en: { b: '1' }, de: {} },
+      },
+      apps: [{ name: 'default', layers: ['root'] }],
+    })
+
+    const result = await getTranslationStatus({ projectDir: dir })
+
+    expect(layerNamed(result, 'root')).toMatchObject({ consumedBy: ['default'] })
+    expect(result.summary.unconsumedLayers).toEqual([])
   })
 })
 

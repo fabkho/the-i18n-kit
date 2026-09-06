@@ -30,7 +30,3 @@ the-i18n-cli translate
 | `--baseUrl` | `string` | no | — | Provider base URL for gateways, self-hosted models and proxies speaking the provider's protocol. Falls back to I18N_BASE_URL, then providerBaseUrl in .i18n-mcp.json. Not supported by "google". |
 | `--dryRun` | `boolean` | no | `false` | Preview what would be translated |
 | `--failOnFailed` | `boolean` | no | `false` | Exit 2 when any key failed to translate (CI gate) |
-
-## Other Names
-
-`the-i18n-cli translate-missing` runs this same command with the same flags. Alias of "translate" — matches the MCP tool translate_missing.

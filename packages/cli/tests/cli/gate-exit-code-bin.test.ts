@@ -81,12 +81,12 @@ describe('gate exit codes through the real binary', () => {
     expect(code).toBe(0)
   })
 
-  // remove-orphans is dry-run by default, so the gate reports without writing.
+  // orphans reports by default, so the gate trips without writing anything.
   it('exits 2 when --fail-on-orphans finds a key no source file references', async () => {
     await mkdir(join(projectDir, 'src'), { recursive: true })
     await writeFile(join(projectDir, 'src/app.ts'), `export const label = t('common.greeting')\n`)
 
-    const { stdout, code } = await runBin(['remove-orphans', '--fail-on-orphans'], projectDir)
+    const { stdout, code } = await runBin(['orphans', '--fail-on-orphans'], projectDir)
 
     expect(code).toBe(2)
     expect(JSON.parse(stdout)).toMatchObject({
@@ -100,7 +100,7 @@ describe('gate exit codes through the real binary', () => {
       `export const label = t('common.greeting')\nexport const bye = t('common.farewell')\n`,
     )
 
-    const { code } = await runBin(['remove-orphans', '--fail-on-orphans'], projectDir)
+    const { code } = await runBin(['orphans', '--fail-on-orphans'], projectDir)
 
     expect(code).toBe(0)
   })

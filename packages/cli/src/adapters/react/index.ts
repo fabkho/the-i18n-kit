@@ -2,8 +2,7 @@ import { existsSync, statSync, readdirSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
-import type { I18nConfig, LocaleDefinition } from '../../config/types'
-import { loadProjectConfig } from '../../config/project-config'
+import type { I18nConfig, LocaleDefinition, ProjectConfig } from '../../config/types'
 import { readNextI18n } from '../../config/framework/next'
 import { applyLocaleOverride } from '../../config/locale-override'
 import { ConfigError } from '../../utils/errors'
@@ -47,9 +46,7 @@ export class ReactAdapter implements FrameworkAdapter {
     return computeScore(projectDir, allDeps, isNext)
   }
 
-  async resolve(projectDir: string): Promise<I18nConfig> {
-    const projectConfig = await loadProjectConfig(projectDir)
-
+  async resolve(projectDir: string, projectConfig: ProjectConfig | null): Promise<I18nConfig> {
     const localeDir = await findLocaleDir(projectDir)
     if (!localeDir) {
       throw noLocaleDirError(projectDir, COMMON_LOCALE_DIRS)

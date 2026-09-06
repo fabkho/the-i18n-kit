@@ -9,6 +9,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { asObject, executeConfig, firstExisting, resolveStub } from './execute.js'
+import { registerCacheReset } from '../cache.js'
 import { log } from '../../utils/logger.js'
 
 /**
@@ -46,11 +47,10 @@ export async function readVueI18nLocaleDirs(projectDir: string): Promise<string[
   const path = firstExisting(projectDir, VITE_CONFIG_FILES)
   if (!path) return null
 
-  // Answers are remembered per config file because the file itself can only be
-  // executed once: Node caches an ES module by URL for the life of the
-  // process, so a second read would import the cache, call no plugin, record
-  // nothing, and quietly report that this project declares no locale
-  // directories. Resolving the same project twice has to give the same answer.
+  // Answers are remembered per config file: reading one means executing it and
+  // recording what the plugin was constructed with, and executing a vite.config
+  // twice per command is both slow and pointless. Resolving the same project
+  // twice has to give the same answer.
   const remembered = answers.get(path)
   if (remembered !== undefined) return remembered
 
@@ -61,6 +61,13 @@ export async function readVueI18nLocaleDirs(projectDir: string): Promise<string[
 
 const answers = new Map<string, string[] | null>()
 
+/** Which configs have been executed, so a re-read knows to bypass the module cache. */
+const executed = new Set<string>()
+
+// Dropped when the config cache is cleared, so a long-running server reads an
+// edited vite.config rather than the project as it was.
+registerCacheReset(() => answers.clear())
+
 async function readInclude(path: string): Promise<string[] | null> {
   const globalScope = globalThis as Record<symbol, unknown>
   delete globalScope[RECORDED]
@@ -68,7 +75,14 @@ async function readInclude(path: string): Promise<string[] | null> {
   const alias = stubAlias()
   if (!alias) return null
 
-  const module = await executeConfig(path, { alias })
+  // Reading this file works by recording the plugin call it makes, so a second
+  // read has to actually re-run it: served from the module cache it would call
+  // no plugin, record nothing, and report a project that declares no locale
+  // directories at all.
+  const fresh = executed.has(path)
+  executed.add(path)
+
+  const module = await executeConfig(path, { alias, fresh })
   if (!module) return null
 
   // `defineConfig(({ mode }) => ({ ... }))` is as common as the object form,

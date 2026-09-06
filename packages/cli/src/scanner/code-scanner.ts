@@ -372,6 +372,48 @@ const oxcFrontend = createOxcFrontend()
 const phpFrontend = createPhpFrontend()
 const bladeFrontend = createBladeFrontend()
 
+/**
+ * Files in flight while scanning. Reading and parsing a file is mostly waiting
+ * on the filesystem, so a handful of files in flight hides that latency; far
+ * more only multiplies open descriptors, and the parsing itself is single-
+ * threaded anyway.
+ */
+const FILE_SCAN_CONCURRENCY = 12
+
+/**
+ * Run `worker` over `items` with at most `limit` in flight, returning results
+ * in INPUT order — never completion order. Scan order is output order, and
+ * report bytes must not depend on which file finished first.
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+
+  const runner = async (): Promise<void> => {
+    for (let index = next++; index < items.length; index = next++) {
+      results[index] = await worker(items[index]!, index)
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runner))
+  return results
+}
+
+/** One file's evidence, held until the ordered merge pass consumes it. */
+interface ScannedFile {
+  relPath: string
+  usages: KeyUsage[]
+  dynamicKeys: DynamicKeyUsage[]
+  /** Call-site candidates first, then the context-free ones — the merge order the shared set sees. */
+  bareStrings: Set<string>
+  bareDynamics: Set<string>
+  declined: boolean
+}
+
 export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], patterns?: ScanPatternSet, frontends?: LanguageFrontend[]): Promise<ScanResult> {
   const pat = patterns ?? VUE_NUXT_PATTERNS
   const active = frontends ?? defaultFrontends(pat)
@@ -389,6 +431,27 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
     return { usages: [], dynamicKeys: [], filesScanned: 0, declinedFiles: [], uniqueKeys: new Set(), bareStringCandidates: new Set(), bareDynamicCandidates: new Set() }
   }
 
+  // Each file yields its own evidence, so reads and parses can overlap; the
+  // accumulators below are filled in a second, strictly ordered pass.
+  const scanned = await mapWithConcurrency(relativePaths, FILE_SCAN_CONCURRENCY, async (relPath): Promise<ScannedFile | null> => {
+    const filePath = join(rootDir, relPath)
+    let content: string
+    try {
+      content = await readFile(filePath, 'utf-8')
+    } catch {
+      return null
+    }
+
+    const constTable = (pat.bareShapes ?? 'js') === 'js' ? collectConstKeyTable(content) : new Map<string, string>()
+    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls, declined } = await extractFileEvidence(content, filePath, active, pat)
+
+    const bareStrings = new Set(bareFromCalls)
+    const bareDynamics = new Set<string>()
+    collectBareCandidates(content, constTable, bareStrings, bareDynamics, pat.bareShapes)
+
+    return { relPath, usages, dynamicKeys, bareStrings, bareDynamics, declined }
+  })
+
   const allUsages: KeyUsage[] = []
   const allDynamicKeys: DynamicKeyUsage[] = []
   const bareStringCandidates = new Set<string>()
@@ -396,24 +459,17 @@ export async function scanSourceFiles(rootDir: string, excludeDirs?: string[], p
   const declinedFiles: string[] = []
   let filesScanned = 0
 
-  for (const relPath of relativePaths) {
-    const filePath = join(rootDir, relPath)
-    let content: string
-    try {
-      content = await readFile(filePath, 'utf-8')
-    } catch {
-      log.warn(`Failed to read file: ${filePath}`)
+  for (const [index, file] of scanned.entries()) {
+    if (!file) {
+      // Warned here rather than in the worker, so the log reads in scan order too.
+      log.warn(`Failed to read file: ${join(rootDir, relativePaths[index]!)}`)
       continue
     }
-
-    const constTable = (pat.bareShapes ?? 'js') === 'js' ? collectConstKeyTable(content) : new Map<string, string>()
-    const { usages, dynamicKeys, bareStringCandidates: bareFromCalls, declined } = await extractFileEvidence(content, filePath, active, pat)
-    if (declined) declinedFiles.push(relPath)
-    allUsages.push(...usages)
-    allDynamicKeys.push(...dynamicKeys)
-    for (const candidate of bareFromCalls) bareStringCandidates.add(candidate)
-
-    collectBareCandidates(content, constTable, bareStringCandidates, bareDynamicCandidates, pat.bareShapes)
+    if (file.declined) declinedFiles.push(file.relPath)
+    allUsages.push(...file.usages)
+    allDynamicKeys.push(...file.dynamicKeys)
+    for (const candidate of file.bareStrings) bareStringCandidates.add(candidate)
+    for (const candidate of file.bareDynamics) bareDynamicCandidates.add(candidate)
 
     filesScanned++
   }

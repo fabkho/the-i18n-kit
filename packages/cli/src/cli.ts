@@ -4,11 +4,10 @@ import { commands as allCommands } from './commands/index.js'
 import type { CommandEntry } from './commands/index.js'
 import { emitErrorResult } from './commands/_shared.js'
 
-// Which commands are hidden is declared on the registry entries themselves, so
-// there is no second list here to fall out of step with it (#370).
+// Every registered command is a subcommand. There is no filter here, and no
+// second list to fall out of step with the registry.
 const commands = Object.fromEntries(
   Object.entries(allCommands as Record<string, CommandEntry>)
-    .filter(([, entry]) => !entry.hidden)
     .map(([name, entry]) => [name, entry.load]),
 )
 

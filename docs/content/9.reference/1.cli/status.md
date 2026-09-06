@@ -21,5 +21,6 @@ the-i18n-cli status
 | --- | --- | --- | --- | --- |
 | `--layer` | `string` | no | — | Filter to a specific layer |
 | `--ref` | `string` | no | — | Reference locale (default: project default) |
+| `--listEmpty` | `boolean` | no | `false` | Also list the keys whose value is an empty string, under "empty" |
 | `--outputFile` | `string` | no | — | Write the full breakdown to this file path and return only a summary |
 | `--failUnder` | `string` | no | — | Exit 2 when overall completion is below this percentage (CI gate) |

@@ -6,6 +6,7 @@ import { GenericAdapter } from '../../src/adapters/generic/index'
 import { registerAdapter, resetRegistry, detectFramework } from '../../src/adapters/registry'
 import { NuxtAdapter } from '../../src/adapters/nuxt/index'
 import { LaravelAdapter } from '../../src/adapters/laravel/index'
+import { loadProjectConfig } from '../../src/config/project-config'
 
 function createGenericProject(root: string, opts: {
   localeDirs?: Array<string | { path: string; layer: string }>
@@ -114,7 +115,7 @@ describe('GenericAdapter.resolve', () => {
     createGenericProject(tempDir, { localeNames: ['en', 'de', 'fr'] })
 
     const adapter = new GenericAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.rootDir).toBe(tempDir)
     expect(config.defaultLocale).toBe('en')
@@ -133,7 +134,7 @@ describe('GenericAdapter.resolve', () => {
     createGenericProject(tempDir, { structure: 'dir-json', localeNames: ['en', 'de'] })
 
     const adapter = new GenericAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
     expect(config.localeFileFormat).toBe('json')
@@ -143,7 +144,7 @@ describe('GenericAdapter.resolve', () => {
     createGenericProject(tempDir, { structure: 'dir-php', localeNames: ['en', 'de'] })
 
     const adapter = new GenericAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
     expect(config.localeFileFormat).toBe('php-array')
@@ -157,7 +158,7 @@ describe('GenericAdapter.resolve', () => {
     })
 
     const adapter = new GenericAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['en', 'de'])
   })
@@ -172,7 +173,7 @@ describe('GenericAdapter.resolve', () => {
     })
 
     const adapter = new GenericAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeDirs).toHaveLength(2)
     expect(config.localeDirs[0].layer).toBe('ui')
@@ -184,7 +185,7 @@ describe('GenericAdapter.resolve', () => {
     createGenericProject(tempDir, { localeDirs: ['src/locales'] })
 
     const adapter = new GenericAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeDirs[0].layer).toBe('default')
   })
@@ -196,7 +197,7 @@ describe('GenericAdapter.resolve', () => {
     }))
 
     const adapter = new GenericAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('Locale directory does not exist')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('Locale directory does not exist')
   })
 
   it('throws when localeDirs is empty (e.g. via framework hint)', async () => {
@@ -206,7 +207,7 @@ describe('GenericAdapter.resolve', () => {
     }))
 
     const adapter = new GenericAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('GenericAdapter requires both')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('GenericAdapter requires both')
   })
 
   it('throws when no locale files are found', async () => {
@@ -218,7 +219,7 @@ describe('GenericAdapter.resolve', () => {
     }))
 
     const adapter = new GenericAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('No locale files found')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('No locale files found')
   })
 
   it('ignores non-locale files like index.json and README.md', async () => {
@@ -227,7 +228,7 @@ describe('GenericAdapter.resolve', () => {
     writeFileSync(join(tempDir, 'locales', 'README.md'), '# Readme')
 
     const adapter = new GenericAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['en'])
   })
@@ -237,7 +238,7 @@ describe('GenericAdapter.resolve', () => {
     writeFileSync(join(tempDir, 'locales', '.DS_Store'), '')
 
     const adapter = new GenericAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['en'])
   })
@@ -246,7 +247,7 @@ describe('GenericAdapter.resolve', () => {
     createGenericProject(tempDir)
 
     const adapter = new GenericAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.projectConfig).toBeDefined()
     expect(config.projectConfig!.defaultLocale).toBe('en')
@@ -275,13 +276,13 @@ describe('GenericAdapter with flat PHP locale files (#308)', () => {
   // Detection only looked for .php inside per-locale directories, so a flat
   // layout read as an empty directory and resolve threw "No locale files found".
   it('detects the format from flat .php files', async () => {
-    const config = await new GenericAdapter().resolve(tempDir)
+    const config = await new GenericAdapter().resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeFileFormat).toBe('php-array')
   })
 
   it('discovers the locales rather than failing', async () => {
-    const config = await new GenericAdapter().resolve(tempDir)
+    const config = await new GenericAdapter().resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
   })
@@ -289,7 +290,7 @@ describe('GenericAdapter with flat PHP locale files (#308)', () => {
   // `file` is what tells the reader there is a single file per locale. A
   // namespaced PHP layout has none, and leaves it unset.
   it('names the flat file on each locale', async () => {
-    const config = await new GenericAdapter().resolve(tempDir)
+    const config = await new GenericAdapter().resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.file)).toEqual(['de.php', 'en.php'])
   })
@@ -299,7 +300,7 @@ describe('GenericAdapter with flat PHP locale files (#308)', () => {
     mkdirSync(join(tempDir, 'lang', 'en'), { recursive: true })
     writeFileSync(join(tempDir, 'lang', 'en', 'auth.php'), '<?php\nreturn [\n  "failed" => "Failed",\n];\n')
 
-    const config = await new GenericAdapter().resolve(tempDir)
+    const config = await new GenericAdapter().resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeFileFormat).toBe('php-array')
     expect(config.locales.map(l => l.file)).toEqual([undefined])

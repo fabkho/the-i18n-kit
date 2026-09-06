@@ -173,16 +173,7 @@
 
   before_script:
     - if command -v apk >/dev/null; then apk add --no-cache git jq; fi
-    - |
-      # Install the CLI plus the SDK for the chosen provider (optional peer dep)
-      case "${I18N_PROVIDER:-}" in
-        openai)    SDK="openai" ;;
-        anthropic) SDK="@anthropic-ai/sdk" ;;
-        google)    SDK="@google/genai" ;;
-        *)         SDK="" ;;
-      esac
-      # --legacy-peer-deps: openai@5 declares peerOptional zod@^3, the CLI uses zod@^4
-      npm install -g --legacy-peer-deps "@the-i18n-kit/cli@${I18N_CLI_VERSION}" $SDK $I18N_INSTALL_PEER_DEPS
+    - npm install -g "@the-i18n-kit/cli@${I18N_CLI_VERSION}" $I18N_INSTALL_PEER_DEPS
 
   script:
     - |
@@ -373,7 +364,7 @@
 
       mkdir -p .i18n-reports
 
-      # remove-orphans is a dry run by default — it only reports.
+      # `orphans` only reports; deleting takes an explicit --remove.
       # --codequality-output feeds the MR Code Quality widget (needs the
       # default-branch baseline rule, see header comment).
       args="--codequality-output gl-codequality.json"
@@ -384,7 +375,7 @@
       # were found and the gate was requested, anything else non-zero means the
       # scan itself failed. The count below is for the summary banner only.
       set +e
-      the-i18n-cli remove-orphans $args > .i18n-reports/orphans.json
+      the-i18n-cli orphans $args > .i18n-reports/orphans.json
       STATUS=$?
       set -e
 

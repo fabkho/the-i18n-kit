@@ -1,23 +1,15 @@
 import type { CommandDef } from 'citty'
 
 /**
- * A registered command: its lazy loader, and whether the CLI exposes it.
+ * A registered command: nothing but its lazy loader.
  *
- * `hidden` sits on the entry rather than in a separate set so that adding a
- * command is one edit and the default is to be reachable. The set it replaced
- * lived in `cli.ts`, out of sight of anyone adding a command here, and the one
- * time it and the registry disagreed a documented command became uninvokable
- * (#307).
+ * There is no way to register a command the CLI does not expose. The flag that
+ * allowed it kept producing documented commands that printed "Unknown command"
+ * when anyone tried them, and every operation an MCP tool covers has to be
+ * reachable from a terminal or the two surfaces are not the same tool.
  */
 export interface CommandEntry {
   load: () => Promise<CommandDef>
-  /**
-   * Kept out of the executed map, not merely out of `--help`: a hidden name
-   * cannot be invoked at all. Nothing is hidden today; every command an MCP
-   * tool pairs with must be invocable from the terminal, or the docs describe
-   * a command that does not exist.
-   */
-  hidden?: true
 }
 
 const command = (load: () => Promise<{ default: unknown }>): CommandEntry => ({
@@ -26,44 +18,18 @@ const command = (load: () => Promise<{ default: unknown }>): CommandEntry => ({
 
 export const commands = {
   'init': command(() => import('./init.js')),
-  'detect': command(() => import('./detect.js')),
-  'list-dirs': command(() => import('./list-dirs.js')),
+  'discover': command(() => import('./discover.js')),
   'get': command(() => import('./get.js')),
   'write': command(() => import('./write.js')),
-  'add': command(() => import('./add.js')),
-  'update': command(() => import('./update.js')),
   'missing': command(() => import('./missing.js')),
   'status': command(() => import('./status.js')),
-  'empty': command(() => import('./empty.js')),
   'search': command(() => import('./search.js')),
   'remove': command(() => import('./remove.js')),
-  'rename': command(() => import('./rename.js')),
   'move': command(() => import('./move.js')),
   'translate': command(() => import('./translate.js')),
-  // Alias: same operation as `translate`, named to match the MCP tool
-  // translate_missing so docs can use one name across both surfaces.
-  'translate-missing': {
-    load: () => import('./translate.js').then((m) => {
-      const def = m.default as CommandDef
-      return {
-        ...def,
-        meta: { ...(def.meta as object), name: 'translate-missing', description: 'Alias of "translate" — matches the MCP tool translate_missing.' },
-      } as CommandDef
-    }),
-  },
   'translate-key': command(() => import('./translate-key.js')),
-  // Deliberately exposed: key-usage scanning has no other route on either
-  // surface, so hiding it made a documented command unreachable (#307).
-  'scan': command(() => import('./scan.js')),
   'check': command(() => import('./check.js')),
+  'orphans': command(() => import('./orphans.js')),
   'find-duplicates': command(() => import('./find-duplicates.js')),
-  'remove-orphans': command(() => import('./remove-orphans.js')),
   'scaffold': command(() => import('./scaffold.js')),
 } as const satisfies Record<string, CommandEntry>
-
-/** The names the CLI wires into citty — everything not marked hidden. */
-export function exposedCommandNames(): string[] {
-  return Object.entries(commands)
-    .filter(([, entry]) => !(entry as CommandEntry).hidden)
-    .map(([name]) => name)
-}

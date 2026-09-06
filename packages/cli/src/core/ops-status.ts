@@ -3,11 +3,13 @@
  */
 
 import { detectI18nConfig } from '../config/detector.js'
+import { buildLayerGraph } from '../config/layer-graph.js'
 import { readLocaleData, readLocaleDataIfPresent } from '../io/locale-data.js'
 import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { writeReportFile } from '../io/json-writer.js'
 import { findReferenceLocaleOrThrow, localeRefInfo, resolveLayersToScan } from './shared.js'
 import { resolveProtectedLocales } from './ops-translate.js'
+import { collectEmptyTranslations } from './ops-read.js'
 import { resolveOutputFile, resolveReportFilePath } from './report.js'
 import type { LocaleDefinition, LocaleDir, I18nConfig } from '../config/types.js'
 import type { TranslationStatusResult, LocaleStatus, LayerStatus } from './types.js'
@@ -78,6 +80,12 @@ function merge(into: Counts | undefined, from: Counts): void {
 export async function getTranslationStatus(opts: {
   layer?: string
   referenceLocale?: string
+  /**
+   * Also list the keys behind `summary.emptyKeys`, under `empty`. Off by
+   * default: the count is what a health check reads, and the list grows with
+   * the project.
+   */
+  listEmpty?: boolean
   projectDir?: string
   outputFile?: string
 }): Promise<TranslationStatusResult> {
@@ -106,11 +114,23 @@ export async function getTranslationStatus(opts: {
     }
   })
 
+  // The layer graph already knows which apps declare which layers; a layer no
+  // app consumes holds keys nothing can render, which no other tool reports.
+  const graph = buildLayerGraph(config)
+
   const layers: LayerStatus[] = [...byLayer.entries()].map(([layer, c]) => ({
     layer,
     ...c,
     completion: percent(c.translated, c.total),
+    consumedBy: graph.appsUsingLayer(layer),
   }))
+
+  // With one app (what every single-locale-dir adapter builds) every layer is
+  // either that app's or nobody's, and "nobody's" is then an artefact of the
+  // config rather than a monorepo smell. Only flag it where apps compete.
+  const unconsumedLayers = (config.apps ?? []).length > 1
+    ? layers.filter(l => l.consumedBy.length === 0).map(l => l.layer)
+    : []
 
   const counted = locales.filter(l => !l.protected)
   const overallTranslated = counted.reduce((n, l) => n + l.translated, 0)
@@ -119,9 +139,13 @@ export async function getTranslationStatus(opts: {
   const output: TranslationStatusResult = {
     locales,
     layers,
+    ...(opts.listEmpty
+      ? { empty: (await collectEmptyTranslations(config, { layer: opts.layer })).emptyKeys }
+      : {}),
     summary: {
       referenceLocale: localeRefInfo(refLocale),
       layersScanned: layersToScan.map(d => d.layer),
+      unconsumedLayers,
       localesChecked: counted.length,
       protectedLocales: locales.filter(l => l.protected).map(l => l.code),
       totalKeys: overallTotal,
