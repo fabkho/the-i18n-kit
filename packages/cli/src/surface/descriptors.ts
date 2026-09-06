@@ -519,6 +519,11 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         min: 1,
         description: 'Maximum number of keys per provider request. Default: 50. A lower value reduces per-batch risk and increases round trips.',
       },
+      overwriteStale: {
+        type: 'boolean',
+        default: false,
+        description: 'Also re-translate keys whose target value was written from source text that has changed since. Requires translationMemory in the project config — without it nothing is known to be stale and this changes nothing. Default: false, which reports those keys under "stale" and leaves their values alone.',
+      },
       dryRun: dryRun('Return which keys would be translated without calling the provider or writing files. Default: false.'),
       compact: {
         type: 'boolean',
@@ -550,6 +555,7 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         targetLocales: args.targetLocales,
         keys: args.keys,
         batchSize: args.batchSize,
+        overwriteStale: args.overwriteStale,
         dryRun: args.dryRun,
         compact: args.compact,
         projectDir: args.projectDir,

@@ -18,6 +18,7 @@ Find the keys missing in the target locales and translate them. Without a transl
 | `targetLocales` | `string[]` | no | Locale codes to translate into (e.g., ["de", "fr", "sv"]). Defaults to all locales except the reference. |
 | `keys` | `string[]` | no | Dot-path keys to translate (e.g., ["auth.login.title", "common.save"]). If omitted, translates every missing key in the layer. |
 | `batchSize` | `integer` | no | Maximum number of keys per provider request. Default: 50. A lower value reduces per-batch risk and increases round trips. |
+| `overwriteStale` | `boolean` | no | Also re-translate keys whose target value was written from source text that has changed since. Requires translationMemory in the project config — without it nothing is known to be stale and this changes nothing. Default: false, which reports those keys under "stale" and leaves their values alone. |
 | `dryRun` | `boolean` | no | Return which keys would be translated without calling the provider or writing files. Default: false. |
 | `compact` | `boolean` | no | Return a compact summary (totalTranslated, totalFailed, byLocale) instead of full per-locale results. Default: false. |
 | `projectDir` | `string` | no | Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |

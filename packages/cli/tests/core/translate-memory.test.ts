@@ -19,6 +19,7 @@ import type { TranslateMissingOptions, TranslateMissingResult } from '../../src/
 import { clearConfigCache } from '../../src/config/detector.js'
 import { clearFileCache } from '../../src/io/json-reader.js'
 import { fakeTranslator } from '../fixtures/translate-harness.js'
+import { runOperation } from '../fixtures/surface.js'
 
 /**
  * Translation memory: hashes of the source text each target was translated
@@ -260,6 +261,55 @@ describe('translateMissing with a translation memory', () => {
       de: sourceHash('Save'),
       fr: sourceHash('Save'),
     })
+  })
+})
+
+/**
+ * The surface path: what a terminal or an MCP host reaches. The core option is
+ * only worth having if a caller can ask for it, which is what the descriptor
+ * decides — and it took the same spelling on both surfaces.
+ */
+describe('overwriteStale through the operation descriptor', () => {
+  const runTranslate = async (dir: string, args: Record<string, unknown>): Promise<TranslateMissingResult> =>
+    await runOperation<TranslateMissingResult>(
+      'translate',
+      { projectDir: dir, layer: 'root', ...args },
+      { translateFn: fakeTranslator((_k, v) => `[cli] ${v}`) },
+    )
+
+  /** A project whose de/fr translations were made from source text since edited. */
+  async function projectWithStaleTargets(): Promise<string> {
+    const dir = await createProject({ translationMemory: true })
+    await translateAll(dir)
+    await editSource(dir, (data) => { data.greeting = 'Hi {name}' })
+    return dir
+  }
+
+  it('re-translates the stale keys when asked, and only then', async () => {
+    const untouched = await projectWithStaleTargets()
+    const rewritten = await projectWithStaleTargets()
+
+    const reported = await runTranslate(untouched, {})
+    expect(reported.results!.de!.stale).toEqual(['greeting'])
+    expect((await readLocale(untouched, 'de')).greeting).toBe('[t] Hello {name}')
+
+    const result = await runTranslate(rewritten, { overwriteStale: true })
+    expect(result.results!.de!.translated).toEqual(['greeting'])
+    expect(result.results!.de!.stale).toBeUndefined()
+    expect((await readLocale(rewritten, 'de')).greeting).toBe('[cli] Hi {name}')
+  })
+
+  it('changes nothing in a project without a translation memory', async () => {
+    const dir = await createProject()
+    await translateAll(dir)
+    await editSource(dir, (data) => { data.greeting = 'Hi {name}' })
+
+    const result = await runTranslate(dir, { overwriteStale: true })
+
+    // Nothing is known to be stale, so there is nothing to re-translate: the
+    // existing value stands, exactly as it does without the flag.
+    expect(result.summary.totalTranslated).toBe(0)
+    expect((await readLocale(dir, 'de')).greeting).toBe('[t] Hello {name}')
   })
 })
 
