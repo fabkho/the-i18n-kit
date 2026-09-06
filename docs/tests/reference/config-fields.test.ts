@@ -35,7 +35,7 @@ const model = buildConfigModel(source)
 /** The pages that link this reference, relative to the docs package. */
 const INBOUND_LINKS = [
   'content/5.configuration/1.where-config-lives.md',
-  'content/5.configuration/3.declared-vs-derived.md',
+  'content/2.getting-started/1.agent-setup.md',
 ]
 
 describe('the configuration reference against the config schema', () => {

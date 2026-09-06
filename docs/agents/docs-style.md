@@ -54,7 +54,7 @@ learnable.
 
 | Term | Means | Notes |
 |---|---|---|
-| **layer** | A scoped locale directory | **Define framework-neutrally on first use in any page that leans on it**: a Nuxt layer, a workspace package, a shared UI library, or an app in a monorepo. Readers on React or Laravel abandon the page if it reads as Nuxt-only. |
+| **layer** | A scoped locale directory | Defined once, framework-neutrally, on [Layers and the Consumer Graph](/monorepos/layers-and-consumer-graph). Every other page uses the word and links there. Do not restate the definition. |
 | **consumer graph** | Which apps consume which layers | The thing that makes usage evidence app-scoped. |
 | **adapter** | Per-framework detection and resolution | Not "plugin", not "driver". |
 | **surface** | CLI, MCP server, Nuxt module, ESLint plugin, CI integrations | Five surfaces, one engine. |
@@ -128,13 +128,35 @@ declare an ignore pattern, choose between two config files. Then state the
 consequence, not the mechanism: *"pin `defaultLocale` if the wrong one is
 picked"* rather than a paragraph on how the pick happens.
 
-Where the depth is genuinely valuable, it goes in **Extra Topics** — the last
-section in the nav, the way Vue keeps `Reactivity in Depth` under Extras rather
-than in the guide. Link to it from the page that raised the question. Do not
-inline it.
+Where the depth has nowhere to go, it goes nowhere. There is no Extra Topics
+section: material a reader cannot act on is deleted, not relocated.
 
-A "Limits" section is not internals. What a tool cannot see, and what it will
-therefore get wrong, is something a reader has to act on. Keep those.
+### State behavior, not claims
+
+Not "safe by default" — "`orphans` reports; nothing is deleted without
+`--remove`." Not "great for agents" — "a large report goes to a file and the
+caller gets a summary." Never name a function, module or file the reader cannot
+call.
+
+### State a limit where it changes what the reader does
+
+There is no mandatory `## Limits` section. A limit belongs inline at the point of
+decision, in the sentence that tells the reader what to do about it. A limit with
+no decision attached is deleted.
+
+### Budget
+
+A guide page targets 400 words and caps at 700. Over the cap, either the page is
+two pages or half of it is stated somewhere else already.
+
+### One canonical home
+
+Exit codes, gate flags, `failed` and `skipped` reason sets, the translate
+invariant, output diversion, the error shape and the environment variables live
+on [the agent contract](/getting-started/agent-contract) and nowhere else. Agent
+mode versus provider mode lives on
+[Translation Modes](/concepts/translation-modes). Every other page links; no
+other page restates.
 
 ## Formatting
 
@@ -192,21 +214,6 @@ because another docs site has it.
 Two callouts on a page is usually one too many. If everything is highlighted,
 nothing is.
 
-## Claims must have mechanisms
-
-The central discipline of this site. Every capability claim states the mechanism
-that delivers it, in the same breath.
-
-- Not "safe by default" — "`orphans` deletes nothing without `--remove`, and keys with
-  ambiguous evidence are never removed even when you confirm".
-- Not "great for agents" — "reports divert to a file on request, so a
-  thousand-key result never enters a context window".
-- Not "works with monorepos" — "usage is counted per consuming app, so a key
-  used in one app is not treated as protecting a key in another".
-
-If you cannot name the mechanism, you do not yet understand the feature well
-enough to write the sentence. Read the source or ask.
-
 ## Accuracy
 
 - **Verify every command, flag, tool name and config field against the shipped
@@ -225,13 +232,17 @@ enough to write the sentence. Read the source or ask.
 - [ ] No description subtitle — the sentence is under `seo:`
 - [ ] Opens with content, not with a description of the page
 - [ ] No banned words; no unbacked adjectives
-- [ ] Every claim names its mechanism
-- [ ] Vocabulary matches the table above, and "layer" is defined if leaned on
+- [ ] Behavior stated, not claimed
+- [ ] No private identifier in prose — nothing the reader cannot call
+- [ ] No issue links; no "previously", "earlier" or "no longer"; no rationale for
+      an implementation choice
+- [ ] Nothing on this page is stated on another page
+- [ ] Vocabulary matches the table above; "layer" is linked, not redefined
 - [ ] Package names are scoped
 - [ ] Every command, flag and field verified against source
 - [ ] Code blocks are labelled, copy-pasteable and complete
-- [ ] Links are relative; nothing points at a README that is about to shrink
+- [ ] Links are relative; every target exists as a page path
 - [ ] Reference material is linked, not restated
-- [ ] Limits and failure modes stated, not omitted
-- [ ] No mechanism a reader cannot act on; depth moved to Extra Topics
+- [ ] Limits stated where they change a decision, and nowhere else
+- [ ] Under 700 words
 - [ ] Read once end to end — does it sound like the rest of the site?

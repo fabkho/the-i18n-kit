@@ -24,5 +24,3 @@ the-i18n-cli status
 | `--listEmpty` | `boolean` | no | `false` | Also list the keys whose value is an empty string, under "empty" |
 | `--outputFile` | `string` | no | — | Write the full breakdown to this file path and return only a summary |
 | `--failUnder` | `string` | no | — | Exit 2 when overall completion is below this percentage (CI gate) |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

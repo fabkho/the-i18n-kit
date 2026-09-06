@@ -22,5 +22,3 @@ the-i18n-cli scaffold
 | `--locales` | `string` | no | — | Comma-separated locale codes to scaffold |
 | `--layer` | `string` | no | — | Filter to a specific layer |
 | `--dryRun` | `boolean` | no | `false` | Preview without writing |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

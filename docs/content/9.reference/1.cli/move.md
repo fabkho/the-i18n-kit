@@ -24,5 +24,3 @@ the-i18n-cli move --layer <layer> --key <key>
 | `--toLayer` | `string` | no | — | Layer to move it to (see layerGraph.shared in the discover output for where a shared key belongs). Omit to rename within the same layer |
 | `--newKey` | `string` | no | — | Key path to give it. Omit to keep the current path |
 | `--dryRun` | `boolean` | no | `false` | Preview changes without writing |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

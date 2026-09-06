@@ -21,6 +21,4 @@ The inverse of find_orphan_keys: find keys referenced in source code but defined
 
 ## Paired CLI Command
 
-The same operation runs from a terminal as [`the-i18n-cli check`](/reference/cli/check), whose page documents its flags. Both paths call the same `@the-i18n-kit/cli` functions, so the result is the same.
-
-Every tool is advertised by `the-i18n-mcp` and listed on the [MCP tools overview](/reference/mcp).
+The same operation runs from a terminal as [`the-i18n-cli check`](/reference/cli/check), whose page documents its flags.
