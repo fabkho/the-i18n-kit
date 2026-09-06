@@ -1,5 +1,22 @@
 # Changelog
 
+## [10.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-mcp-9.0.0...the-i18n-kit-mcp-10.0.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** search_translations (and `the-i18n-cli search`) returns `matches: [{ key, layers, value, locale, localeCount }]`, one row per key, where it returned `matches: [{ layer, locale, key, value }]`, one row per key and locale. `totalMatches` counts the rows either way, so it now counts keys. Pass `includeLocales: true` (`--includeLocales`) for the previous per-locale rows, unchanged in shape.
+
+### Features
+
+* **cli:** declared namespaces for keys the scanner cannot see ([#455](https://github.com/fabkho/the-i18n-kit/issues/455)) ([a2f95f5](https://github.com/fabkho/the-i18n-kit/commit/a2f95f5d16ac868b03360b46ccaf4b695ee74c0e))
+* **cli:** search returns one row per key, with fuzzy value matching ([#457](https://github.com/fabkho/the-i18n-kit/issues/457)) ([6b05d27](https://github.com/fabkho/the-i18n-kit/commit/6b05d27ba74e5957008a03499fa0c4eb18fc09cb))
+
+
+### Bug Fixes
+
+* **cli,mcp:** reject an out-of-project report path before the scan, not after ([091b63c](https://github.com/fabkho/the-i18n-kit/commit/091b63c8c3ae22ea0258859b5b239e608eceafad))
+
 ## [9.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-mcp-8.0.0...the-i18n-kit-mcp-9.0.0) (2026-09-06)
 
 

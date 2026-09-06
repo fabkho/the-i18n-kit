@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.0.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-cli-8.0.0...the-i18n-kit-cli-8.0.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* **cli,mcp:** reject an out-of-project report path before the scan, not after ([091b63c](https://github.com/fabkho/the-i18n-kit/commit/091b63c8c3ae22ea0258859b5b239e608eceafad))
+* **release:** root-relative extra-files, templates pin their CLI major, complete the 8.0.0 notes ([4882bc5](https://github.com/fabkho/the-i18n-kit/commit/4882bc57eb94f0b29eab60a5bdf8f5f70d7d62d3))
+
 ## [8.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-cli-7.0.0...the-i18n-kit-cli-8.0.0) (2026-09-06)
 
 
