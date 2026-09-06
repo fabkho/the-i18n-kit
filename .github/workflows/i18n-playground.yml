@@ -1,7 +1,7 @@
 name: i18n Playground E2E
 
 # Tests the auto-translate GitHub Action against playground/nuxt using the
-# LOCAL build of the-i18n-cli (not the npm release).
+# LOCAL build of @the-i18n-kit/cli (not the npm release).
 #
 # - pull_request: dry run only — no secrets needed, verifies install/invoke/JSON plumbing.
 # - workflow_dispatch: real translation + PR creation. Requires the provider's
@@ -62,8 +62,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the-i18n-cli
-        run: pnpm --filter the-i18n-cli build
+      - name: Build @the-i18n-kit/cli
+        run: pnpm --filter @the-i18n-kit/cli build
 
       # playground/nuxt lists @the-i18n-kit/nuxt in its modules, so loading its
       # config needs the module's dist to exist.
