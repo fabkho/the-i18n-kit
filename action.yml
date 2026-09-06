@@ -96,19 +96,9 @@ runs:
       shell: bash
       env:
         CLI_VERSION: ${{ inputs.cli_version }}
-        PROVIDER: ${{ inputs.provider }}
       run: |
         set -euo pipefail
-        # The provider SDKs are optional peer dependencies of the CLI — install
-        # the one matching the chosen provider alongside it.
-        case "$PROVIDER" in
-          openai)    SDK="openai" ;;
-          anthropic) SDK="@anthropic-ai/sdk" ;;
-          google)    SDK="@google/genai" ;;
-          *)         echo "::error::Unknown provider: $PROVIDER"; exit 1 ;;
-        esac
-        # --legacy-peer-deps: openai@5 declares peerOptional zod@^3, the CLI uses zod@^4
-        npm install -g --legacy-peer-deps "@the-i18n-kit/cli@${CLI_VERSION}" "$SDK"
+        npm install -g "@the-i18n-kit/cli@${CLI_VERSION}"
 
     - name: Translate missing keys
       id: translate
