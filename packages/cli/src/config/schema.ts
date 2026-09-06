@@ -143,7 +143,7 @@ export const projectConfigSchema = z.object({
   ])
     .describe(
       'Enable file output for diagnostic tools (get_missing_translations, search_translations, '
-      + 'find_orphan_keys, remove_orphan_keys). When set, each tool writes its full JSON report to '
+      + 'find_orphan_keys, find_undefined_keys). When set, each tool writes its full JSON report to '
       + '<reportOutput>/<toolName>.json and returns only a summary in the MCP response. Set to true '
       + 'for the default \'.i18n-reports/\' directory, or a string for a custom path.',
     )

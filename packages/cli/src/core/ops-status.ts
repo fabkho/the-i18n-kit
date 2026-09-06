@@ -9,6 +9,7 @@ import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { writeReportFile } from '../io/json-writer.js'
 import { findReferenceLocaleOrThrow, localeRefInfo, resolveLayersToScan } from './shared.js'
 import { resolveProtectedLocales } from './ops-translate.js'
+import { collectEmptyTranslations } from './ops-read.js'
 import { resolveOutputFile, resolveReportFilePath } from './report.js'
 import type { LocaleDefinition, LocaleDir, I18nConfig } from '../config/types.js'
 import type { TranslationStatusResult, LocaleStatus, LayerStatus } from './types.js'
@@ -79,6 +80,12 @@ function merge(into: Counts | undefined, from: Counts): void {
 export async function getTranslationStatus(opts: {
   layer?: string
   referenceLocale?: string
+  /**
+   * Also list the keys behind `summary.emptyKeys`, under `empty`. Off by
+   * default: the count is what a health check reads, and the list grows with
+   * the project.
+   */
+  listEmpty?: boolean
   projectDir?: string
   outputFile?: string
 }): Promise<TranslationStatusResult> {
@@ -132,6 +139,9 @@ export async function getTranslationStatus(opts: {
   const output: TranslationStatusResult = {
     locales,
     layers,
+    ...(opts.listEmpty
+      ? { empty: (await collectEmptyTranslations(config, { layer: opts.layer })).emptyKeys }
+      : {}),
     summary: {
       referenceLocale: localeRefInfo(refLocale),
       layersScanned: layersToScan.map(d => d.layer),

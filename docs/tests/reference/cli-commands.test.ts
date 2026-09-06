@@ -13,7 +13,6 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { commands } from '../../../packages/cli/src/commands/index.js'
 import { GATE_MARKER, buildCliModel } from '../../generate/reference/cli-model.js'
 import { buildReference } from '../../generate/reference/build.js'
 import { loadCliSource } from '../../generate/sources/cli.js'
@@ -33,21 +32,10 @@ const aliasNames = model.commands.flatMap(command =>
 )
 
 describe('the CLI reference against the command registry', () => {
-  it('documents every command the CLI exposes, on its own page or as an alias', () => {
+  it('documents every registered command, on its own page or as an alias', () => {
     const documented = new Set([...pagedCommands(output), ...aliasNames])
-    expect([...documented].sort()).toEqual([...source.exposed].sort())
-  })
-
-  it('documents no command the CLI filters out of its own registry', () => {
-    // Those cannot be invoked — running one prints "Unknown command". A page
-    // for one would document a command that fails when a reader tries it.
-    // Nothing is hidden today; the loop below is a guard for when something is.
-    const hidden = Object.keys(commands).filter(name => !source.exposed.includes(name))
-
-    for (const name of hidden) {
-      expect(output.has(`content/9.reference/1.cli/${name}.md`)).toBe(false)
-      expect(overview(output)).not.toContain(`\`${name}\``)
-    }
+    const registered = source.entries.map(entry => entry.name)
+    expect([...documented].sort()).toEqual([...registered].sort())
   })
 
   it('links every command page from the overview', () => {
@@ -95,12 +83,6 @@ describe('the CLI reference against the command registry', () => {
     // Guards against the intersection collapsing to nothing (every flag then
     // repeats on every page) or swallowing a genuinely command-specific flag.
     expect(model.sharedArgs.map(arg => arg.name).sort()).toEqual(['json', 'projectDir'])
-  })
-
-  it('folds translate-missing into translate rather than duplicating the page', () => {
-    expect(Object.keys(commands)).toContain('translate-missing')
-    expect(pagedCommands(output)).not.toContain('translate-missing')
-    expect(commandPage(output, 'translate')).toContain('translate-missing')
   })
 
   it('documents every gate flag the CLI declares on the overview', () => {

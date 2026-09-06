@@ -66,14 +66,11 @@ export interface ExitCodeValues {
 }
 
 export interface CliSource {
-  /** Registry order. Aliases are still present as their own entries. */
-  entries: CliCommandEntry[]
   /**
-   * The registry names the CLI actually exposes as subcommands. Anything
-   * registered but absent from this list is documented as unreachable rather
-   * than quietly published as though it worked.
+   * Registry order, and the whole surface: every registered command is a
+   * subcommand the CLI exposes. Aliases are still present as their own entries.
    */
-  exposed: readonly string[]
+  entries: CliCommandEntry[]
   exitCodes: ExitCodeValues
 }
 
@@ -238,7 +235,7 @@ export interface CommandDoc {
   description: string
   /** Every declared flag, shared ones included. The builder does the split. */
   args: ArgDoc[]
-  /** False when the registry holds the command but the CLI does not expose it. */
+  /** Other registry names resolving to this same command. */
   aliases: AliasDoc[]
   /** The gates the factory evaluates for this command, flagged or always on. */
   gates: GateSpecLike[]

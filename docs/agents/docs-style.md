@@ -197,7 +197,7 @@ nothing is.
 The central discipline of this site. Every capability claim states the mechanism
 that delivers it, in the same breath.
 
-- Not "safe by default" — "`remove-orphans` previews by default, and keys with
+- Not "safe by default" — "`orphans` deletes nothing without `--remove`, and keys with
   ambiguous evidence are never removed even when you confirm".
 - Not "great for agents" — "reports divert to a file on request, so a
   thousand-key result never enters a context window".

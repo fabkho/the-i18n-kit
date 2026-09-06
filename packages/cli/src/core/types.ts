@@ -3,11 +3,37 @@
  * These are plain objects — no MCP content wrappers.
  */
 
-// ─── detect_i18n_config ──────────────────────────────────────────
+// ─── discover ────────────────────────────────────────────────────
 // Returns I18nConfig directly (re-exported from config/types)
 export type { I18nConfig } from '../config/types.js'
+import type { I18nConfig } from '../config/types.js'
+import type { SerializedLayerGraph } from '../config/layer-graph.js'
 import type { LocaleRefAmbiguity } from './shared.js'
 export type { LocaleRefAmbiguity } from './shared.js'
+
+/**
+ * The whole resolved project in one answer: the config, the locale dirs behind
+ * it, the topology those dirs form, and which locales are maintained by hand.
+ *
+ * A superset of `I18nConfig` rather than a wrapper around it, because every
+ * caller of the old three-call sequence merged the parts anyway and a nested
+ * `config` key would break each of them for nothing.
+ */
+export interface DescribeProjectResult extends I18nConfig {
+  /**
+   * Canonical codes of the locales the translate operations leave alone. The
+   * raw refs stay visible under `projectConfig.protectedLocales`.
+   */
+  protectedLocales: string[]
+  /** One entry per locale directory, with file counts and key namespaces. */
+  layers: LocaleDirInfo[]
+  /**
+   * Which layers are shared, which apps consume which layer, and what each
+   * alias points at — the topology behind the flat `layers` list, and what
+   * answers where a new key belongs.
+   */
+  layerGraph: SerializedLayerGraph
+}
 
 // ─── list_locale_dirs ────────────────────────────────────────────
 
@@ -24,7 +50,7 @@ export interface LocaleDirInfo {
 // Returns Record<string, Record<string, unknown>>
 // (locale code → key → value)
 
-// ─── add / update translations ───────────────────────────────────
+// ─── write translations ──────────────────────────────────────────
 
 export interface MutationPreview {
   locale: string
@@ -84,28 +110,6 @@ export interface MutationResult {
   ambiguousLocales?: LocaleRefAmbiguity[]
 }
 
-export interface AddTranslationsResult {
-  /** Present when dryRun=true */
-  dryRun?: boolean
-  wouldAdd?: MutationPreview[]
-  /** Present when dryRun=false */
-  added?: string[]
-  skipped: string[]
-  filesWritten?: number
-  warnings?: string[]
-  /** Present only when a locale ref resolved to nothing — see UnresolvedLocaleRef. */
-  unresolvedLocales?: UnresolvedLocaleRef[]
-  /** Present only when a locale ref matched several locales. */
-  ambiguousLocales?: LocaleRefAmbiguity[]
-  placeholderValidation?: PlaceholderValidationResult
-  summary?: {
-    keysToAdd: number
-    keysSkipped: number
-    message: string
-  }
-  skippedKeys?: string[]
-}
-
 export interface WriteTranslationsResult {
   /** Present when dryRun=true */
   dryRun?: boolean
@@ -122,27 +126,6 @@ export interface WriteTranslationsResult {
   ambiguousLocales?: LocaleRefAmbiguity[]
   summary?: {
     keysWritten: number
-    keysSkipped: number
-    message: string
-  }
-  skippedKeys?: string[]
-}
-
-export interface UpdateTranslationsResult {
-  /** Present when dryRun=true */
-  dryRun?: boolean
-  wouldUpdate?: MutationPreview[]
-  /** Present when dryRun=false */
-  updated?: string[]
-  skipped: string[]
-  filesWritten?: number
-  /** Present only when a locale ref resolved to nothing — see UnresolvedLocaleRef. */
-  unresolvedLocales?: UnresolvedLocaleRef[]
-  /** Present only when a locale ref matched several locales. */
-  ambiguousLocales?: LocaleRefAmbiguity[]
-  placeholderValidation?: PlaceholderValidationResult
-  summary?: {
-    keysToUpdate: number
     keysSkipped: number
     message: string
   }
@@ -261,12 +244,19 @@ export interface TranslationStatusSummary {
 export interface TranslationStatusResult {
   locales?: LocaleStatus[]
   layers?: LayerStatus[]
+  /**
+   * Locale → layer → the keys whose value is an empty string. Present only when
+   * the caller asked to list them; `summary.emptyKeys` counts them either way.
+   * Added to the result rather than replacing it, so asking which keys are
+   * empty still answers the coverage question that prompted it.
+   */
+  empty?: Record<string, Record<string, string[]>>
   summary: TranslationStatusSummary
   /** Present when the full breakdown went to a file instead. */
   reportFile?: string
 }
 
-// ─── find_empty_translations ─────────────────────────────────────
+// ─── empty translations ────────────────────────────────────────────
 
 export interface EmptyTranslationsResult {
   /** Absent when the full report went to `reportFile` instead. */
@@ -355,6 +345,13 @@ export interface MoveTranslationKeyPlanEntry {
    */
   action: 'move' | 'deduplicate'
 }
+
+/**
+ * What a move returns: a rename result when the key stayed in its layer, a move
+ * result when it changed layers. A union rather than one merged shape, so
+ * neither half carries fields that can never be set for the other.
+ */
+export type MoveTranslationKeyOutcome = MoveTranslationKeyResult | RenameTranslationKeyResult
 
 export interface MoveTranslationKeyResult {
   /** Present when dryRun=true */

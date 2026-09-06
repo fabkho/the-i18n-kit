@@ -2,12 +2,11 @@
 
 // Core operations
 export {
+  describeProject,
   detectConfig,
   listLocaleDirs,
   getTranslations,
   writeTranslations,
-  addTranslations,
-  updateTranslations,
   getMissingTranslations,
   getTranslationStatus,
   findEmptyTranslations,

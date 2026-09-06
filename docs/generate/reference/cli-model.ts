@@ -33,7 +33,7 @@ export interface CliModel {
 }
 
 export function buildCliModel(source: CliSource): CliModel {
-  const commands = foldAliases(source.entries, new Set(source.exposed))
+  const commands = foldAliases(source.entries)
   return { commands, sharedArgs: sharedArgs(commands) }
 }
 
@@ -84,25 +84,17 @@ function sameArg(a: ArgDoc, b: ArgDoc): boolean {
 /**
  * Group entries that resolve to the same handler.
  *
- * `translate-missing` re-exports `translate` with different metadata so the CLI
- * and the MCP tool `translate_missing` can be documented under one operation.
- * Comparing handler identity rather than matching on the description means a
- * future alias folds in without a generator change, and a command that merely
- * happens to be described similarly is never mistaken for one.
+ * The registry holds no alias today. The folding stays because comparing
+ * handler identity is what lets one be added without a generator change — a
+ * second name for one operation gets a mention on that operation's page rather
+ * than a page of its own — and because a command that merely happens to be
+ * described similarly is never mistaken for one.
  */
-function foldAliases(entries: CliCommandEntry[], exposed: Set<string>): CommandDoc[] {
+function foldAliases(entries: CliCommandEntry[]): CommandDoc[] {
   const byHandler = new Map<unknown, CommandDoc>()
   const commands: CommandDoc[] = []
 
   for (const entry of entries) {
-    // Commands the CLI filters out of its own registry cannot be invoked at
-    // all — running one prints "Unknown command". They are internal on purpose:
-    // `discover` covers `detect` and `list-dirs`, and `find_empty_translations`
-    // covers `empty`, so the operations are reachable, just not as commands.
-    // Documenting them, even behind a warning, publishes an internal decision
-    // as though it were a gap in the tool.
-    if (!exposed.has(entry.name)) continue
-
     const handler = entry.def.run
     const target = handler === undefined ? undefined : byHandler.get(handler)
     if (target !== undefined) {

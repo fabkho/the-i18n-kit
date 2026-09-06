@@ -1,20 +1,49 @@
 /**
- * Read-only operations: config detection, locale-dir listing, translation
- * lookup/search, missing/empty detection, and namespace browsing.
+ * Read-only operations: project discovery, config detection, locale-dir
+ * listing, translation lookup/search, missing/empty detection, and namespace
+ * browsing.
  */
 
 import { readdir } from 'node:fs/promises'
 
 import { detectI18nConfig, clearConfigCache } from '../config/detector.js'
+import { serializeLayerGraph } from '../config/layer-graph.js'
 import type { I18nConfig } from '../config/types.js'
 import { writeReportFile } from '../io/json-writer.js'
 import { readLocaleData, readLocaleDataIfPresent, resolveLocaleEntries } from '../io/locale-data.js'
 import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { ToolError } from '../utils/errors.js'
 
-import type { LocaleDirInfo, SearchMatch, MissingTranslationsResult, EmptyTranslationsResult } from './types.js'
+import type { DescribeProjectResult, LocaleDirInfo, SearchMatch, MissingTranslationsResult, EmptyTranslationsResult } from './types.js'
 import { findLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, localeRefInfo, resolveLayersToScan } from './shared.js'
+import { resolveProtectedLocales } from './ops-translate.js'
 import { resolveOutputFile, resolveReportFilePath } from './report.js'
+
+/**
+ * Everything a caller needs to know about a project before touching it:
+ * resolved config, locale directories, the layer topology, and which locales
+ * are hand-maintained.
+ *
+ * This composition used to live in the MCP `discover` handler, so the terminal
+ * had no way to ask the question its own docs told people to ask — and the two
+ * surfaces would have had to be kept in step by hand once one of them grew a
+ * field. Callers add whatever is theirs alone (the MCP server adds the
+ * translation backend it resolved at startup); the project half is here.
+ */
+export async function describeProject(opts: {
+  projectDir?: string
+} = {}): Promise<DescribeProjectResult> {
+  // detectConfig first: it warms the config cache listLocaleDirs reuses.
+  const config = await detectConfig(opts.projectDir)
+  const layers = await listLocaleDirs(opts.projectDir)
+
+  return {
+    ...config,
+    protectedLocales: resolveProtectedLocales(config).map(l => l.code),
+    layers,
+    layerGraph: serializeLayerGraph(config),
+  }
+}
 
 /**
  * Detect the i18n configuration from the project, always bypassing the
@@ -253,6 +282,38 @@ export async function findEmptyTranslations(opts: {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
+  const output = await collectEmptyTranslations(config, { layer, locale })
+
+  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_empty_translations')
+  if (reportPath) {
+    await writeReportFile(reportPath, output, {
+      tool: 'find_empty_translations',
+      args: { layer, locale },
+    })
+    return { reportFile: reportPath, summary: output.summary }
+  }
+
+  return output
+}
+
+/**
+ * The scan behind {@link findEmptyTranslations}, without the report-file
+ * plumbing around it.
+ *
+ * Separate so `getTranslationStatus` can embed the listing under its own
+ * `--list-empty` flag: routed through the public function it would divert to a
+ * file of its own whenever `reportOutput` is configured, and the status result
+ * would arrive with the section it was asked for missing.
+ */
+export async function collectEmptyTranslations(
+  config: I18nConfig,
+  opts: { layer?: string, locale?: string },
+): Promise<{
+  emptyKeys: Record<string, Record<string, string[]>>
+  summary: { totalEmpty: number, localesChecked: string[], layersChecked: string[] }
+}> {
+  const { layer, locale } = opts
+
   const localesToCheck = locale
     ? (() => {
         const loc = findLocaleImpl(config, locale)
@@ -295,7 +356,7 @@ export async function findEmptyTranslations(opts: {
     }
   }
 
-  const output = {
+  return {
     emptyKeys,
     summary: {
       totalEmpty,
@@ -303,17 +364,6 @@ export async function findEmptyTranslations(opts: {
       layersChecked: layersToScan.map(d => d.layer),
     },
   }
-
-  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_empty_translations')
-  if (reportPath) {
-    await writeReportFile(reportPath, output, {
-      tool: 'find_empty_translations',
-      args: { layer, locale },
-    })
-    return { reportFile: reportPath, summary: output.summary }
-  }
-
-  return output
 }
 
 /**
@@ -342,7 +392,7 @@ export async function searchTranslations(opts: {
     if (layer && layer !== '*') {
       findLayerOrThrow(config, layer)
     }
-    throw new ToolError('No locale directories found. Run detect_i18n_config to verify the project setup.', 'LAYER_NOT_FOUND')
+    throw new ToolError('No locale directories found. Run discover to verify the project setup.', 'LAYER_NOT_FOUND')
   }
 
   const localesToSearch = locale

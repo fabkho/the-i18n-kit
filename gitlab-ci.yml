@@ -364,7 +364,7 @@
 
       mkdir -p .i18n-reports
 
-      # remove-orphans is a dry run by default — it only reports.
+      # `orphans` only reports; deleting takes an explicit --remove.
       # --codequality-output feeds the MR Code Quality widget (needs the
       # default-branch baseline rule, see header comment).
       args="--codequality-output gl-codequality.json"
@@ -375,7 +375,7 @@
       # were found and the gate was requested, anything else non-zero means the
       # scan itself failed. The count below is for the summary banner only.
       set +e
-      the-i18n-cli remove-orphans $args > .i18n-reports/orphans.json
+      the-i18n-cli orphans $args > .i18n-reports/orphans.json
       STATUS=$?
       set -e
 

@@ -3,9 +3,10 @@
  *
  * The builder takes already-loaded sources, so a fixture is a plain object and
  * no test needs a repository on disk. Kept deliberately small: two commands
- * sharing a flag, one alias, one unexposed command — enough to exercise every
- * branch of the shared/specific split — two advertised tools, and an action
- * manifest carrying one input of each required/default combination.
+ * sharing a flag and one alias of one of them — enough to exercise every branch
+ * of the shared/specific split and the alias folding — two advertised tools,
+ * and an action manifest carrying one input of each required/default
+ * combination.
  */
 
 import type {
@@ -31,7 +32,6 @@ function handler(): Promise<void> {
 
 const scanHandler = handler
 const translateHandler = handler.bind(null)
-const hiddenHandler = handler.bind(null)
 
 export const SCAN_ENTRY: CliCommandEntry = {
   name: 'scan',
@@ -70,30 +70,19 @@ export const TRANSLATE_ALIAS_ENTRY: CliCommandEntry = {
   },
 }
 
-/** Registered but absent from the exposed list. */
-export const HIDDEN_ENTRY: CliCommandEntry = {
-  name: 'detect',
-  def: {
-    meta: { name: 'detect', description: 'Detect i18n configuration from the project' },
-    args: { ...SHARED_ARG_DEFS },
-    run: hiddenHandler,
-  },
-}
-
 export function fixtureCliSource(overrides: Partial<CliSource> = {}): CliSource {
   return {
-    entries: [SCAN_ENTRY, TRANSLATE_ENTRY, TRANSLATE_ALIAS_ENTRY, HIDDEN_ENTRY],
-    exposed: ['scan', 'translate', 'translate-missing'],
+    entries: [SCAN_ENTRY, TRANSLATE_ENTRY, TRANSLATE_ALIAS_ENTRY],
     exitCodes: { success: 0, runFailed: 1, gateTripped: 2 },
     ...overrides,
   }
 }
 
 /** Advertised with no paired CLI command, and with only the universal parameter. */
-export const DISCOVER_TOOL: McpToolListing = {
-  name: 'discover',
-  title: 'Discover i18n Setup',
-  description: 'Discover the complete i18n setup. Call this first.',
+export const UNPAIRED_TOOL: McpToolListing = {
+  name: 'list_namespaces',
+  title: 'List Namespaces',
+  description: 'List the translation key tree grouped by namespace prefix.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -137,7 +126,7 @@ export const TRANSLATE_MISSING_TOOL: McpToolListing = {
 }
 
 export function fixtureMcpSource(overrides: Partial<McpSource> = {}): McpSource {
-  return { tools: [DISCOVER_TOOL, TRANSLATE_MISSING_TOOL], ...overrides }
+  return { tools: [UNPAIRED_TOOL, TRANSLATE_MISSING_TOOL], ...overrides }
 }
 
 export function fixtureActionSource(overrides: Partial<ActionSource> = {}): ActionSource {

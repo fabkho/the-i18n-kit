@@ -4,8 +4,8 @@
  * Nothing here touches the filesystem: the builder takes already-loaded sources
  * and returns a map of output path to page content, so a fixture is a plain
  * object. These tests cover the rules the builder applies — the shared/specific
- * flag split, alias folding, the unexposed notice — independently of what the
- * CLI happens to register today.
+ * flag split, alias folding — independently of what the CLI happens to register
+ * today.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -13,10 +13,9 @@ import { CONFIG_REFERENCE_ROUTE } from '../../generate/reference/config-pages.js
 import { buildReference } from '../../generate/reference/build.js'
 import type { CliCommandEntry, ReferenceSources } from '../../generate/reference/types.js'
 import {
-  DISCOVER_TOOL,
+  UNPAIRED_TOOL,
   FIXTURE_SCHEMA,
   fixtureConfigSource,
-  HIDDEN_ENTRY,
   SCAN_ENTRY,
   TRANSLATE_ALIAS_ENTRY,
   TRANSLATE_ENTRY,
@@ -60,7 +59,7 @@ describe('buildReference', () => {
     }
   })
 
-  it('gives every exposed command a page, and every page a title and description', () => {
+  it('gives every registered command a page, and every page a title and description', () => {
     const output = build()
     expect(pagedCommands(output)).toEqual(new Set(['scan', 'translate']))
 
@@ -110,15 +109,6 @@ describe('buildReference', () => {
     expect(overview(output)).toContain(TRANSLATE_ALIAS_ENTRY.name)
   })
 
-  it('omits a command the CLI does not expose, and never mentions it', () => {
-    // The CLI filters these out of its own registry, so running one prints
-    // "Unknown command". Documenting an uninvokable command — even behind a
-    // warning — advertises an internal decision as a gap in the tool.
-    const output = build()
-    expect(output.has(`${CLI_DIR}/${HIDDEN_ENTRY.name}.md`)).toBe(false)
-    expect(overview(output)).not.toContain(HIDDEN_ENTRY.name)
-  })
-
   it('documents every exit code the CLI can set, and the gate flags that reach code 2', () => {
     const cli = fixtureCliSource({ exitCodes: { success: 0, runFailed: 3, gateTripped: 4 } })
     const markdown = overview(buildReference(fixtureSources({ cli })))
@@ -150,7 +140,6 @@ describe('buildReference', () => {
     }
     const cli = fixtureCliSource({
       entries: [...fixtureCliSource().entries, added],
-      exposed: [...fixtureCliSource().exposed, 'find-unused'],
     })
     const output = buildReference(fixtureSources({ cli }))
 
@@ -177,7 +166,7 @@ describe('the MCP tool reference, from a fixture listing', () => {
 
   it('gives every advertised tool a page, and links each from the overview', () => {
     const output = buildMcp()
-    expect(pagedTools(output)).toEqual(new Set(['discover', 'translate_missing']))
+    expect(pagedTools(output)).toEqual(new Set(['list_namespaces', 'translate_missing']))
 
     const markdown = mcpOverview(output)
     for (const name of pagedTools(output)) {
@@ -212,7 +201,7 @@ describe('the MCP tool reference, from a fixture listing', () => {
     const output = buildMcp()
     expect(section(toolPage(output, 'translate_missing'), '## Behavior Hints'))
       .toContain('readOnlyHint')
-    expect(() => section(toolPage(output, 'discover'), '## Behavior Hints')).toThrow()
+    expect(() => section(toolPage(output, 'list_namespaces'), '## Behavior Hints')).toThrow()
   })
 
   it('links a paired tool to the command page instead of restating its flags', () => {
@@ -222,14 +211,14 @@ describe('the MCP tool reference, from a fixture listing', () => {
   })
 
   it('documents a tool with no paired command without inventing one', () => {
-    const markdown = toolPage(buildMcp(), 'discover')
+    const markdown = toolPage(buildMcp(), 'list_namespaces')
     expect(markdown).not.toContain('/reference/cli/')
   })
 
-  it('refuses to build a pairing whose command the CLI does not expose', () => {
+  it('refuses to build a pairing whose command the CLI does not register', () => {
     // Otherwise the page ships a link to a command page that was never
     // generated, and the site build fails far from the cause.
-    const cli = fixtureCliSource({ exposed: ['scan'] })
+    const cli = fixtureCliSource({ entries: [SCAN_ENTRY] })
     expect(() => buildReference(fixtureSources({ cli }))).toThrow(/translate_missing/)
   })
 
@@ -244,7 +233,7 @@ describe('the MCP tool reference, from a fixture listing', () => {
         required: ['layer'],
       },
     }
-    const output = buildMcp(fixtureMcpSource({ tools: [DISCOVER_TOOL, added] }))
+    const output = buildMcp(fixtureMcpSource({ tools: [UNPAIRED_TOOL, added] }))
 
     const markdown = toolPage(output, added.name)
     expect(markdown).toContain(added.description)
