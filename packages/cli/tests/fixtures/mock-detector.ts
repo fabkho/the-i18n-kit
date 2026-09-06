@@ -7,6 +7,22 @@ export const monorepoDir = projectRootDir
 export const playgroundDir = resolve(import.meta.dirname, 'nuxt-project')
 export const appAdminDir = resolve(playgroundDir, 'app-admin')
 
+/** Hand-built configs a test registered for project dirs it created itself. */
+const registeredConfigs = new Map<string, I18nConfig>()
+
+/**
+ * Teach the mock about a project the fixture dirs do not cover — an mkdtemp
+ * directory a test wrote locale files into, with the config it wants detected
+ * for it.
+ *
+ * `vi.mock` replaces a module once per test file, so a file that already calls
+ * `registerDetectorMock` cannot add a second factory of its own; this is how it
+ * drives an operation against files it wrote itself instead.
+ */
+export function registerFixtureConfig(projectDir: string, config: I18nConfig): void {
+  registeredConfigs.set(projectDir, config)
+}
+
 /**
  * Register a `vi.mock` for `../../src/config/detector.js` that replaces
  * `detectI18nConfig`, `clearConfigCache`, and `getCachedConfig` with
@@ -49,7 +65,10 @@ export function registerDetectorMock(): void {
         }
 
         let config: I18nConfig
-        if (projectDir === playgroundDir) {
+        const registered = registeredConfigs.get(projectDir)
+        if (registered) {
+          config = registered
+        } else if (projectDir === playgroundDir) {
           config = createPlaygroundConfig()
         } else if (projectDir === appAdminDir) {
           config = createAppAdminConfig()

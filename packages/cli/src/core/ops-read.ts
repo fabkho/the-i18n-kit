@@ -19,7 +19,9 @@ import type {
   LocaleDirInfo,
   MissingTranslationsResult,
   EmptyTranslationsResult,
+  SearchKeyMatch,
   SearchMatch,
+  SearchMatchMode,
   SearchTranslationsResult,
 } from './types.js'
 import { findLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, localeRefInfo, resolveLayersToScan } from './shared.js'
@@ -350,11 +352,121 @@ export async function collectEmptyTranslations(
 }
 
 /**
- * Search translation files by key pattern or value substring.
+ * Everything a comparison should ignore when the question is whether a
+ * translation for some text already exists: case, accents, punctuation and how
+ * much whitespace sits between the words. "Save changes!" and "save  changes"
+ * are the same phrase to whoever is deciding whether to reuse the key.
+ */
+function normalizeForMatch(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+/**
+ * How much of two normalized strings is the same words (Sørensen–Dice over
+ * tokens). Word order and the words neither side shares are what it ignores,
+ * which is what "Save your changes" and "Changes saved" need it to ignore —
+ * and what keeps "Save" away from "Delete".
+ */
+function tokenSimilarity(a: string, b: string): number {
+  const left = new Set(a.split(' ').filter(Boolean))
+  const right = new Set(b.split(' ').filter(Boolean))
+  if (left.size === 0 || right.size === 0) return 0
+
+  let shared = 0
+  for (const token of left) {
+    if (right.has(token)) shared++
+  }
+  return (2 * shared) / (left.size + right.size)
+}
+
+/**
+ * Where a fuzzy match stops being one. Fixed rather than a parameter: a caller
+ * cannot calibrate a number it never sees the scores behind, and a threshold
+ * that moves would make the same query answer differently between runs.
+ */
+const FUZZY_THRESHOLD = 0.6
+
+/**
+ * The comparison one search runs against every key path and value, built once
+ * so the query is normalized once instead of per candidate.
+ */
+function buildMatcher(matchMode: SearchMatchMode, query: string): (candidate: string) => boolean {
+  if (matchMode === 'contains') {
+    const needle = query.toLowerCase()
+    return candidate => candidate.toLowerCase().includes(needle)
+  }
+
+  const normalizedQuery = normalizeForMatch(query)
+  if (matchMode === 'exact') {
+    return candidate => normalizeForMatch(candidate) === normalizedQuery
+  }
+
+  return (candidate) => {
+    if (normalizedQuery === '') return false
+    const normalized = normalizeForMatch(candidate)
+    // Containment first: a query that is one phrase of a longer value scores
+    // low on token overlap and is still exactly what the caller meant.
+    return normalized.includes(normalizedQuery)
+      || tokenSimilarity(normalizedQuery, normalized) >= FUZZY_THRESHOLD
+  }
+}
+
+/** One layer's file for one locale, read once and reused by both passes below. */
+interface LocaleSheet {
+  layer: string
+  locale: string
+  data: Record<string, unknown>
+}
+
+/**
+ * Collapse the detail rows to one row per key.
+ *
+ * `layers` and `localeCount` are counted over every sheet in scope rather than
+ * over the rows that matched: a key whose German value matched is still defined
+ * in the other six layers, and that is the fact the caller is asking for.
+ */
+function groupMatchesByKey(
+  matches: SearchMatch[],
+  sheets: LocaleSheet[],
+  referenceCode: string,
+): SearchKeyMatch[] {
+  const grouped: SearchKeyMatch[] = []
+
+  for (const key of new Set(matches.map(match => match.key))) {
+    const defining = sheets.filter(sheet => getNestedValue(sheet.data, key) !== undefined)
+    // The reference locale is what a caller reads the value in; any locale that
+    // has it beats reporting none at all when the reference locale does not.
+    const source = defining.find(sheet => sheet.locale === referenceCode) ?? defining[0]
+    if (!source) continue
+
+    grouped.push({
+      key,
+      layers: [...new Set(defining.map(sheet => sheet.layer))],
+      value: getNestedValue(source.data, key),
+      locale: source.locale,
+      localeCount: new Set(defining.map(sheet => sheet.locale)).size,
+    })
+  }
+
+  return grouped
+}
+
+/**
+ * Search translation files by key path or value.
+ *
+ * Returns one row per key. The detail rows — one per key and locale — are what
+ * `includeLocales` asks for.
  */
 export async function searchTranslations(opts: {
   query: string
   searchIn?: 'keys' | 'values' | 'both'
+  matchMode?: SearchMatchMode
+  includeLocales?: boolean
   layer?: string
   locale?: string
   projectDir?: string
@@ -364,7 +476,8 @@ export async function searchTranslations(opts: {
   const config = await detectI18nConfig(dir)
 
   const mode = opts.searchIn ?? 'both'
-  const queryLower = query.toLowerCase()
+  const matchMode = opts.matchMode ?? 'contains'
+  const isMatch = buildMatcher(matchMode, query)
 
   const layersToSearch = (layer && layer !== '*')
     ? config.localeDirs.filter(d => d.layer === layer)
@@ -387,39 +500,59 @@ export async function searchTranslations(opts: {
       })()
     : config.locales
 
-  const matches: SearchMatch[] = []
+  // The locale the grouped rows quote their value in. Resolved leniently: a
+  // project whose default locale is missing from its own locale list still
+  // searched fine before, and grouping is not the place to start refusing it.
+  const referenceLocale = findLocaleImpl(config, locale ?? config.defaultLocale) ?? localesToSearch[0]
 
+  // A normalized comparison run against thirty locales answers with the same
+  // keys and a translation in a language the caller did not ask about, so the
+  // two normalized modes compare against one locale: the requested one, or the
+  // project default. Substring search keeps looking everywhere, because that is
+  // what it did before and what finds a value by its German wording.
+  const localesToMatch = matchMode === 'contains' || locale || !referenceLocale
+    ? localesToSearch
+    : [referenceLocale]
+  const matchedCodes = new Set(localesToMatch.map(l => l.code))
+
+  const sheets: LocaleSheet[] = []
   for (const localeDir of layersToSearch) {
     for (const loc of localesToSearch) {
       const data = await readLocaleDataIfPresent(config, localeDir.layer, loc)
       if (!data) continue
+      sheets.push({ layer: localeDir.layer, locale: loc.code, data })
+    }
+  }
 
-      const leafKeys = getLeafKeys(data)
+  const matches: SearchMatch[] = []
 
-      for (const key of leafKeys) {
-        const value = getNestedValue(data, key)
-        const valueStr = typeof value === 'string' ? value : JSON.stringify(value)
+  for (const sheet of sheets) {
+    if (!matchedCodes.has(sheet.locale)) continue
 
-        const keyMatch = mode === 'keys' || mode === 'both'
-          ? key.toLowerCase().includes(queryLower)
-          : false
-        const valueMatch = mode === 'values' || mode === 'both'
-          ? valueStr.toLowerCase().includes(queryLower)
-          : false
+    for (const key of getLeafKeys(sheet.data)) {
+      const value = getNestedValue(sheet.data, key)
+      const valueStr = typeof value === 'string' ? value : (JSON.stringify(value) ?? '')
 
-        if (keyMatch || valueMatch) {
-          matches.push({
-            layer: localeDir.layer,
-            locale: loc.code,
-            key,
-            value,
-          })
-        }
+      const keyMatch = (mode === 'keys' || mode === 'both') && isMatch(key)
+      const valueMatch = (mode === 'values' || mode === 'both') && isMatch(valueStr)
+
+      if (keyMatch || valueMatch) {
+        matches.push({
+          layer: sheet.layer,
+          locale: sheet.locale,
+          key,
+          value,
+        })
       }
     }
   }
 
-  return { matches, totalMatches: matches.length }
+  if (opts.includeLocales) {
+    return { matches, totalMatches: matches.length }
+  }
+
+  const grouped = groupMatchesByKey(matches, sheets, referenceLocale?.code ?? config.defaultLocale)
+  return { matches: grouped, totalMatches: grouped.length }
 }
 
 // ─── list_namespaces ────────────────────────────────────────────
