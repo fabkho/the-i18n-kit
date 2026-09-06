@@ -16,7 +16,13 @@ import { BASE_URL_ENV } from '../llm/providers.js'
 // The two mappings a report can carry. Imported outright rather than per run
 // like the operations below: they are pure transforms over a result, with
 // nothing behind them but a hash and a path join.
-import { orphanResultToCodeQuality, undefinedKeysToCodeQuality } from '../core/codequality.js'
+import {
+  duplicateKeysToCodeQuality,
+  missingTranslationsToCodeQuality,
+  orphanResultToCodeQuality,
+  statusToCodeQuality,
+  undefinedKeysToCodeQuality,
+} from '../core/codequality.js'
 // The result types the report builders below are written against. Type-only,
 // so the core barrel is still not loaded to print usage text.
 import type { CheckUndefinedKeysResult } from '../core/ops-check.js'
@@ -286,6 +292,13 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       name: 'get_missing_translations',
       outputFile: { example: '/tmp/missing-translations.json' },
       summary: (result: MissingTranslationsResult) => result.summary,
+      codequality: {
+        findings: 'missing translations',
+        issues: (result: MissingTranslationsResult, ctx) => missingTranslationsToCodeQuality(result, {
+          config: ctx.config,
+          projectDir: ctx.projectDir,
+        }),
+      },
     },
     async run(args) {
       const { getMissingTranslations } = await core()
@@ -327,6 +340,16 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       // Summary only: the per-locale and per-layer arrays grow with the
       // project, and a health check must never flood a caller's context.
       summary: (result: TranslationStatusResult) => result.summary,
+      codequality: {
+        findings: 'incomplete locales and unconsumed layers',
+        // The gate's threshold is the report's threshold: a pipeline that asks
+        // to fail under 90% should not see a finding for every locale at 97%.
+        issues: (result: TranslationStatusResult, ctx) => statusToCodeQuality(result, {
+          config: ctx.config,
+          projectDir: ctx.projectDir,
+          failUnder: ctx.args.failUnder,
+        }),
+      },
     },
     async run(args) {
       const { getTranslationStatus } = await core()
@@ -496,6 +519,11 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         min: 1,
         description: 'Maximum number of keys per provider request. Default: 50. A lower value reduces per-batch risk and increases round trips.',
       },
+      overwriteStale: {
+        type: 'boolean',
+        default: false,
+        description: 'Also re-translate keys whose target value was written from source text that has changed since. Requires translationMemory in the project config — without it nothing is known to be stale and this changes nothing. Default: false, which reports those keys under "stale" and leaves their values alone.',
+      },
       dryRun: dryRun('Return which keys would be translated without calling the provider or writing files. Default: false.'),
       compact: {
         type: 'boolean',
@@ -527,6 +555,7 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         targetLocales: args.targetLocales,
         keys: args.keys,
         batchSize: args.batchSize,
+        overwriteStale: args.overwriteStale,
         dryRun: args.dryRun,
         compact: args.compact,
         projectDir: args.projectDir,
@@ -612,11 +641,20 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
     cli: { name: 'check' },
     mcp: { name: 'find_undefined_keys', title: 'Find Used-But-Undefined Translation Keys' },
     description: 'Find keys referenced in source code but defined in NO locale layer the using app consumes — the direction that ships raw keys to production.',
-    longDescription: 'The inverse of find_orphan_keys. Scope-aware: each scan unit (app) is checked against the layers it consumes (summary.searchedLayersByApp), so a key defined only in a layer the using app does not consume is still undefined for that app. Known limitation: extraction is line-based and static — dynamically built keys (template literals, concatenation) cannot be verified and are reported as uncertainKeys, never as hard findings.',
+    longDescription: 'The inverse of find_orphan_keys. Scope-aware: each scan unit (app) is checked against the layers it consumes (summary.searchedLayersByApp), so a key defined only in a layer the using app does not consume is still undefined for that app. Known limitation: extraction is line-based and static — dynamically built keys (template literals, concatenation) cannot be verified and are reported as uncertainKeys, never as hard findings. With write, the hard findings are also added to a locale file as empty translations, which is the first half of the fix; uncertain findings are never written.',
     params: {
       locale: {
         ...readLocale,
         description: 'Reference locale to resolve key definitions in (e.g., "en", "en-US"). Defaults to the project default locale.',
+      },
+      write: {
+        type: 'boolean',
+        default: false,
+        description: 'Add every undefined key to a locale file, with an empty string as its value, in the project default locale only. Existing values are never touched, and uncertain findings are never written. The layer is the one the using code resolves against; when that is more than one layer, the run refuses and asks for a layer name. Default: false, which only reports.',
+      },
+      layer: {
+        type: 'string',
+        description: 'Layer to write the undefined keys into (e.g., "root", "app-admin"). Only read together with write, and only needed when the using code resolves against more than one layer. Call discover to list the layers.',
       },
       scanDirs,
       excludeDirs,
@@ -629,6 +667,11 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
      *
      * Reads summary.undefinedCount, which the result carries whether or not it
      * was diverted to a file. Uncertain findings never trip it.
+     *
+     * A `write` run counts what it wrote out of that number: a key with a
+     * definition, even an empty one, no longer renders raw, so extracting every
+     * finding exits 0 and anything left over — a key the layer already defined,
+     * skipped by the add-only write — still exits 2.
      */
     gates: [{ name: 'undefined-keys', counter: 'undefinedCount', threshold: 0 }],
     report: {
@@ -645,6 +688,8 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       const { checkUndefinedKeys } = await core()
       return checkUndefinedKeys({
         locale: args.locale,
+        write: args.write,
+        layer: args.layer,
         scanDirs: args.scanDirs,
         excludeDirs: args.excludeDirs,
         projectDir: args.projectDir,
@@ -791,6 +836,14 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       name: 'find_duplicate_keys',
       outputFile: { example: '/tmp/duplicate-keys.json' },
       summary: (result: FindDuplicateKeysResult) => result.summary,
+      codequality: {
+        findings: 'duplicate keys',
+        issues: (result: FindDuplicateKeysResult, ctx) => duplicateKeysToCodeQuality(result, {
+          config: ctx.config,
+          projectDir: ctx.projectDir,
+          locale: ctx.args.locale,
+        }),
+      },
     },
     async run(args) {
       const { findDuplicateKeys } = await core()
