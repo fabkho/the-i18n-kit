@@ -3,6 +3,7 @@
  */
 
 import { detectI18nConfig } from '../config/detector.js'
+import { buildLayerGraph } from '../config/layer-graph.js'
 import { readLocaleData, readLocaleDataIfPresent } from '../io/locale-data.js'
 import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { writeReportFile } from '../io/json-writer.js'
@@ -106,11 +107,23 @@ export async function getTranslationStatus(opts: {
     }
   })
 
+  // The layer graph already knows which apps declare which layers; a layer no
+  // app consumes holds keys nothing can render, which no other tool reports.
+  const graph = buildLayerGraph(config)
+
   const layers: LayerStatus[] = [...byLayer.entries()].map(([layer, c]) => ({
     layer,
     ...c,
     completion: percent(c.translated, c.total),
+    consumedBy: graph.appsUsingLayer(layer),
   }))
+
+  // With one app (what every single-locale-dir adapter builds) every layer is
+  // either that app's or nobody's, and "nobody's" is then an artefact of the
+  // config rather than a monorepo smell. Only flag it where apps compete.
+  const unconsumedLayers = (config.apps ?? []).length > 1
+    ? layers.filter(l => l.consumedBy.length === 0).map(l => l.layer)
+    : []
 
   const counted = locales.filter(l => !l.protected)
   const overallTranslated = counted.reduce((n, l) => n + l.translated, 0)
@@ -122,6 +135,7 @@ export async function getTranslationStatus(opts: {
     summary: {
       referenceLocale: localeRefInfo(refLocale),
       layersScanned: layersToScan.map(d => d.layer),
+      unconsumedLayers,
       localesChecked: counted.length,
       protectedLocales: locales.filter(l => l.protected).map(l => l.code),
       totalKeys: overallTotal,

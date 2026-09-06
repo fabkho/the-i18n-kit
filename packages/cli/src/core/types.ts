@@ -232,11 +232,22 @@ export interface LayerStatus {
   missing: number
   empty: number
   completion: number
+  /**
+   * Apps whose declared layers include this one. Empty means either no app
+   * information exists (hand-built configs) or nothing consumes the layer.
+   */
+  consumedBy: string[]
 }
 
 export interface TranslationStatusSummary {
   referenceLocale: LocaleRefInfo
   layersScanned: string[]
+  /**
+   * Scanned layers no app consumes — keys nothing can render. Stays empty
+   * unless the project declares more than one app, since a single-app project
+   * has no consumption edges worth reporting on.
+   */
+  unconsumedLayers: string[]
   localesChecked: number
   protectedLocales: string[]
   totalKeys: number
