@@ -27,7 +27,7 @@ export class TranslateProviderError extends Error {
   }
 }
 
-/** Defensively extract an HTTP status code from an unknown SDK error shape. */
+/** Defensively extract an HTTP status code from an unknown error shape. */
 function extractStatus(error: unknown): number | undefined {
   if (error === null || typeof error !== 'object') return undefined
   const e = error as { status?: unknown, response?: unknown }
@@ -40,7 +40,7 @@ function extractStatus(error: unknown): number | undefined {
 }
 
 /**
- * Classify an SDK error into a TranslateProviderError:
+ * Classify a provider error into a TranslateProviderError:
  * 401/403 → auth, 429 → rate-limit, anything else → provider.
  * Already-classified errors pass through unchanged.
  */
@@ -100,32 +100,143 @@ function resolveApiKey(provider: LlmProvider, configKey?: string): string {
   const envKey = ENV_KEY_MAP[provider]
   const key = process.env[envKey]
   if (!key) {
-    throw new Error(
+    throw new TranslateProviderError(
       `No API key found for provider "${provider}". Set ${envKey} environment variable or pass apiKey in config.`,
+      'config',
     )
   }
   return key
 }
 
-async function createOpenAiTranslateFn(config: LlmProviderConfig): Promise<TranslateFn> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
-  let OpenAI: any
+// ─── HTTP transport ─────────────────────────────────────────────
+
+/** Default endpoints, each overridable through the base URL sources. */
+const DEFAULT_BASE_URL: Record<LlmProvider, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  google: 'https://generativelanguage.googleapis.com',
+}
+
+/**
+ * Per-request timeout, keeping the ten-minute default the provider SDKs
+ * applied before this transport existed. It is deliberately generous: every
+ * request asks for the same large token budget, and a slow endpoint — a
+ * self-hosted model behind a base URL above all — can take minutes to produce
+ * it. The ceiling only exists to stop a hung socket from stalling a run.
+ */
+const REQUEST_TIMEOUT_MS = 10 * 60 * 1000
+
+/** Join a base URL with a path, tolerating a trailing slash on the base. */
+function joinUrl(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}${path}`
+}
+
+/** Cap an untrusted provider body so it stays readable inside an error. */
+function summarize(raw: string): string {
+  const text = raw.trim()
+  return text.length > 300 ? `${text.slice(0, 300)}…` : text
+}
+
+/**
+ * Pull the human-readable message out of a provider error body. All three
+ * providers nest it under `error.message`; anything else — an HTML error page
+ * from a proxy, say — is reported verbatim but capped.
+ */
+function errorDetail(raw: string): string {
   try {
-    OpenAI = (await import('openai')).default as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    const body: unknown = JSON.parse(raw)
+    if (body !== null && typeof body === 'object') {
+      const { error, message } = body as { error?: unknown, message?: unknown }
+      const nested = error !== null && typeof error === 'object'
+        ? (error as { message?: unknown }).message
+        : error
+      if (typeof nested === 'string' && nested.trim() !== '') return nested
+      if (typeof message === 'string' && message.trim() !== '') return message
+    }
   } catch {
-    throw new Error(
-      'Provider "openai" requires the "openai" package. Install it with:\n  npm install openai\n  pnpm add openai\n  yarn add openai',
-    )
+    // Not JSON — the raw body is the best detail available.
+  }
+  return summarize(raw)
+}
+
+interface ProviderRequest {
+  provider: LlmProvider
+  url: string
+  headers: Record<string, string>
+  body: unknown
+}
+
+/**
+ * POST a JSON body and return the parsed response, mapping every failure onto
+ * a classified TranslateProviderError: an HTTP status keeps its meaning
+ * (401/403 auth, 429 rate limit), while network, timeout and malformed-body
+ * failures land on `provider` and are retried by the caller.
+ */
+async function postJson<T>(request: ProviderRequest): Promise<T> {
+  let response: Response
+  let raw: string
+  try {
+    response = await fetch(request.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...request.headers },
+      body: JSON.stringify(request.body),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    raw = await response.text()
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      throw new TranslateProviderError(
+        `Provider "${request.provider}" did not respond within ${REQUEST_TIMEOUT_MS / 1000}s.`,
+        'provider',
+      )
+    }
+    throw classifyProviderError(error)
   }
 
+  if (!response.ok) {
+    const failure = new Error(
+      `Provider "${request.provider}" request failed (HTTP ${response.status}): ${errorDetail(raw)}`,
+    ) as Error & { status: number }
+    failure.status = response.status
+    throw classifyProviderError(failure)
+  }
+
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    throw new TranslateProviderError(
+      `Provider "${request.provider}" returned a non-JSON response: ${summarize(raw)}`,
+      'provider',
+      response.status,
+    )
+  }
+}
+
+/** Assemble a TranslateResponse, omitting `truncated` unless it is true. */
+function toTranslateResponse(text: string, model: string | undefined, fallbackModel: string, truncated: boolean): TranslateResponse {
+  return { text, model: model || fallbackModel, ...(truncated ? { truncated: true } : {}) }
+}
+
+// ─── Providers ──────────────────────────────────────────────────
+
+interface OpenAiChatResponse {
+  model?: string
+  choices?: Array<{
+    message?: { content?: string | null }
+    finish_reason?: string
+  }>
+}
+
+function createOpenAiTranslateFn(config: LlmProviderConfig): TranslateFn {
   const apiKey = resolveApiKey('openai', config.apiKey)
-  const client = new OpenAI({ apiKey, baseURL: config.baseUrl })
+  const url = joinUrl(config.baseUrl ?? DEFAULT_BASE_URL.openai, '/chat/completions')
 
   return async (opts: TranslateRequest): Promise<TranslateResponse> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK types not available
-    let response: any
-    try {
-      response = await client.chat.completions.create({
+    const response = await postJson<OpenAiChatResponse>({
+      provider: 'openai',
+      url,
+      headers: { authorization: `Bearer ${apiKey}` },
+      body: {
         model: config.model,
         messages: [
           { role: 'system', content: opts.systemPrompt },
@@ -134,108 +245,100 @@ async function createOpenAiTranslateFn(config: LlmProviderConfig): Promise<Trans
         max_tokens: opts.maxTokens,
         temperature: 0,
         response_format: { type: 'json_object' },
-      })
-    } catch (error) {
-      throw classifyProviderError(error)
-    }
+      },
+    })
 
     const choice = response.choices?.[0]
-    const text = choice?.message?.content ?? ''
-    const truncated = choice?.finish_reason === 'length'
-    return { text, model: response.model || config.model, ...(truncated ? { truncated: true } : {}) }
+    return toTranslateResponse(
+      choice?.message?.content ?? '',
+      response.model,
+      config.model,
+      choice?.finish_reason === 'length',
+    )
   }
 }
 
-async function createGoogleTranslateFn(config: LlmProviderConfig): Promise<TranslateFn> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
-  let GoogleGenAI: any
-  try {
-    GoogleGenAI = (await import('@google/genai')).GoogleGenAI as any // eslint-disable-line @typescript-eslint/no-explicit-any
-  } catch {
-    throw new Error(
-      'Provider "google" requires the "@google/genai" package. Install it with:\n  npm install @google/genai\n  pnpm add @google/genai\n  yarn add @google/genai',
-    )
-  }
-
-  const apiKey = resolveApiKey('google', config.apiKey)
-  const client = new GoogleGenAI({ apiKey })
-
-  return async (opts: TranslateRequest): Promise<TranslateResponse> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK types not available
-    let response: any
-    try {
-      response = await client.models.generateContent({
-        model: config.model,
-        contents: opts.userMessage,
-        config: {
-          systemInstruction: opts.systemPrompt,
-          maxOutputTokens: opts.maxTokens,
-          temperature: 0,
-          responseMimeType: 'application/json',
-        },
-      })
-    } catch (error) {
-      throw classifyProviderError(error)
-    }
-
-    const text = response.text ?? ''
-    const truncated = response.candidates?.[0]?.finishReason === 'MAX_TOKENS'
-    return { text, model: response.modelVersion || config.model, ...(truncated ? { truncated: true } : {}) }
-  }
+interface AnthropicMessagesResponse {
+  model?: string
+  stop_reason?: string
+  content?: Array<{ type?: string, text?: string }>
 }
 
-async function createAnthropicTranslateFn(config: LlmProviderConfig): Promise<TranslateFn> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic import of optional peer dep
-  let Anthropic: any
-  try {
-    Anthropic = (await import('@anthropic-ai/sdk')).Anthropic as any // eslint-disable-line @typescript-eslint/no-explicit-any
-  } catch {
-    throw new Error(
-      'Provider "anthropic" requires the "@anthropic-ai/sdk" package. Install it with:\n  npm install @anthropic-ai/sdk\n  pnpm add @anthropic-ai/sdk\n  yarn add @anthropic-ai/sdk',
-    )
-  }
-
+function createAnthropicTranslateFn(config: LlmProviderConfig): TranslateFn {
   const apiKey = resolveApiKey('anthropic', config.apiKey)
-  const client = new Anthropic({ apiKey, baseURL: config.baseUrl })
+  const url = joinUrl(config.baseUrl ?? DEFAULT_BASE_URL.anthropic, '/v1/messages')
 
   return async (opts: TranslateRequest): Promise<TranslateResponse> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK types not available
-    let response: any
-    try {
-      response = await client.messages.create({
+    const response = await postJson<AnthropicMessagesResponse>({
+      provider: 'anthropic',
+      url,
+      headers: {
+        'x-api-key': apiKey,
+        // Pinned: the Messages API requires a version and an unpinned one would
+        // let a future breaking release reshape the response under us.
+        'anthropic-version': '2023-06-01',
+      },
+      body: {
         model: config.model,
         system: opts.systemPrompt,
         messages: [{ role: 'user', content: opts.userMessage }],
         max_tokens: opts.maxTokens,
         temperature: 0,
-      })
-    } catch (error) {
-      throw classifyProviderError(error)
-    }
+      },
+    })
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK types not available
-    const textBlock = response.content?.find((block: any) => block.type === 'text')
-    const text = textBlock?.text ?? ''
-    const truncated = response.stop_reason === 'max_tokens'
-    return { text, model: response.model || config.model, ...(truncated ? { truncated: true } : {}) }
+    // A reply arrives as a list of blocks; only the text ones carry the JSON.
+    const text = (response.content ?? [])
+      .filter(block => block?.type === 'text')
+      .map(block => block.text ?? '')
+      .join('')
+    return toTranslateResponse(text, response.model, config.model, response.stop_reason === 'max_tokens')
+  }
+}
+
+interface GoogleGenerateContentResponse {
+  modelVersion?: string
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> }
+    finishReason?: string
+  }>
+}
+
+function createGoogleTranslateFn(config: LlmProviderConfig): TranslateFn {
+  const apiKey = resolveApiKey('google', config.apiKey)
+  // The REST path already carries the `models/` prefix, so accept a model name
+  // written either way rather than producing `/models/models/gemini-…`.
+  const model = config.model.replace(/^models\//, '')
+  const url = joinUrl(config.baseUrl ?? DEFAULT_BASE_URL.google, `/v1beta/models/${model}:generateContent`)
+
+  return async (opts: TranslateRequest): Promise<TranslateResponse> => {
+    const response = await postJson<GoogleGenerateContentResponse>({
+      provider: 'google',
+      url,
+      headers: { 'x-goog-api-key': apiKey },
+      body: {
+        contents: [{ role: 'user', parts: [{ text: opts.userMessage }] }],
+        systemInstruction: { parts: [{ text: opts.systemPrompt }] },
+        generationConfig: {
+          maxOutputTokens: opts.maxTokens,
+          temperature: 0,
+          responseMimeType: 'application/json',
+        },
+      },
+    })
+
+    const candidate = response.candidates?.[0]
+    const text = (candidate?.content?.parts ?? []).map(part => part.text ?? '').join('')
+    return toTranslateResponse(text, response.modelVersion, config.model, candidate?.finishReason === 'MAX_TOKENS')
   }
 }
 
 /**
- * Create a TranslateFn from an LLM provider config.
- * Throws if the provider SDK is not installed or API key is missing.
+ * Create a TranslateFn from an LLM provider config. Every provider is called
+ * over plain HTTP, so nothing beyond the CLI has to be installed.
+ * Throws if the API key is missing.
  */
 export async function createTranslateFn(config: LlmProviderConfig): Promise<TranslateFn> {
-  // @google/genai exposes no endpoint override, so a base URL here would be
-  // silently ignored and translate against the wrong endpoint. Refuse loudly.
-  if (config.provider === 'google' && config.baseUrl) {
-    throw new TranslateProviderError(
-      'Provider "google" does not support a custom base URL. '
-      + `Remove --baseUrl / ${BASE_URL_ENV} / providerBaseUrl, or use an OpenAI-compatible provider.`,
-      'config',
-    )
-  }
-
   switch (config.provider) {
     case 'openai':
       return createOpenAiTranslateFn(config)
