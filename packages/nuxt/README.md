@@ -40,6 +40,19 @@ checkout that has never built.
 Removing the module is safe: the CLI falls back to loading the app through Nuxt,
 which is what it does for every project without it.
 
+The module does not touch ESLint. To lint i18n calls with `@nuxt/eslint`, add
+the addon from the plugin yourself:
+
+```ts
+// nuxt.config.ts
+import { i18nKitEslintAddon } from '@the-i18n-kit/eslint-plugin-vue/nuxt'
+
+export default defineNuxtConfig({
+  modules: ['@nuxt/eslint'],
+  hooks: { 'eslint:config:addons': addons => addons.push(i18nKitEslintAddon()) },
+})
+```
+
 → [The artifact, the two module options, and every fallback case](https://fabkho.github.io/the-i18n-kit/nuxt-module/artifact-and-options)
 
 ## Development
