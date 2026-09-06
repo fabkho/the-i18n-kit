@@ -11,17 +11,13 @@ import {
   getCachedConfig,
   readLocaleData,
   ToolError,
-  detectConfig,
-  listLocaleDirs,
-  serializeLayerGraph,
+  describeProject,
   getTranslations,
   writeTranslations,
   getMissingTranslations,
-  findEmptyTranslations,
   getTranslationStatus,
   searchTranslations,
   removeTranslations,
-  renameTranslationKey,
   moveTranslationKey,
   translateMissing,
   translateKey,
@@ -32,7 +28,6 @@ import {
   scaffoldLocaleFiles,
   listNamespaces,
   findLocaleImpl,
-  resolveProtectedLocales,
   toErrorMessage,
   createTranslateFn,
   resolveProviderBaseUrl,
@@ -267,23 +262,12 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     },
     async ({ projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
-        // detectConfig first: it warms the config cache listLocaleDirs reuses
-        const config = await detectConfig(projectDir)
-        const dirs = await listLocaleDirs(projectDir)
         return jsonContent({
-          ...config,
-          // Resolved canonical codes of human-maintained locales that the
-          // translate tools exclude from default targets (raw refs live in
-          // projectConfig.protectedLocales).
-          protectedLocales: resolveProtectedLocales(config).map(l => l.code),
-          layers: dirs,
-          // The topology behind that flat list: which layers are shared, which
-          // apps consume which layer, and what each alias points at. Without it
-          // an agent placing a key can only guess from layer names, which is
-          // how app-layer keys end up duplicating root keys (#342).
-          layerGraph: serializeLayerGraph(config),
-          // Active translation mode — lets operators verify env configuration
-          // without triggering a translation. Never includes the API key.
+          ...(await describeProject({ projectDir })),
+          // The one part of the answer that is the server's own rather than the
+          // project's: the active translation mode, which lets operators verify
+          // env configuration without triggering a translation. Never includes
+          // the API key.
           translationMode: backend.mode,
           ...(backend.provider ? { translationProvider: backend.provider } : {}),
           ...(backend.model ? { translationModel: backend.model } : {}),
@@ -325,39 +309,6 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('listing namespaces', error)
-      }
-    },
-  )
-
-  // ─── Tool: find_empty_translations ─────────────────────────────
-
-  server.registerTool(
-    'find_empty_translations',
-    {
-      title: 'Find Empty Translations',
-      description:
-        'Find keys whose value is an empty string. '
-        + 'These exist in the locale file, so they are not reported as missing, and they render as nothing in the UI. '
-        + 'Use this after a scaffold or an interrupted translation run to find keys that were created but never filled.',
-      inputSchema: z.object({
-        layer: z
-          .string()
-          .optional()
-          .describe('Layer name to filter by (e.g., "root", "app-admin"). If omitted, checks all layers. Call discover to discover available layers.'),
-        locale: z
-          .string()
-          .optional()
-          .describe('Locale to check (e.g., "de"). If omitted, checks every locale.'),
-        projectDir: projectDirInput(),
-        outputFile: outputFileInput('/tmp/empty-translations.json'),
-      }),
-    },
-    async ({ layer, locale, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
-      try {
-        const result = await findEmptyTranslations({ layer, locale, projectDir, outputFile })
-        return jsonContent(result)
-      } catch (error) {
-        return toolErrorResponse('finding empty translations', error)
       }
     },
   )
@@ -497,7 +448,7 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     {
       title: 'Get Translation Status',
       description:
-        'Translation coverage in one call: per-locale and per-layer counts of total, translated, missing and empty keys, plus an overall completion percentage. Use this instead of calling get_missing_translations per layer and counting keys yourself. Empty-string values count as untranslated. Locales listed in protectedLocales are reported but excluded from the overall figure, since they are maintained by hand.',
+        'Translation coverage in one call: per-locale and per-layer counts of total, translated, missing and empty keys, plus an overall completion percentage. Use this instead of calling get_missing_translations per layer and counting keys yourself. Empty-string values count as untranslated; set listEmpty to get the keys behind that count — they exist in the locale file, so they are never reported as missing, and they render as nothing in the UI. Locales listed in protectedLocales are reported but excluded from the overall figure, since they are maintained by hand.',
       inputSchema: z.object({
         layer: z
           .string()
@@ -507,6 +458,10 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Locale code used as the source of truth (e.g., "en", "en-US"). Defaults to the project default locale.'),
+        listEmpty: z
+          .boolean()
+          .optional()
+          .describe('When true, adds an "empty" section listing the keys whose value is an empty string, by locale and layer — useful after a scaffold or an interrupted translation run. Default: false, which returns counts only.'),
         projectDir: z
           .string()
           .optional()
@@ -517,9 +472,9 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .describe('Absolute path to write the full per-locale and per-layer breakdown. Returns only the summary to the caller.'),
       }),
     },
-    async ({ layer, referenceLocale, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
+    async ({ layer, referenceLocale, listEmpty, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
       try {
-        const result = await getTranslationStatus({ layer, referenceLocale, projectDir, outputFile })
+        const result = await getTranslationStatus({ layer, referenceLocale, listEmpty, projectDir, outputFile })
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('reading translation status', error)
@@ -611,28 +566,30 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
   server.registerTool(
     'move_translation_key',
     {
-      title: 'Move Translation Key Between Layers',
+      title: 'Move or Rename a Translation Key',
       description:
-        'Move a key from one layer to another, carrying every locale that defines it — promoting an '
-        + 'app-layer key to a shared layer once a second app needs it, or demoting a shared key that '
-        + 'turned out to be app-specific. Call discover first: layerGraph.shared names the layers more '
-        + 'than one app consumes. Writes nothing at all if the target layer already holds the key with '
-        + 'a different value in any locale; if it holds the same value, that locale is deduplicated '
-        + 'instead. Use dryRun to preview the plan.',
+        'Move a key to another layer, to another key path, or both, carrying every locale that '
+        + 'defines it. Pass toLayer to promote an app-layer key to a shared layer once a second app '
+        + 'needs it (or to demote a shared key that turned out to be app-specific); call discover '
+        + 'first, layerGraph.shared names the layers more than one app consumes. Pass newKey alone to '
+        + 'rename the key in place across every locale file of its layer. Writes nothing at all if the '
+        + 'destination already holds the key with a different value in any locale; if it holds the '
+        + 'same value, that locale is deduplicated instead. Use dryRun to preview the plan.',
       inputSchema: z.object({
-        fromLayer: z
+        layer: z
           .string()
           .describe('Layer the key lives in today, from discover. Example: "app-admin".'),
-        toLayer: z
-          .string()
-          .describe('Layer to move it to, from discover. Example: "root". Must differ from fromLayer — to rename within one layer, use rename_translation_key.'),
         key: z
           .string()
           .describe('Dot-separated key path to move. Example: "calendar.views.save".'),
+        toLayer: z
+          .string()
+          .optional()
+          .describe('Layer to move it to, from discover. Example: "root". Omit (or repeat layer) to rename the key within its current layer, which then requires newKey.'),
         newKey: z
           .string()
           .optional()
-          .describe('Key path in the target layer, when the move also renames it. Example: "common.actions.save". Defaults to the same path.'),
+          .describe('Key path to give it. Example: "common.actions.save". Omit to keep the current path, which then requires toLayer.'),
         dryRun: z
           .boolean()
           .optional()
@@ -643,49 +600,11 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .describe('Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd.'),
       }),
     },
-    async ({ fromLayer, toLayer, key, newKey, dryRun, projectDir = DEFAULT_PROJECT_DIR }) => {
+    async ({ layer, key, toLayer, newKey, dryRun, projectDir = DEFAULT_PROJECT_DIR }) => {
       try {
-        return jsonContent(await moveTranslationKey({ fromLayer, toLayer, key, newKey, dryRun, projectDir }))
+        return jsonContent(await moveTranslationKey({ layer, key, toLayer, newKey, dryRun, projectDir }))
       } catch (error) {
         return toolErrorResponse('moving translation key', error)
-      }
-    },
-  )
-
-  // ─── Tool: rename_translation_key ──────────────────────────────
-
-  server.registerTool(
-    'rename_translation_key',
-    {
-      title: 'Rename Translation Key',
-      description:
-        'Rename/move a translation key across ALL locale files in a layer. Preserves the value in every locale. Use dryRun to preview changes before applying them.',
-      inputSchema: z.object({
-        layer: z
-          .string()
-          .describe('Layer name from discover (e.g., "root", "app-admin"). The key will be renamed in ALL locale files in this layer.'),
-        oldKey: z
-          .string()
-          .describe('Current dot-separated key path to rename. Example: "common.actions.save".'),
-        newKey: z
-          .string()
-          .describe('New dot-separated key path after renaming. Example: "common.buttons.save". Must not already exist.'),
-        dryRun: z
-          .boolean()
-          .optional()
-          .describe('When true, returns a preview of what would be renamed without writing any files. Default: false.'),
-        projectDir: z
-          .string()
-          .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
-      }),
-    },
-    async ({ layer, oldKey, newKey, dryRun, projectDir = DEFAULT_PROJECT_DIR }) => {
-      try {
-        const result = await renameTranslationKey({ layer, oldKey, newKey, dryRun, projectDir })
-        return jsonContent(result)
-      } catch (error) {
-        return toolErrorResponse('renaming translation key', error)
       }
     },
   )
@@ -879,11 +798,12 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
     {
       title: 'Find Orphan Translation Keys',
       description:
-        'Find translation keys that exist in locale JSON files but are not referenced in any Vue/TS source code. '
-        + 'Scans a specific layer or all layers. Reports keys that can potentially be removed. '
-        + 'Also detects dynamic key patterns and uncertain matches. '
+        'Find translation keys that exist in locale files but are not referenced in any source code. '
+        + 'Scans a specific layer or all layers. Also detects dynamic key patterns and uncertain matches. '
         + 'Scope-aware: each layer is checked only against code of the apps that consume it (summary.scanScope shows each layer\'s effective scope); '
-        + 'keys referenced only from non-consuming apps are reported separately as misplacedUsages, not orphans.',
+        + 'keys referenced only from non-consuming apps are reported separately as misplacedUsages, not orphans. '
+        + 'This tool only reports: without remove: true nothing is deleted. With remove: true the orphan keys are deleted from every locale file of their layer — '
+        + 'uncertain keys and misplaced usages are never deleted either way, in any mode.',
       inputSchema: z.object({
         layer: z
           .string()
@@ -909,11 +829,20 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
           .string()
           .optional()
           .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/orphan-keys.json"'),
+        remove: z
+          .boolean()
+          .optional()
+          .describe('When true, permanently deletes the orphan keys from every locale file of their layer. Default: false, which only reports them — run without it first and read the findings. Uncertain keys and misplaced usages are never deleted.'),
       }),
     },
-    async ({ layer, locale, scanDirs, excludeDirs, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
+    async ({ layer, locale, scanDirs, excludeDirs, projectDir = DEFAULT_PROJECT_DIR, outputFile, remove }) => {
       try {
-        const result = await findOrphanKeys({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile })
+        // Two functions behind one tool: the report is richer than the removal
+        // report (candidate-only keys, unresolved dynamic references), and
+        // deleting is not something a caller should reach by omitting a flag.
+        const result = remove === true
+          ? await removeOrphanKeys({ layer, locale, scanDirs, excludeDirs, dryRun: false, projectDir, outputFile })
+          : await findOrphanKeys({ layer, locale, scanDirs, excludeDirs, projectDir, outputFile })
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('finding orphan keys', error)
@@ -998,57 +927,6 @@ export async function createServer(options: CreateServerOptions = {}): Promise<M
         return jsonContent(result)
       } catch (error) {
         return toolErrorResponse('finding duplicate keys', error)
-      }
-    },
-  )
-
-  // ─── Tool: remove_orphan_keys ────────────────────────
-
-  server.registerTool(
-    'remove_orphan_keys',
-    {
-      title: 'Remove Orphan Keys',
-      description:
-        'Find orphan keys (not referenced in source code) and remove them from all locale files. Always does a dry run first. '
-        + 'Scope-aware like find_orphan_keys: each layer is checked against its consuming apps (summary.scanScope), and keys referenced only from '
-        + 'non-consuming apps are reported as misplacedUsages and never removed.',
-      inputSchema: z.object({
-        layer: z
-          .string()
-          .optional()
-          .describe('Layer name to clean up (e.g., "root", "app-admin"). If omitted, cleans all layers. Call discover to discover available layers.'),
-        locale: z
-          .string()
-          .optional()
-          .describe('Locale code to read translation keys from for orphan detection (e.g., "en", "en-US"). Defaults to the project default locale.'),
-        scanDirs: z
-          .array(z.string())
-          .optional()
-          .describe('Absolute paths to directories to scan for source code usage. Overrides scope-aware scanning: all layers are checked globally against these dirs. Example: ["/home/user/my-app/apps/admin"].'),
-        excludeDirs: z
-          .array(z.string())
-          .optional()
-          .describe('Directory names to skip when scanning source files. Example: ["storybook", "__tests__", "node_modules"].'),
-        dryRun: z
-          .boolean()
-          .optional()
-          .describe('When true (default), only reports what would be removed without deleting anything. Set to false to permanently delete orphan keys.'),
-        projectDir: z
-          .string()
-          .optional()
-          .describe('Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app".'),
-        outputFile: z
-          .string()
-          .optional()
-          .describe('Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/cleanup-unused.json"'),
-      }),
-    },
-    async ({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir = DEFAULT_PROJECT_DIR, outputFile }) => {
-      try {
-        const result = await removeOrphanKeys({ layer, locale, scanDirs, excludeDirs, dryRun, projectDir, outputFile })
-        return jsonContent(result)
-      } catch (error) {
-        return toolErrorResponse('cleaning up unused translations', error)
       }
     },
   )

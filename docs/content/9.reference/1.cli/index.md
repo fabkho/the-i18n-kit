@@ -18,34 +18,20 @@ The command pages are generated from the command definitions, so a flag that no 
 | Command | What it does |
 | --- | --- |
 | [`init`](/reference/cli/init) | Create a schema-valid .i18n-mcp.json from framework detection. Non-interactive; refuses to overwrite without --force |
-| [`detect`](/reference/cli/detect) | Detect i18n configuration from the project |
-| [`list-dirs`](/reference/cli/list-dirs) | List all i18n locale directories, grouped by layer |
+| [`discover`](/reference/cli/discover) | Describe the project: detected config, locale directories per layer, the layer graph, and the hand-maintained locales |
 | [`get`](/reference/cli/get) | Get translation values for specific keys |
 | [`write`](/reference/cli/write) | Write translation keys (add/update/upsert). Default mode: upsert. |
-| [`add`](/reference/cli/add) | Add new translation keys (skips keys that already exist) |
-| [`update`](/reference/cli/update) | Update existing translation keys (skips keys that do not exist) |
 | [`missing`](/reference/cli/missing) | Find translation keys missing in target locales |
 | [`status`](/reference/cli/status) | Translation coverage per locale and per layer, with an overall completion percentage |
-| [`empty`](/reference/cli/empty) | Find translation keys with empty string values |
 | [`search`](/reference/cli/search) | Search translation files by key or value |
 | [`remove`](/reference/cli/remove) | Remove translation keys from all locale files in a layer |
-| [`rename`](/reference/cli/rename) | Rename/move a translation key across all locale files |
-| [`move`](/reference/cli/move) | Move a translation key from one layer to another, carrying every locale that defines it |
+| [`move`](/reference/cli/move) | Move a translation key to another layer, another key path, or both — carrying every locale that defines it |
 | [`translate`](/reference/cli/translate) | Find missing translations and translate them via LLM. Requires --provider and --model for auto-translation. |
 | [`translate-key`](/reference/cli/translate-key) | Translate a single key from a source locale into target locales. Supports LLM translation with --provider. |
-| [`scan`](/reference/cli/scan) | Scan source code for translation key usage (file paths + line numbers) |
 | [`check`](/reference/cli/check) | Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); findings trip an always-on gate and exit 2, distinct from exit 1 for a run that failed |
+| [`orphans`](/reference/cli/orphans) | Report translation keys no source code references. Nothing is deleted without --remove |
 | [`find-duplicates`](/reference/cli/find-duplicates) | Find keys defined in both a shared layer and a consuming child layer (with divergence detection); --byValue also finds different keys carrying the same value |
-| [`remove-orphans`](/reference/cli/remove-orphans) | Find and remove orphan translation keys not referenced in source code |
 | [`scaffold`](/reference/cli/scaffold) | Create empty locale files for new languages |
-
-## Aliases
-
-These names run a command documented above. They get no page of their own, because they take the same flags and produce the same result.
-
-| Name | Runs | Why it exists |
-| --- | --- | --- |
-| `translate-missing` | [`translate`](/reference/cli/translate) | Alias of "translate" — matches the MCP tool translate_missing. |
 
 ## Shared Flags
 
@@ -80,7 +66,7 @@ Gates are opt-in, with one exception. Without one of these flags a command repor
 | [`status`](/reference/cli/status) | `--failUnder` | Exit 2 when overall completion is below this percentage (CI gate) |
 | [`translate`](/reference/cli/translate) | `--failOnFailed` | Exit 2 when any key failed to translate (CI gate) |
 | [`check`](/reference/cli/check) | always on | `summary.undefinedCount` is above `0` |
-| [`remove-orphans`](/reference/cli/remove-orphans) | `--failOnOrphans` | Exit 2 when any orphan key is found (CI gate) |
+| [`orphans`](/reference/cli/orphans) | `--failOnOrphans` | Exit 2 when any orphan key is found (CI gate) |
 
 When a gate trips, the result gains a `gatesTripped` array naming each gate, the counter it read, the threshold it was held to and the value it observed. A run where nothing tripped is byte-for-byte what it was before gates existed, so a consumer parsing the result needs no change to tolerate them.
 

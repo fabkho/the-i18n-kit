@@ -28,9 +28,9 @@ const OUTPUT_FILE = 'outputFile'
 
 export function renderMcpReference(
   source: McpSource,
-  exposedCommands: readonly string[],
+  commandNames: readonly string[],
 ): ReferenceOutput {
-  const model = buildMcpModel(source, exposedCommands)
+  const model = buildMcpModel(source, commandNames)
   const output: ReferenceOutput = new Map()
 
   output.set(`${DIR}/index.md`, renderOverview(model.tools, model.universalParams))

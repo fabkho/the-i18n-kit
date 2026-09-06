@@ -26,7 +26,7 @@ the-i18n-cli init                    # write a config from what it detects
 the-i18n-cli status                  # coverage per locale and per layer
 the-i18n-cli missing                 # what is not translated yet
 the-i18n-cli check                   # keys used in code but defined nowhere
-the-i18n-cli remove-orphans          # keys defined but unused (previews by default)
+the-i18n-cli orphans                 # keys defined but unused (reports; --remove deletes)
 ```
 
 → [Cold start guide](https://fabkho.github.io/the-i18n-kit/getting-started/cold-start) ·
@@ -53,7 +53,7 @@ here, and it is being rewritten against the new extraction architecture — see
 
 ## How Orphan Detection Works
 
-`remove-orphans` and `check` share a line-based static scanner. Knowing exactly what it can and cannot see is essential before deleting keys.
+`orphans` and `check` share a line-based static scanner. Knowing exactly what it can and cannot see is essential before deleting keys.
 
 **Usage evidence the scanner recognizes:**
 
@@ -94,7 +94,7 @@ Both are counted as used, but the first suppresses every `.title` key in the pro
 
 Prefixes assembled in another scope defeat this even when they are literal — a `computed` returning `'a.b.' + x` reaches the call site as an opaque variable. Inline the namespace instead of the whole key.
 
-`remove-orphans` is dry-run by default; run removals as a reviewed MR and treat the report's `uncertainKeys`/`dynamicKeys` sections as the audit trail.
+`orphans` deletes nothing without `--remove`; run removals as a reviewed MR and treat the report's `uncertainKeys`/`dynamicKeys` sections as the audit trail.
 
 ## License
 

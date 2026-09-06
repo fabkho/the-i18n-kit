@@ -99,7 +99,6 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(names).toEqual([
       'discover',
       'find_duplicate_keys',
-      'find_empty_translations',
       'find_orphan_keys',
       'find_undefined_keys',
       'get_missing_translations',
@@ -107,15 +106,55 @@ describe('the-i18n-mcp server over in-memory transport', () => {
       'get_translations',
       'list_namespaces',
       'move_translation_key',
-      'remove_orphan_keys',
       'remove_translations',
-      'rename_translation_key',
       'scaffold_locale',
       'search_translations',
       'translate_key',
       'translate_missing',
       'write_translations',
     ])
+  })
+
+  /**
+   * Every advertised tool, called through the transport with the smallest
+   * argument set its schema accepts.
+   *
+   * Most of the suite below drives the tools whose behaviour is interesting,
+   * which left a third of the surface advertised but never once invoked — a
+   * handler that throws on its own happy path would ship. Each case gets its
+   * own project so the mutating ones cannot decide what the next one sees.
+   */
+  const MINIMAL_ARGS: Record<string, Record<string, unknown>> = {
+    'discover': {},
+    'list_namespaces': {},
+    'get_translations': { layer: 'root', locale: 'de', keys: ['greeting'] },
+    'write_translations': { layer: 'root', translations: { 'actions.undo': { de: 'Rückgängig' } } },
+    'get_missing_translations': {},
+    'get_translation_status': {},
+    'search_translations': { query: 'Hallo' },
+    'remove_translations': { layer: 'root', keys: ['actions.save'] },
+    'move_translation_key': { layer: 'root', key: 'greeting', newKey: 'common.greeting' },
+    'translate_missing': {},
+    'translate_key': { layer: 'root', key: 'greeting', sourceLocale: 'de' },
+    'find_undefined_keys': {},
+    'find_orphan_keys': {},
+    'find_duplicate_keys': {},
+    'scaffold_locale': {},
+  }
+
+  it('advertises no tool the smoke table has forgotten', async () => {
+    const { tools } = await client.listTools()
+    expect(tools.map(t => t.name).sort()).toEqual(Object.keys(MINIMAL_ARGS).sort())
+  })
+
+  it.each(Object.entries(MINIMAL_ARGS))('%s answers a minimal call', async (name, args) => {
+    const dir = await makeProject()
+    try {
+      const { result, text } = await callTool(name, { ...args, projectDir: dir })
+      expect(result.isError, `${name}: ${text}`).not.toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   it('exposes no sampling wording in the translate tool descriptions', async () => {
@@ -149,27 +188,30 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.layerGraph.aliases).toBeInstanceOf(Object)
   })
 
-  it('find_empty_translations reports a key that exists but has no value', async () => {
-    // Empty values are not missing keys — they are present in the file and
-    // render as nothing, which is why they need a report of their own.
+  // Empty values are not missing keys — they are present in the file and
+  // render as nothing, so the coverage report counts them separately, and
+  // listEmpty names the keys behind that count.
+  it('get_translation_status lists the keys that exist but have no value', async () => {
     const dir = await makeProject()
     await writeFile(join(dir, 'i18n', 'locales', 'en.json'), JSON.stringify({
       greeting: '',
       actions: { save: 'Save' },
     }))
 
-    const { json } = await callTool('find_empty_translations', { projectDir: dir })
+    const { json } = await callTool('get_translation_status', { projectDir: dir, listEmpty: true })
 
-    expect(json?.summary).toMatchObject({ totalEmpty: 1 })
+    expect(json?.summary.emptyKeys).toBe(1)
+    expect(json?.empty).toEqual({ en: { root: ['greeting'] } })
   })
 
-  it('find_empty_translations narrows to one locale when asked', async () => {
+  it('get_translation_status counts empty values without listing them by default', async () => {
     const dir = await makeProject()
     await writeFile(join(dir, 'i18n', 'locales', 'en.json'), JSON.stringify({ greeting: '' }))
 
-    const { json } = await callTool('find_empty_translations', { projectDir: dir, locale: 'de' })
+    const { json } = await callTool('get_translation_status', { projectDir: dir })
 
-    expect(json?.summary).toMatchObject({ totalEmpty: 0 })
+    expect(json?.summary.emptyKeys).toBe(1)
+    expect(json).not.toHaveProperty('empty')
   })
 
   it('discover returns the project configuration and the agent translation mode', async () => {
@@ -377,7 +419,7 @@ describe('the-i18n-mcp server over in-memory transport', () => {
       }))
 
       const { json } = await callTool('move_translation_key', {
-        fromLayer: 'app-admin',
+        layer: 'app-admin',
         toLayer: 'root',
         key: 'admin.dashboard.title',
         newKey: 'common.dashboard.title',
@@ -392,6 +434,47 @@ describe('the-i18n-mcp server over in-memory transport', () => {
         .toEqual({})
     } finally {
       await rm(twoLayer, { recursive: true, force: true })
+    }
+  })
+
+  // The same tool without a toLayer, which is the half that used to be a tool
+  // of its own — an agent had to know which of the two to reach for before it
+  // knew whether the key was changing layers.
+  it('move_translation_key renames in place when no other layer is named', async () => {
+    const dir = await makeProject()
+    try {
+      const { json } = await callTool('move_translation_key', {
+        layer: 'root',
+        key: 'actions.save',
+        newKey: 'actions.store',
+        projectDir: dir,
+      })
+
+      expect(json?.renamed).toEqual(['de'])
+      expect(JSON.parse(await readFile(join(dir, 'i18n/locales/de.json'), 'utf-8')))
+        .toMatchObject({ actions: { store: 'Speichern' } })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Without `remove` the tool is a report, and that has to hold through the
+  // transport rather than only in the core defaults.
+  it('find_orphan_keys deletes nothing unless remove is set', async () => {
+    const dir = await makeProject()
+    try {
+      const before = await readFile(join(dir, 'i18n/locales/de.json'), 'utf-8')
+      const { json } = await callTool('find_orphan_keys', { projectDir: dir })
+
+      expect(json?.summary.orphanCount).toBe(2)
+      expect(json?.removed).toBeUndefined()
+      expect(await readFile(join(dir, 'i18n/locales/de.json'), 'utf-8')).toBe(before)
+
+      const removal = await callTool('find_orphan_keys', { projectDir: dir, remove: true })
+      expect(removal.json?.summary).toMatchObject({ dryRun: false, removedCount: 2 })
+      expect(JSON.parse(await readFile(join(dir, 'i18n/locales/de.json'), 'utf-8'))).toEqual({})
+    } finally {
+      await rm(dir, { recursive: true, force: true })
     }
   })
 

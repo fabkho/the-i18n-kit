@@ -74,7 +74,7 @@ describe('moveTranslationKey', () => {
     await seed('i18n/locales', {})
 
     const result = await moveTranslationKey({
-      fromLayer: 'app-admin',
+      layer: 'app-admin',
       toLayer: 'root',
       key: 'calendar.views.save',
       projectDir: tempDir,
@@ -92,7 +92,7 @@ describe('moveTranslationKey', () => {
     await seed('i18n/locales', {})
 
     await moveTranslationKey({
-      fromLayer: 'app-admin',
+      layer: 'app-admin',
       toLayer: 'root',
       key: 'calendar.views.save',
       newKey: 'common.actions.save',
@@ -113,7 +113,7 @@ describe('moveTranslationKey', () => {
     await seed('i18n/locales', { fr: { calendar: { save: 'Sauvegarder' } } })
 
     const result = await moveTranslationKey({
-      fromLayer: 'app-admin',
+      layer: 'app-admin',
       toLayer: 'root',
       key: 'calendar.save',
       projectDir: tempDir,
@@ -131,7 +131,7 @@ describe('moveTranslationKey', () => {
     await seed('i18n/locales', { de: { calendar: { save: 'Speichern' } } })
 
     const result = await moveTranslationKey({
-      fromLayer: 'app-admin',
+      layer: 'app-admin',
       toLayer: 'root',
       key: 'calendar.save',
       projectDir: tempDir,
@@ -149,7 +149,7 @@ describe('moveTranslationKey', () => {
     await seed('i18n/locales', {})
 
     const result = await moveTranslationKey({
-      fromLayer: 'app-admin',
+      layer: 'app-admin',
       toLayer: 'root',
       key: 'calendar.save',
       projectDir: tempDir,
@@ -164,7 +164,7 @@ describe('moveTranslationKey', () => {
     await seed('i18n/locales', {})
 
     const result = await moveTranslationKey({
-      fromLayer: 'app-admin',
+      layer: 'app-admin',
       toLayer: 'root',
       key: 'calendar.save',
       dryRun: true,
@@ -177,16 +177,51 @@ describe('moveTranslationKey', () => {
     expect((await read('app-admin/i18n/locales', 'de')).calendar).toEqual({ save: 'Speichern' })
   })
 
-  it('refuses a move within one layer, pointing at the tool that does that', async () => {
+  // Naming no other layer is not an error to correct but the other half of the
+  // operation: the key stays where it is and takes a new path.
+  it('renames in place when no other layer is named', async () => {
+    await seed('app-admin/i18n/locales', {
+      de: { calendar: { save: 'Speichern' } },
+      en: { calendar: { save: 'Save' } },
+    })
+
+    const result = await moveTranslationKey({
+      layer: 'app-admin',
+      key: 'calendar.save',
+      newKey: 'calendar.store',
+      projectDir: tempDir,
+    })
+
+    expect(result.renamed).toEqual(['de', 'en'])
+    expect(result.summary?.localesAffected).toBe(2)
+    expect((await read('app-admin/i18n/locales', 'de')).calendar).toEqual({ store: 'Speichern' })
+    expect((await read('app-admin/i18n/locales', 'en')).calendar).toEqual({ store: 'Save' })
+  })
+
+  it('treats the same layer named twice as that same rename', async () => {
     await seed('app-admin/i18n/locales', { de: { calendar: { save: 'Speichern' } } })
 
-    await expect(moveTranslationKey({
-      fromLayer: 'app-admin',
+    const result = await moveTranslationKey({
+      layer: 'app-admin',
       toLayer: 'app-admin',
       key: 'calendar.save',
       newKey: 'calendar.store',
       projectDir: tempDir,
-    })).rejects.toThrow(/rename_translation_key/)
+    })
+
+    expect(result.renamed).toEqual(['de'])
+  })
+
+  // Neither destination given means the call describes no change at all, which
+  // is a mistake worth naming rather than a no-op worth reporting as success.
+  it('refuses a call that names neither a target layer nor a new key', async () => {
+    await seed('app-admin/i18n/locales', { de: { calendar: { save: 'Speichern' } } })
+
+    await expect(moveTranslationKey({
+      layer: 'app-admin',
+      key: 'calendar.save',
+      projectDir: tempDir,
+    })).rejects.toThrow(/toLayer|newKey/)
   })
 
   // An alias layer's files belong to the layer it points at, so writing "into"
@@ -196,7 +231,7 @@ describe('moveTranslationKey', () => {
     await seed('i18n/locales', {})
 
     await expect(moveTranslationKey({
-      fromLayer: 'root', toLayer: 'app-shop', key: 'calendar.save', projectDir: tempDir,
+      layer: 'root', toLayer: 'app-shop', key: 'calendar.save', projectDir: tempDir,
     })).rejects.toThrow(/alias/)
   })
 })

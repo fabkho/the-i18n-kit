@@ -222,6 +222,28 @@ async function resolveOrphanScanContext(
 }
 
 /**
+ * A writer for the GitLab Code Quality report, or a no-op when no path was
+ * given.
+ *
+ * Called on every branch, findings or not: an empty array on the default branch
+ * is the baseline the MR widget diffs against, and a branch that skipped the
+ * write reads to the widget as "every finding is new".
+ */
+function codequalityWriter(
+  config: I18nConfig,
+  dir: string,
+  localeDef: LocaleDefinition,
+  outputPath: string | undefined,
+): (orphansByLayer: Record<string, string[]>) => Promise<void> {
+  return async (orphansByLayer) => {
+    if (!outputPath) return
+    validateReportPath(dir, outputPath)
+    const anchors = referenceLocaleAnchorPaths(config, Object.keys(orphansByLayer), localeDef, dir)
+    await writeCodequalityFile(outputPath, orphanKeysToCodeQuality(orphansByLayer, anchors))
+  }
+}
+
+/**
  * Find translation keys that exist in locale files but are not referenced in source code.
  */
 export async function findOrphanKeys(opts: {
@@ -238,20 +260,25 @@ export async function findOrphanKeys(opts: {
   excludeDirs?: string[]
   projectDir?: string
   outputFile?: string
+  /** Also write the orphan findings as a GitLab Code Quality JSON array to this path. */
+  codequalityOutput?: string
 }): Promise<FindOrphanKeysResult> {
   const { layer, locale, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
   warnUnknownOrphanScanLayers(config)
 
-  const { layersToCheck, keysByLayer, totalKeys, localeCode } = await resolveOrphanScanContext(config, {
+  const { layersToCheck, keysByLayer, totalKeys, localeCode, localeDef } = await resolveOrphanScanContext(config, {
     layer,
     locale,
     dir,
     toolName: 'find_orphan_keys',
   })
 
+  const writeCodequality = codequalityWriter(config, dir, localeDef, opts.codequalityOutput)
+
   if (totalKeys === 0) {
+    await writeCodequality({})
     const emptyOutput = { orphanKeys: {} as Record<string, string[]>, summary: { totalKeys: 0, orphanCount: 0, filesScanned: 0, message: 'No translation keys found in locale files.' } }
     const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
     if (reportPath) {
@@ -265,6 +292,7 @@ export async function findOrphanKeys(opts: {
   }
 
   const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir })
+  await writeCodequality(orphanResult.orphansByLayer)
 
   const byLayer = orphanResult.orphansByLayer
   const allOrphanKeys: Array<{ key: string; layer: string }> = []
@@ -445,14 +473,7 @@ export async function removeOrphanKeys(opts: {
     toolName: 'remove_orphan_keys',
   })
 
-  // Written in every branch, even without findings: an empty array on the
-  // default branch is the baseline the MR widget diffs against.
-  const writeCodequality = async (orphans: Record<string, string[]>): Promise<void> => {
-    if (!opts.codequalityOutput) return
-    validateReportPath(dir, opts.codequalityOutput)
-    const anchors = referenceLocaleAnchorPaths(config, Object.keys(orphans), localeDef, dir)
-    await writeCodequalityFile(opts.codequalityOutput, orphanKeysToCodeQuality(orphans, anchors))
-  }
+  const writeCodequality = codequalityWriter(config, dir, localeDef, opts.codequalityOutput)
 
   if (totalKeys === 0) {
     await writeCodequality({})

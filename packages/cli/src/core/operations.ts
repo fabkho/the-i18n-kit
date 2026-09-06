@@ -26,6 +26,7 @@ export {
 } from './ops-translate.js'
 
 export {
+  describeProject,
   detectConfig,
   listLocaleDirs,
   getTranslations,
@@ -37,8 +38,6 @@ export {
 
 export {
   writeTranslations,
-  addTranslations,
-  updateTranslations,
   removeTranslations,
   renameTranslationKey,
   moveTranslationKey,

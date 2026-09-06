@@ -47,48 +47,48 @@ export interface McpModel {
  * The only hand-maintained mapping in the MCP reference, and it exists because
  * nothing machine-readable connects the two names: `find_duplicate_keys` and
  * `find-duplicates` are the same operation, and no rule derives one from the
- * other. Every pairing is checked against the CLI's own exposed commands on each
+ * other. Every pairing is checked against the CLI's own command registry on each
  * build, so a renamed command fails generation rather than publishing a dead
  * link. A tool absent from here is documented without a pairing rather than
  * guessed at, which is why a new tool needs no edit in this file.
  */
 export const PAIRED_COMMANDS: Record<string, string> = {
+  discover: 'discover',
   get_translations: 'get',
   write_translations: 'write',
   get_missing_translations: 'missing',
   get_translation_status: 'status',
   search_translations: 'search',
   remove_translations: 'remove',
-  rename_translation_key: 'rename',
+  move_translation_key: 'move',
   translate_missing: 'translate',
   translate_key: 'translate-key',
-  find_orphan_keys: 'remove-orphans',
-  remove_orphan_keys: 'remove-orphans',
+  find_orphan_keys: 'orphans',
   find_undefined_keys: 'check',
   find_duplicate_keys: 'find-duplicates',
   scaffold_locale: 'scaffold',
 }
 
-export function buildMcpModel(source: McpSource, exposedCommands: readonly string[]): McpModel {
-  checkPairings(source.tools, exposedCommands)
+export function buildMcpModel(source: McpSource, commandNames: readonly string[]): McpModel {
+  checkPairings(source.tools, commandNames)
   const tools = source.tools.map(toToolDoc)
   return { tools, universalParams: universalParams(tools) }
 }
 
 /**
- * A pairing naming a command the CLI does not expose would render a link to a
+ * A pairing naming a command the CLI does not register would render a link to a
  * page that does not exist, which fails the site build far from its cause.
  *
  * Only pairings for advertised tools are checked. A map entry for a tool the
  * server no longer sends renders nothing at all, so failing on it would block
  * generation over something invisible to a reader.
  */
-function checkPairings(tools: McpToolListing[], exposedCommands: readonly string[]): void {
+function checkPairings(tools: McpToolListing[], commandNames: readonly string[]): void {
   for (const tool of tools) {
     const command = PAIRED_COMMANDS[tool.name]
-    if (command === undefined || exposedCommands.includes(command)) continue
+    if (command === undefined || commandNames.includes(command)) continue
     throw new Error(
-      `The MCP tool pairing ${tool.name} → ${command} is stale: the CLI exposes no command `
+      `The MCP tool pairing ${tool.name} → ${command} is stale: the CLI registers no command `
       + `named ${command}. Update PAIRED_COMMANDS in docs/generate/reference/mcp-model.ts.`,
     )
   }
