@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-nuxt-0.1.5...the-i18n-kit-nuxt-0.2.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **nuxt:** `@the-i18n-kit/nuxt` no longer wires `@the-i18n-kit/eslint-plugin-vue` into `@nuxt/eslint`. Register `i18nKitEslintAddon()` from `@the-i18n-kit/eslint-plugin-vue/nuxt` in the `eslint:config:addons` hook.
+
+### Features
+
+* **nuxt:** the module no longer registers the @nuxt/eslint addon ([d3cd19f](https://github.com/fabkho/the-i18n-kit/commit/d3cd19fdae02ec164212d44387e17aa2d2fd909a))
+
 ## [0.1.5](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-nuxt-0.1.4...the-i18n-kit-nuxt-0.1.5) (2026-08-24)
 
 

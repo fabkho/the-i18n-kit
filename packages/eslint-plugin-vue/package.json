@@ -1,6 +1,6 @@
 {
   "name": "@the-i18n-kit/eslint-plugin-vue",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Authoring rules that keep the i18n kit's scanner sound, and a layer-aware preset over @intlify/eslint-plugin-vue-i18n",
   "keywords": [
     "eslint",
