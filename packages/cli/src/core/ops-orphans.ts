@@ -10,10 +10,10 @@ import { buildLayerGraph } from '../config/layer-graph.js'
 import type { I18nConfig, LocaleDefinition, LocaleDir } from '../config/types.js'
 import { readLocaleData, mutateLocaleData } from '../io/locale-data.js'
 import { getLeafKeys, removeNestedValue } from '../io/key-operations.js'
-import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from '../scanner/code-scanner.js'
+import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig, buildIgnorePatternRegexes } from '../scanner/code-scanner.js'
 import type { OrphanScanPlan, OrphanScanProgress, OrphanScanResult } from '../scanner/code-scanner.js'
 import { getPatternSet } from '../scanner/patterns.js'
-import type { FindOrphanKeysResult, RemoveOrphanKeysResult, CodeUsageResult, ProgressFn } from './types.js'
+import type { DeclaredNamespaceRef, FindOrphanKeysResult, RemoveOrphanKeysResult, CodeUsageResult, ProgressFn } from './types.js'
 import { ToolError } from '../utils/errors.js'
 
 import { log } from '../utils/logger.js'
@@ -24,6 +24,11 @@ const MISPLACED_USAGE_NOTE
   = 'Keys referenced only from apps that do not consume their layer. '
   + 'Either the key belongs in a broader (shared) layer, or the usage is a bug. '
   + 'These keys are not counted as orphans and are never removed.'
+
+const DECLARED_NAMESPACE_NOTE
+  = 'Keys covered by a declaredNamespaces entry. They exist by contract rather than by a call site, '
+  + 'so they are never reported as orphans and never removed. A declaration with no matchedKeys covers '
+  + 'nothing in this catalog — either the namespace is gone or the pattern is wrong.'
 
 const CANDIDATE_ONLY_NOTE = 'These keys are protected only by the bare-candidate net: either a dotted string somewhere merely shares their name (often a comment or a data structure), or a call too ambiguous to commit to references them (a bare t(...) that could be anything). They are not offered for removal, but dead references hide here - verify before pruning.'
 
@@ -187,6 +192,7 @@ async function runOrphanScan(
     ...(opts.scanDirs?.length ? { scanDirs: opts.scanDirs } : { scanPlan: buildOrphanScanPlan(config, opts.dir) }),
     excludeDirs: opts.excludeDirs || undefined,
     resolveIgnorePatterns: layerName => resolveOrphanIgnorePatterns(config, layerName),
+    declaredNamespaces: resolveDeclaredNamespaces(config).map(d => d.pattern),
     patterns: getPatternSet(config.localeFileFormat),
     progress,
   })
@@ -218,6 +224,49 @@ export function resolveOrphanIgnorePatterns(
   const layerConfig = config.projectConfig.orphanScan[layer]
   if (!layerConfig?.ignorePatterns?.length) return undefined
   return layerConfig.ignorePatterns
+}
+
+/**
+ * The declared namespaces of a project: key patterns that exist by contract
+ * rather than by a call site. They are not keyed by layer — the contract
+ * defines the key set, whichever layer happens to hold it.
+ */
+export function resolveDeclaredNamespaces(
+  config: I18nConfig,
+): Array<{ pattern: string; reason: string }> {
+  return config.projectConfig?.declaredNamespaces ?? []
+}
+
+/**
+ * Each declaration with the catalog keys it covers, so the report says which
+ * keys a declaration protects and why — and, with an empty `matchedKeys`,
+ * which declaration protects nothing at all.
+ *
+ * Coverage is read off the catalog rather than off the orphan list: a
+ * namespace whose keys are also referenced in code still exists, and only a
+ * declaration that matches no key anywhere is stale.
+ */
+function buildDeclaredNamespaceRefs(
+  config: I18nConfig,
+  keysByLayer: Map<string, { keys: string[]; localeDir: LocaleDir }>,
+): DeclaredNamespaceRef[] | undefined {
+  const declarations = resolveDeclaredNamespaces(config)
+  if (declarations.length === 0) return undefined
+
+  const allKeys = new Set<string>()
+  for (const { keys } of keysByLayer.values()) {
+    for (const key of keys) allKeys.add(key)
+  }
+  const sortedKeys = [...allKeys].sort(byCodePoint)
+
+  return declarations.map(({ pattern, reason }) => {
+    const [regex] = buildIgnorePatternRegexes([pattern])
+    return {
+      pattern,
+      reason,
+      matchedKeys: regex ? sortedKeys.filter(key => regex.test(key)) : [],
+    }
+  })
 }
 
 /**
@@ -326,6 +375,7 @@ export async function findOrphanKeys(opts: {
   }
 
   const misplacedCount = orphanResult.misplacedUsages.length
+  const declaredNamespaces = buildDeclaredNamespaceRefs(config, keysByLayer)
   const output: FindOrphanKeysResult = {
     orphanKeys: sortedByLayer,
     uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
@@ -333,6 +383,8 @@ export async function findOrphanKeys(opts: {
     candidateOnlyNote: orphanResult.candidateOnlyCount > 0 ? CANDIDATE_ONLY_NOTE : undefined,
     misplacedUsages: misplacedCount > 0 ? orphanResult.misplacedUsages : undefined,
     misplacedUsageNote: misplacedCount > 0 ? MISPLACED_USAGE_NOTE : undefined,
+    declaredNamespaces,
+    declaredNamespaceNote: declaredNamespaces ? DECLARED_NAMESPACE_NOTE : undefined,
     summary: {
       totalKeys,
       orphanCount: orphanResult.orphanCount,
@@ -341,6 +393,7 @@ export async function findOrphanKeys(opts: {
       misplacedCount,
       dynamicMatchedCount: orphanResult.dynamicMatchedCount,
       ignoredCount: orphanResult.ignoredCount,
+      declaredCount: orphanResult.declaredCount,
       usedCount: totalKeys - orphanResult.orphanCount - orphanResult.uncertainCount - misplacedCount,
       filesScanned: orphanResult.totalFilesScanned,
       filesDeclined: orphanResult.totalFilesDeclined,
@@ -483,9 +536,12 @@ export async function removeOrphanKeys(opts: {
   const totalFilesScanned = orphanResult.totalFilesScanned
   const dynamicMatchedCount = orphanResult.dynamicMatchedCount
   const ignoredCount = orphanResult.ignoredCount
+  const declaredCount = orphanResult.declaredCount
   const misplacedCount = orphanResult.misplacedUsages.length
   const misplacedUsages = misplacedCount > 0 ? orphanResult.misplacedUsages : undefined
   const misplacedUsageNote = misplacedCount > 0 ? MISPLACED_USAGE_NOTE : undefined
+  const declaredNamespaces = buildDeclaredNamespaceRefs(config, keysByLayer)
+  const declaredNamespaceNote = declaredNamespaces ? DECLARED_NAMESPACE_NOTE : undefined
   const scanScope = relativeScanScope(orphanResult, dir)
   const allDynamicKeys = toDynamicKeyEntries(orphanResult.allDynamicKeys, dir)
 
@@ -493,15 +549,18 @@ export async function removeOrphanKeys(opts: {
     const messageParts: string[] = ['No orphan keys found.']
     if (dynamicMatchedCount > 0) messageParts.push(`${dynamicMatchedCount} key(s) were excluded by dynamic pattern matching.`)
     if (ignoredCount > 0) messageParts.push(`${ignoredCount} key(s) were excluded by ignore patterns.`)
+    if (declaredCount > 0) messageParts.push(`${declaredCount} key(s) were excluded by declared namespaces (see declaredNamespaces).`)
     if (orphanResult.uncertainCount > 0) messageParts.push(`${orphanResult.uncertainCount} uncertain key(s) were excluded because they overlap with dynamic translation patterns.`)
     if (misplacedCount > 0) messageParts.push(`${misplacedCount} key(s) are referenced only outside their layer's scope (see misplacedUsages).`)
-    if (dynamicMatchedCount === 0 && ignoredCount === 0 && orphanResult.uncertainCount === 0 && misplacedCount === 0) messageParts.push('All translation keys are referenced in code.')
+    if (dynamicMatchedCount === 0 && ignoredCount === 0 && declaredCount === 0 && orphanResult.uncertainCount === 0 && misplacedCount === 0) messageParts.push('All translation keys are referenced in code.')
     const zeroOutput: RemoveOrphanKeysResult = {
       orphanKeys: {},
       uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
       misplacedUsages,
       misplacedUsageNote,
-      summary: { totalKeys, orphanCount: 0, uncertainCount: orphanResult.uncertainCount, misplacedCount, dynamicMatchedCount, ignoredCount, filesScanned: totalFilesScanned, scanScope, message: messageParts.join(' ') },
+      declaredNamespaces,
+      declaredNamespaceNote,
+      summary: { totalKeys, orphanCount: 0, uncertainCount: orphanResult.uncertainCount, misplacedCount, dynamicMatchedCount, ignoredCount, declaredCount, filesScanned: totalFilesScanned, scanScope, message: messageParts.join(' ') },
     }
     return zeroOutput
   }
@@ -513,6 +572,8 @@ export async function removeOrphanKeys(opts: {
       uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
       misplacedUsages,
       misplacedUsageNote,
+      declaredNamespaces,
+      declaredNamespaceNote,
       summary: {
         dryRun: true,
         totalKeys,
@@ -521,10 +582,11 @@ export async function removeOrphanKeys(opts: {
         misplacedCount,
         dynamicMatchedCount,
         ignoredCount,
+        declaredCount,
         usedCount: totalKeys - orphanCount - orphanResult.uncertainCount - misplacedCount,
         filesScanned: totalFilesScanned,
         scanScope,
-        message: `Found ${orphanCount} orphan key(s) safe to remove.${orphanResult.uncertainCount > 0 ? ` ${orphanResult.uncertainCount} uncertain key(s) excluded (overlap with dynamic translation patterns).` : ''}${misplacedCount > 0 ? ` ${misplacedCount} key(s) referenced only outside their layer's scope were excluded (see misplacedUsages).` : ''} ${dynamicMatchedCount > 0 ? `${dynamicMatchedCount} key(s) matched dynamic patterns and were excluded. ` : ''}${ignoredCount > 0 ? `${ignoredCount} key(s) matched ignore patterns and were excluded. ` : ''}Call again with dryRun: false to remove them.`,
+        message: `Found ${orphanCount} orphan key(s) safe to remove.${orphanResult.uncertainCount > 0 ? ` ${orphanResult.uncertainCount} uncertain key(s) excluded (overlap with dynamic translation patterns).` : ''}${misplacedCount > 0 ? ` ${misplacedCount} key(s) referenced only outside their layer's scope were excluded (see misplacedUsages).` : ''} ${dynamicMatchedCount > 0 ? `${dynamicMatchedCount} key(s) matched dynamic patterns and were excluded. ` : ''}${ignoredCount > 0 ? `${ignoredCount} key(s) matched ignore patterns and were excluded. ` : ''}${declaredCount > 0 ? `${declaredCount} key(s) are covered by declared namespaces and were excluded. ` : ''}Call again with dryRun: false to remove them.`,
       },
     }
     if (allDynamicKeys.length > 0) {
@@ -572,6 +634,8 @@ export async function removeOrphanKeys(opts: {
     uncertainKeys: orphanResult.uncertainCount > 0 ? orphanResult.uncertainByLayer : undefined,
     misplacedUsages,
     misplacedUsageNote,
+    declaredNamespaces,
+    declaredNamespaceNote,
     summary: {
       dryRun: false,
       totalKeys,
@@ -580,6 +644,7 @@ export async function removeOrphanKeys(opts: {
       misplacedCount,
       dynamicMatchedCount,
       ignoredCount,
+      declaredCount,
       remainingCount: totalKeys - orphanCount,
       filesWritten: totalFilesWritten,
       filesScanned: totalFilesScanned,

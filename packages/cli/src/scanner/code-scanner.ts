@@ -578,6 +578,13 @@ interface OrphanScanBaseOptions {
   keysByLayer: Map<string, { keys: string[]; localeDir: { layer: string } }>
   excludeDirs?: string[]
   resolveIgnorePatterns: (layerName: string) => string[] | undefined
+  /**
+   * Key patterns declared to exist by contract rather than by a call site.
+   * They hold in every layer — the contract is a property of the key set, not
+   * of one layer's scan — and are counted apart from the ignore patterns so a
+   * report can say which protection applied.
+   */
+  declaredNamespaces?: string[]
   patterns?: ScanPatternSet
   /** Set by a caller that wants to watch a scan that takes seconds. */
   progress?: OrphanScanProgress
@@ -629,6 +636,8 @@ export interface OrphanScanResult {
   dynamicMatchedCount: number
   /** Accumulated across layers, like dynamicMatchedCount. */
   ignoredCount: number
+  /** Keys withheld from the orphan list by a declared namespace. Accumulated across layers. */
+  declaredCount: number
   allDynamicKeys: Array<{ expression: string; file: string; line: number; callee: string }>
   dirsScanned: string[]
   unresolvedKeyWarnings: UnresolvedKeyWarning[]
@@ -666,6 +675,7 @@ export function nestedUnitIgnores(unit: ScanUnit, units: ScanUnit[]): string[] {
 
 export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promise<OrphanScanResult> {
   const { keysByLayer, excludeDirs, resolveIgnorePatterns, patterns } = options
+  const declaredRegexes = buildIgnorePatternRegexes(options.declaredNamespaces ?? [])
 
   // Explicit scanDirs = manual scope control: one combined usage set shared
   // by all layers, no misplaced-usage detection (pre-scope-aware behavior).
@@ -755,6 +765,7 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
   let uncertainCount = 0
   let dynamicMatchedCount = 0
   let ignoredCount = 0
+  let declaredCount = 0
   const misplacedUsages: MisplacedUsage[] = []
   const scanScopeByLayer: Record<string, string[]> = {}
 
@@ -782,6 +793,12 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
       }
       if (scope.dynRegexes.some(re => re.test(k))) {
         dynamicMatchedCount++
+        return false
+      }
+      // A declared namespace answers for the key before any layer's ignore
+      // patterns do, so the report attributes it to the declaration.
+      if (declaredRegexes.some(re => re.test(k))) {
+        declaredCount++
         return false
       }
       if (ignoreRegexes.length > 0 && ignoreRegexes.some(re => re.test(k))) {
@@ -847,6 +864,7 @@ export async function findOrphanKeysForConfig(options: OrphanScanOptions): Promi
     totalFilesDeclined,
     dynamicMatchedCount,
     ignoredCount,
+    declaredCount,
     allDynamicKeys: allDynamicKeysRaw,
     dirsScanned: units.map(u => u.dir),
     unresolvedKeyWarnings: unresolvedWarnings,

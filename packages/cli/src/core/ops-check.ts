@@ -23,7 +23,7 @@ import { getPatternSet } from '../scanner/patterns.js'
 import { ToolError } from '../utils/errors.js'
 
 import { findWritableLayerOrThrow, resolveReferenceLocale } from './shared.js'
-import { buildOrphanScanPlan, resolveOrphanIgnorePatterns } from './ops-orphans.js'
+import { buildOrphanScanPlan, resolveDeclaredNamespaces, resolveOrphanIgnorePatterns } from './ops-orphans.js'
 import { writeTranslations } from './ops-write.js'
 
 export interface KeyUsageLocation {
@@ -70,6 +70,8 @@ export interface CheckUndefinedKeysSummary {
   uncertainCount: number
   /** Unresolvable keys excluded by orphanScan ignorePatterns. */
   ignoredCount: number
+  /** Unresolvable keys covered by a declaredNamespaces entry — defined by contract, never written. */
+  declaredCount: number
   filesScanned: number
   /** Files a syntax frontend declined; pattern matching read them instead. */
   filesDeclined: number
@@ -209,6 +211,8 @@ interface UnitCheckContext {
   searchedLayers: string[]
   resolvable: Set<string>
   ignoreRegexes: RegExp[]
+  /** Declared namespaces, which hold in every layer rather than per layer. */
+  declaredRegexes: RegExp[]
   projectDir: string
 }
 
@@ -216,6 +220,7 @@ interface UnitCheckOutcome {
   undefinedKeys: UndefinedKeyFinding[]
   uncertainKeys: UncertainKeyFinding[]
   ignoredCount: number
+  declaredCount: number
   checkedKeys: Set<string>
 }
 
@@ -232,9 +237,10 @@ function groupBy<T>(items: T[], keyOf: (item: T) => string): Map<string, T[]> {
 
 /**
  * Classify one unit's static keys: keys not resolvable in the searched
- * layers become undefined findings — unless an ignore pattern excludes
- * them, a dynamic pattern overlaps them (possible partial extraction of a
- * dynamic expression), or they are only probed via $te.
+ * layers become undefined findings — unless a declared namespace covers
+ * them, an ignore pattern excludes them, a dynamic pattern overlaps them
+ * (possible partial extraction of a dynamic expression), or they are only
+ * probed via $te.
  */
 function classifyStaticKeys(
   usages: KeyUsage[],
@@ -248,6 +254,12 @@ function classifyStaticKeys(
     // key, and the concat usage is already covered as a dynamic expression.
     if (key.endsWith('.')) continue
     if (ctx.resolvable.has(key)) continue
+    // Declared by contract: the definition lives wherever the contract does, so
+    // the key is neither a finding nor something `write` may extract.
+    if (ctx.declaredRegexes.some(re => re.test(key))) {
+      outcome.declaredCount++
+      continue
+    }
     if (ctx.ignoreRegexes.some(re => re.test(key))) {
       outcome.ignoredCount++
       continue
@@ -319,6 +331,7 @@ function classifyUnitUsages(scan: ScanResult, ctx: UnitCheckContext): UnitCheckO
     undefinedKeys: [],
     uncertainKeys: [],
     ignoredCount: 0,
+    declaredCount: 0,
     checkedKeys: new Set(scan.uniqueKeys),
   }
 
@@ -509,6 +522,10 @@ export async function checkUndefinedKeys(opts: {
   let filesScanned = 0
   let filesDeclined = 0
   let ignoredCount = 0
+  let declaredCount = 0
+  const declaredRegexes = buildIgnorePatternRegexes(
+    resolveDeclaredNamespaces(config).map(declaration => declaration.pattern),
+  )
 
   for (const unit of units) {
     const ignores = globalScope ? [] : nestedUnitIgnores(unit, units)
@@ -526,11 +543,13 @@ export async function checkUndefinedKeys(opts: {
       ignoreRegexes: buildIgnorePatternRegexes(
         searchedLayers.flatMap(layer => resolveOrphanIgnorePatterns(config, layer) ?? []),
       ),
+      declaredRegexes,
       projectDir: dir,
     })
     undefinedKeys.push(...outcome.undefinedKeys)
     uncertainKeys.push(...outcome.uncertainKeys)
     ignoredCount += outcome.ignoredCount
+    declaredCount += outcome.declaredCount
     for (const key of outcome.checkedKeys) checkedKeys.add(key)
   }
 
@@ -542,6 +561,7 @@ export async function checkUndefinedKeys(opts: {
     undefinedCount: undefinedKeys.length,
     uncertainCount: uncertainKeys.length,
     ignoredCount,
+    declaredCount,
     filesScanned,
     filesDeclined,
     locale: localeCode,

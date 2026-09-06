@@ -107,11 +107,32 @@ export const projectConfigSchema = z.object({
       + 'these as reference when generating translations.',
     )
     .optional(),
+  declaredNamespaces: z.array(z.object({
+    pattern: nonEmptyString
+      .describe(
+        'Key pattern the declaration covers (e.g., "views.defaults.**"). Use * to match a '
+        + 'single key segment, ** to match any depth.',
+      ),
+    reason: nonEmptyString
+      .describe(
+        'What keeps these keys alive, named so the report can say why they are protected '
+        + '(e.g., "sent by bookings-api as name_key").',
+      ),
+  }))
+    .describe(
+      'Namespaces whose keys exist by contract rather than by a call site — sent by a backend, '
+      + 'keyed by runtime data, built from a registry. Their keys are never reported as orphans '
+      + 'and never written by check --write, in every layer. Each declaration is reported with '
+      + 'the keys it matches, so one that matches nothing is visible as stale.',
+    )
+    .optional(),
   orphanScan: z.record(z.string(), z.object({
     ignorePatterns: z.array(z.string())
       .describe(
-        'Glob patterns for translation keys to exclude from orphan detection (e.g., '
-        + '"common.datetime.months.*"). Use * to match a single key segment, ** to match any depth.',
+        'Glob patterns for translation keys to exclude from orphan detection in this layer '
+        + '(e.g., "common.datetime.months.*"). Use * to match a single key segment, ** to match '
+        + 'any depth. For keys that exist by contract elsewhere, declare them under '
+        + 'declaredNamespaces instead, which records why and reports what each pattern protects.',
       )
       .optional(),
   // passthrough for backwards-compat with deprecated keys like includeParentLayer

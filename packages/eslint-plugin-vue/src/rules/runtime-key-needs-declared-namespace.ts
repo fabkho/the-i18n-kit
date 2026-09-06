@@ -8,13 +8,13 @@ import { declaredPatterns, findKitConfig } from '../declared-patterns.js'
  * namespace.
  *
  * `t(view.name_key)` keeps alive whichever keys the wire sends — the scanner
- * sees nothing, the keys look orphaned, and remove-orphans deletes them; that
- * is precisely the #420 incident. The rule demands two things, both checkable:
- * an `i18n-namespace:` comment at the call naming the namespace it draws
- * from, and that namespace declared in the kit config's orphan-scan ignore
- * patterns, where the scanner actually reads it. Annotation without
+ * sees nothing, the keys look orphaned, and remove-orphans deletes them. The
+ * rule demands two things, both checkable: an `i18n-namespace:` comment at the
+ * call naming the namespace it draws from, and that namespace declared in the
+ * kit config, where the scanner actually reads it. Annotation without
  * declaration is config drift; declaration without annotation is a call the
- * next reader cannot connect to it.
+ * next reader cannot connect to it — the orphan report names the second by
+ * listing every declaration with the keys it matches.
  *
  * What does NOT fire, mirroring the scanner's own leniency: string literals,
  * templates (rule literal-key-prefix's turf), same-file consts holding
@@ -29,8 +29,8 @@ const rule: Rule.RuleModule = {
       url: 'https://github.com/fabkho/the-i18n-kit/issues/422',
     },
     messages: {
-      undeclared: 'This key exists only at runtime — the orphan scanner cannot see which keys it uses, so they will be reported as deletable. Name the namespace it draws from with a comment on this line, e.g. `// i18n-namespace: some.namespace.**`, and declare that pattern under orphanScan ignorePatterns in i18n-kit.config.ts.',
-      notDeclared: 'The annotated namespace `{{pattern}}` is not declared in the kit config. Add it under orphanScan ignorePatterns in {{configPath}} — the annotation only protects keys if the orphan scanner reads the same declaration.',
+      undeclared: 'This key exists only at runtime — the orphan scanner cannot see which keys it uses, so they will be reported as deletable. Name the namespace it draws from with a comment on this line, e.g. `// i18n-namespace: some.namespace.**`, and declare that pattern under declaredNamespaces in i18n-kit.config.ts.',
+      notDeclared: 'The annotated namespace `{{pattern}}` is not declared in the kit config. Add it under declaredNamespaces in {{configPath}}, with the reason these keys exist — the annotation only protects keys if the orphan scanner reads the same declaration.',
       noConfig: 'This key exists only at runtime and no i18n-kit config was found to declare its namespace in. The orphan scanner will report the keys it uses as deletable.',
     },
     schema: [],
