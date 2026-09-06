@@ -5,7 +5,13 @@
 
 ### ⚠ BREAKING CHANGES
 
+* `search_translations` (and `the-i18n-cli search`) returns `matches: [{ key, layers, value, locale, localeCount }]`, one row per key, where it returned `matches: [{ layer, locale, key, value }]`, one row per key and locale. `totalMatches` counts the rows either way, so it now counts keys. Pass `includeLocales: true` (`--includeLocales`) for the previous per-locale rows, unchanged in shape.
 * **scanner:** the `I18N_SCANNER` environment variable is removed. Setting `I18N_SCANNER=regex` no longer restores the pattern scanner; it is ignored. The exports `createOxcFrontend`, `createBladeFrontend`, `getPatternSet` and `VUE_NUXT_PATTERNS`, and the types `CallSite`, `CallArgument` and `FileEvidence`, are removed from `@the-i18n-kit/cli`. `scanSourceFiles`, `createPatternsFrontend`, `createPhpFrontend`, `LARAVEL_PATTERNS`, `ScanResult` and `LanguageFrontend` remain.
+
+### Features
+
+* **cli:** declared namespaces for keys the scanner cannot see — `declaredNamespaces: [{ pattern, reason }]` in the kit config; declared keys are never orphans, never removed, never extracted by `check --write`; reports list each declaration with its matched keys ([#455](https://github.com/fabkho/the-i18n-kit/issues/455)) ([a2f95f5](https://github.com/fabkho/the-i18n-kit/commit/a2f95f5))
+* **cli:** search returns one row per key, with `--includeLocales` for per-locale rows and `--matchMode exact|fuzzy` for normalised value matching ([#457](https://github.com/fabkho/the-i18n-kit/issues/457)) ([6b05d27](https://github.com/fabkho/the-i18n-kit/commit/6b05d27))
 
 ### Code Refactoring
 

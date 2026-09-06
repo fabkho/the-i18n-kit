@@ -11,7 +11,17 @@
       "prerelease": false,
       "include-component-in-tag": true,
       "include-v-in-tag": false,
-      "component": "the-i18n-kit-cli"
+      "component": "the-i18n-kit-cli",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "/action.yml"
+        },
+        {
+          "type": "generic",
+          "path": "/gitlab-ci.yml"
+        }
+      ]
     },
     "packages/mcp": {
       "release-type": "node",
@@ -27,12 +37,12 @@
       "extra-files": [
         {
           "type": "json",
-          "path": "../../server.json",
+          "path": "/server.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "../../server.json",
+          "path": "/server.json",
           "jsonpath": "$.packages[0].version"
         }
       ]

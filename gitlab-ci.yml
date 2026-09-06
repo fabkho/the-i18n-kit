@@ -18,7 +18,7 @@
   image: node:22-alpine
   stage: lint
   variables:
-    I18N_CLI_VERSION: "latest"   # pin @the-i18n-kit/cli (npm version or dist-tag)
+    I18N_CLI_VERSION: "8"        # x-release-please-major — the CLI major this template was written for
     I18N_INSTALL_PEER_DEPS: ""   # extra npm packages to install globally alongside the CLI
   # `|| exit 1`: allow_failure.exit_codes covers before_script too, so an
   # installer that happened to exit 2 would pass the job yellow, unscanned.
