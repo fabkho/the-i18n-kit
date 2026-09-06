@@ -11,7 +11,7 @@
  * is an improvement; a key the old one finds and the new one misses is a key
  * that would be offered for deletion, and is the reason this exists.
  *
- * Usage: node scripts/scanner-diff.mjs <projectDir>
+ * Usage: node packages/cli/scripts/scanner-diff.mjs <projectDir>
  */
 import { performance } from 'node:perf_hooks'
 
@@ -20,14 +20,14 @@ const laravel = args.includes('--laravel')
 const [projectDir] = args.filter(a => a !== '--laravel')
 
 if (!projectDir) {
-  console.error('Usage: node scripts/scanner-diff.mjs <projectDir> [--laravel]')
+  console.error('Usage: node packages/cli/scripts/scanner-diff.mjs <projectDir> [--laravel]')
   process.exit(1)
 }
 
 const {
   scanSourceFiles, createOxcFrontend, createPatternsFrontend, createPhpFrontend, createBladeFrontend,
   VUE_NUXT_PATTERNS, LARAVEL_PATTERNS,
-} = await import('../packages/cli/dist/index.js').catch(() => {
+} = await import('../dist/index.js').catch(() => {
   console.error('Build the CLI first: pnpm --filter the-i18n-cli build')
   process.exit(1)
 })

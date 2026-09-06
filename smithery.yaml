@@ -1,5 +1,5 @@
 name: the-i18n-mcp
-description: MCP server for i18n translation management — 15 tools for finding missing translations, detecting orphan keys, batch-translating via LLM, and adding languages.
+description: MCP server for i18n translation management — tools for finding missing translations, detecting orphan keys, batch-translating via LLM, and adding languages.
 build:
   dockerfile: Dockerfile
 startCommand:

@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.fabkho/the-i18n-mcp",
-  "description": "Let your AI agent manage translations \u2014 find orphans, translate missing keys, add languages. Auto-detects Nuxt, Laravel, or any project with JSON/PHP locale files. 15 tools + project config with glossary, tone notes, and translation style.",
+  "description": "Let your AI agent manage translations — find orphans, translate missing keys, add languages. Auto-detects Nuxt, Laravel, or any project with JSON/PHP locale files. Project config with glossary, tone notes, and translation style.",
   "repository": {
     "url": "https://github.com/fabkho/the-i18n-kit",
     "source": "github"
   },
-  "version": "7.0.1",
+  "version": "7.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "the-i18n-mcp",
-      "version": "7.0.1",
+      "version": "7.5.0",
       "transport": {
         "type": "stdio"
       }

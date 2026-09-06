@@ -346,7 +346,7 @@ async function extractFileEvidence(
  * frontend saw and the incoming one does not becomes an orphan, and orphans
  * get deleted, so the default stays where the evidence is.
  *
- * Flip it once `scripts/scanner-diff.mjs` reports nothing in that direction.
+ * Flip it once `packages/cli/scripts/scanner-diff.mjs` reports nothing in that direction.
  */
 let warnedRegexHatch = false
 

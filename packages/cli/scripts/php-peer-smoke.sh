@@ -6,10 +6,10 @@
 # both sides — absent peer warns and falls back to patterns (visibly, via
 # declinedFiles), present peer parses.
 #
-# Usage: scripts/php-peer-smoke.sh   (needs network for npm install)
+# Usage: packages/cli/scripts/php-peer-smoke.sh   (needs network for npm install)
 set -euo pipefail
 
-root="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(cd "$(dirname "$0")/../../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 

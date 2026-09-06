@@ -48,8 +48,6 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Fallow audit
-        run: npx fallow audit
 
   # The generated reference derives from the CLI command definitions, the MCP
   # tool listing, the action manifest and the config schema — all of which live

@@ -13,7 +13,6 @@
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
     "eslint": "^10.0.3",
-    "fallow": "^2.93.0",
     "husky": "^9.1.7",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.57.0"
