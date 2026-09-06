@@ -89,7 +89,7 @@ export interface ProjectConfig {
    * protection (with a warning).
    */
   protectedLocales?: string[]
-  /** Override the auto-detected locale file format. E.g., "json" or "php-array". Useful when both formats exist or auto-detection picks wrong. */
+  /** Override the auto-detected locale file format. E.g., "json", "php-array" or "yaml". Useful when several formats exist or auto-detection picks wrong. */
   localeFileFormat?: LocaleFileFormat
   /**
    * Base URL for the LLM provider — gateways, self-hosted model servers and

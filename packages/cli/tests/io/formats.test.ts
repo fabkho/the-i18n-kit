@@ -30,6 +30,8 @@ describe('formatForFile', () => {
   it.each([
     ['en.json', 'json'],
     ['en.php', 'php-array'],
+    ['en.yaml', 'yaml'],
+    ['de-DE.yml', 'yaml'],
   ])('resolves %s to the %s format', (fileName, id) => {
     expect(formatForFile(join(tempDir, fileName)).id).toBe(id)
   })
@@ -53,8 +55,10 @@ describe('format dispatch', () => {
   it('reads through the format that owns the extension', async () => {
     await writeFile(join(tempDir, 'en.json'), '{"hello": "world"}')
     await writeFile(join(tempDir, 'en.php'), '<?php\nreturn [\'hello\' => \'world\'];\n')
+    await writeFile(join(tempDir, 'en.yaml'), 'hello: world\n')
+    await writeFile(join(tempDir, 'en.yml'), 'hello: world\n')
 
-    for (const fileName of ['en.json', 'en.php']) {
+    for (const fileName of ['en.json', 'en.php', 'en.yaml', 'en.yml']) {
       const filePath = join(tempDir, fileName)
       expect(await formatForFile(filePath).read(filePath)).toEqual({ hello: 'world' })
     }
@@ -63,12 +67,15 @@ describe('format dispatch', () => {
   it('writes through the format that owns the extension', async () => {
     const jsonPath = join(tempDir, 'out.json')
     const phpPath = join(tempDir, 'out.php')
+    const yamlPath = join(tempDir, 'out.yaml')
 
     await formatForFile(jsonPath).write(jsonPath, { key: 'value' })
     await formatForFile(phpPath).write(phpPath, { key: 'value' })
+    await formatForFile(yamlPath).write(yamlPath, { key: 'value' })
 
     expect(await readFile(jsonPath, 'utf-8')).toContain('"key": "value"')
     expect(await readFile(phpPath, 'utf-8')).toContain('"key" => "value"')
+    expect(await readFile(yamlPath, 'utf-8')).toBe('key: value\n')
   })
 })
 
@@ -76,6 +83,7 @@ describe('getFormat', () => {
   it('resolves a format id', () => {
     expect(getFormat('json').extensions).toEqual(['.json'])
     expect(getFormat('php-array').extensions).toEqual(['.php'])
+    expect(getFormat('yaml').extensions).toEqual(['.yaml', '.yml'])
   })
 
   it('defaults to JSON when the config declares no format', () => {
@@ -84,7 +92,7 @@ describe('getFormat', () => {
 
   it('throws a ConfigError listing the known formats for an unknown id', () => {
     expect(() => getFormat(unknownId)).toThrow(ConfigError)
-    expect(() => getFormat(unknownId)).toThrow(/Known formats: json, php-array/)
+    expect(() => getFormat(unknownId)).toThrow(/Known formats: json, php-array, yaml/)
   })
 })
 
@@ -101,6 +109,21 @@ describe('detectFormatInDir', () => {
     await writeFile(join(tempDir, 'en', 'auth.php'), '<?php return [];')
 
     expect(await detectFormatInDir(tempDir)).toBe('php-array')
+  })
+
+  it.each(['yaml', 'yml'])('detects flat .%s locale files', async (extension) => {
+    await writeFile(join(tempDir, `en.${extension}`), 'a: 1\n')
+    await writeFile(join(tempDir, `de-DE.${extension}`), 'a: 1\n')
+
+    expect(await detectFormatInDir(tempDir)).toBe('yaml')
+  })
+
+  it('counts .yaml and .yml as the same format', async () => {
+    await writeFile(join(tempDir, 'en.yaml'), 'a: 1\n')
+    await writeFile(join(tempDir, 'de.yml'), 'a: 1\n')
+    await writeFile(join(tempDir, 'fr.json'), '{}')
+
+    expect(await detectFormatInDir(tempDir)).toBe('yaml')
   })
 
   it('returns null for a directory with nothing recognizable in it', async () => {

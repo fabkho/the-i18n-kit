@@ -20,6 +20,8 @@ import { readLocaleFile, clearFileCache, clearFileCacheEntry } from './json-read
 import { writeLocaleFile, mutateLocaleFile } from './json-writer.js'
 import { readPhpLocaleFile, clearPhpFileCache, clearPhpFileCacheEntry } from './php-reader.js'
 import { writePhpLocaleFile, mutatePhpLocaleFile } from './php-writer.js'
+import { readYamlLocaleFile, clearYamlFileCache, clearYamlFileCacheEntry } from './yaml-reader.js'
+import { writeYamlLocaleFile, mutateYamlLocaleFile } from './yaml-writer.js'
 
 /**
  * Write options every format understands. Per-format style (indentation,
@@ -98,8 +100,8 @@ export function listFormats(): LocaleFormat[] {
 
 /**
  * Guess the format of a locale directory from the files in it — flat
- * `en.json` / `en.php` first, then a directory per locale. Returns null when
- * nothing recognizable is there, leaving the default to the caller. A
+ * `en.json` / `en.php` / `en.yaml` first, then a directory per locale. Returns
+ * null when nothing recognizable is there, leaving the default to the caller. A
  * directory holding more than one format resolves to whichever has the most
  * files and warns, because the format that loses is invisible from then on.
  */
@@ -112,8 +114,8 @@ export async function detectFormatInDir(localeDir: string): Promise<LocaleFileFo
     return null
   }
 
-  // Flat files: en.json, de.json — or en.php, de.php for a PHP project that
-  // does not use Laravel's directory-per-locale layout.
+  // Flat files: en.json, de.json, en.yaml — or en.php, de.php for a PHP
+  // project that does not use Laravel's directory-per-locale layout.
   const flat = decide(countFormats(entries.filter(e => e.isFile()).map(e => e.name)), localeDir)
   if (flat) return flat
 
@@ -155,8 +157,8 @@ function decide(counts: Map<LocaleFileFormat, number>, localeDir: string): Local
   if (counts.size > 1) {
     const seen = [...counts.entries()].map(([id, count]) => `${id} (${count})`).join(', ')
     log.warn(
-      `Locale directory ${localeDir} mixes file formats: ${seen}. Using '${winner}' — `
-      + `set 'localeFileFormat' to pick another; files in the other formats are ignored.`,
+      `Locale directory ${localeDir} mixes file formats: ${seen}. Reading and writing it as `
+      + `'${winner}' — files in the other formats are ignored. Keep one format per locale directory.`,
     )
   }
 
@@ -187,4 +189,18 @@ registerFormat({
   mutate: mutatePhpLocaleFile,
   clearCache: clearPhpFileCache,
   clearCacheEntry: clearPhpFileCacheEntry,
+})
+
+// Rails, Symfony and vue-i18n all read `.yaml`; `.yml` is the same format
+// under the extension half of them actually use.
+registerFormat({
+  id: 'yaml',
+  extensions: ['.yaml', '.yml'],
+  defaultLayout: 'flat',
+  flatFileFromDisk: false,
+  read: readYamlLocaleFile,
+  write: (filePath, data, options) => writeYamlLocaleFile(filePath, data, options),
+  mutate: mutateYamlLocaleFile,
+  clearCache: clearYamlFileCache,
+  clearCacheEntry: clearYamlFileCacheEntry,
 })

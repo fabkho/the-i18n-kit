@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { readLocale, writeLocale, mutateLocale } from '../../src/io/locale-io.js'
 import { clearFileCache } from '../../src/io/json-reader.js'
 import { clearPhpFileCache } from '../../src/io/php-reader.js'
+import { clearYamlFileCache } from '../../src/io/yaml-reader.js'
 
 let tempDir: string
 
@@ -12,6 +13,7 @@ beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), 'locale-io-test-'))
   clearFileCache()
   clearPhpFileCache()
+  clearYamlFileCache()
 })
 
 afterEach(async () => {
@@ -35,9 +37,17 @@ describe('readLocale', () => {
     expect(data).toEqual({ hello: 'world' })
   })
 
+  it.each(['en.yaml', 'en.yml'])('dispatches %s to the yaml reader', async (fileName) => {
+    const filePath = join(tempDir, fileName)
+    await writeFile(filePath, 'hello: world\n')
+
+    const data = await readLocale(filePath)
+    expect(data).toEqual({ hello: 'world' })
+  })
+
   it('throws for unsupported extensions', async () => {
-    const filePath = join(tempDir, 'en.yaml')
-    await writeFile(filePath, 'hello: world')
+    const filePath = join(tempDir, 'en.toml')
+    await writeFile(filePath, 'hello = "world"')
 
     await expect(readLocale(filePath)).rejects.toThrow(/Unsupported locale file format/)
   })
@@ -58,6 +68,14 @@ describe('writeLocale', () => {
 
     const content = await import('node:fs/promises').then(fs => fs.readFile(filePath, 'utf-8'))
     expect(content).toContain('"key" => "value"')
+  })
+
+  it('dispatches .yml to yaml writer', async () => {
+    const filePath = join(tempDir, 'out.yml')
+    await writeLocale(filePath, { key: 'value' })
+
+    const content = await import('node:fs/promises').then(fs => fs.readFile(filePath, 'utf-8'))
+    expect(content).toBe('key: value\n')
   })
 })
 
@@ -94,6 +112,22 @@ return [
     })
 
     clearFileCache()
+    const result = await readLocale(filePath)
+    expect(result.greeting).toBe('Hi')
+    expect(result.farewell).toBe('Goodbye')
+    expect(result.added).toBe('New value')
+  })
+
+  it('read → modify → write → read produces correct data for YAML files', async () => {
+    const filePath = join(tempDir, 'roundtrip.yaml')
+    await writeFile(filePath, 'greeting: Hello\nfarewell: Goodbye\n')
+
+    await mutateLocale(filePath, (data) => {
+      data.greeting = 'Hi'
+      data.added = 'New value'
+    })
+
+    clearYamlFileCache()
     const result = await readLocale(filePath)
     expect(result.greeting).toBe('Hi')
     expect(result.farewell).toBe('Goodbye')

@@ -148,10 +148,10 @@ export const projectConfigSchema = z.object({
       + 'for the default \'.i18n-reports/\' directory, or a string for a custom path.',
     )
     .optional(),
-  localeFileFormat: z.enum(['json', 'php-array'])
+  localeFileFormat: z.enum(['json', 'php-array', 'yaml'])
     .describe(
-      'Override the auto-detected locale file format. Useful when both formats exist or '
-      + 'auto-detection picks wrong.',
+      'Override the auto-detected locale file format. \'yaml\' covers both .yaml and .yml files. '
+      + 'Useful when several formats exist in one project or auto-detection picks wrong.',
     )
     .optional(),
   providerBaseUrl: nonEmptyString
