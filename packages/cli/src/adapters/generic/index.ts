@@ -8,6 +8,35 @@ import { detectFormatInDir, getFormat } from '../../io/formats'
 import { log } from '../../utils/logger'
 import { ConfigError } from '../../utils/errors'
 
+/**
+ * Where a project that declares no `localeDirs` plausibly keeps its locale
+ * files, probed in order. Deliberately short and framework-neutral: it holds
+ * the layouts a Vue, Svelte or plain-bundler project ends up with by
+ * convention, and none that belong to an adapter of their own (`lang/` is
+ * Laravel's, `messages/` and `public/locales` are React's).
+ *
+ * Ordered the way `init` probes the same layouts, so that a project with two
+ * of them resolves to the directory init writes down rather than to a
+ * different one.
+ */
+const COMMON_LOCALE_DIRS = [
+  'locales',
+  'src/locales',
+  'i18n/locales',
+  'src/i18n/locales',
+  'src/i18n',
+]
+
+/** A declaration beats every other adapter's signals. */
+const DECLARED = 10
+
+/**
+ * A probed directory beats nothing: every framework adapter scores at least
+ * this much on a project it recognizes, so discovery only decides projects no
+ * adapter claims.
+ */
+const DISCOVERED = 1
+
 export class GenericAdapter implements FrameworkAdapter {
   readonly name = 'generic'
   readonly label = 'Generic'
@@ -20,34 +49,16 @@ export class GenericAdapter implements FrameworkAdapter {
   // reads.
   async detect(projectDir: string): Promise<number> {
     const config = await loadProjectConfig(projectDir)
-    if (!config) return 0
-    if (config.localeDirs && config.localeDirs.length > 0 && config.defaultLocale) {
-      return 10
+    if (config?.localeDirs && config.localeDirs.length > 0 && config.defaultLocale) {
+      return DECLARED
     }
-    return 0
+
+    const probed = await findLocaleDir(projectDir)
+    return probed ? DISCOVERED : 0
   }
 
   async resolve(projectDir: string, projectConfig: ProjectConfig | null): Promise<I18nConfig> {
-    if (!projectConfig?.localeDirs || projectConfig.localeDirs.length === 0 || !projectConfig.defaultLocale) {
-      throw new ConfigError(
-        'GenericAdapter requires both "localeDirs" and "defaultLocale" in .i18n-mcp.json',
-      )
-    }
-
-    const localeDirs: LocaleDir[] = projectConfig.localeDirs.map((entry) => {
-      if (typeof entry === 'string') {
-        return {
-          path: resolve(projectDir, entry),
-          layer: 'default',
-          layerRootDir: projectDir,
-        }
-      }
-      return {
-        path: resolve(projectDir, entry.path),
-        layer: entry.layer,
-        layerRootDir: projectDir,
-      }
-    })
+    const localeDirs = await resolveLocaleDirs(projectDir, projectConfig)
 
     for (const dir of localeDirs) {
       if (!existsSync(dir.path)) {
@@ -55,15 +66,20 @@ export class GenericAdapter implements FrameworkAdapter {
       }
     }
 
-    // localeDirs mirrors projectConfig.localeDirs, whose emptiness is guarded above
+    // Non-empty by resolveLocaleDirs, which throws rather than returning none.
     const detectedFormat = await detectFormatInDir(localeDirs[0]!.path) ?? 'json'
-    const discoveredLocales = projectConfig.locales ?? await discoverLocales(localeDirs, detectedFormat)
+    const discoveredLocales = projectConfig?.locales ?? await discoverLocales(localeDirs, detectedFormat)
 
-    if (discoveredLocales.length === 0) {
+    const [firstLocale] = discoveredLocales
+    if (firstLocale === undefined) {
       throw new ConfigError(
         `No locale files found in ${localeDirs.map(d => d.path).join(', ')}`,
       )
     }
+
+    // Declared beats discovered. Falling through to the first locale is
+    // alphabetical order dressed up as a decision, so it is the last resort.
+    const defaultLocale = projectConfig?.defaultLocale ?? firstLocale
 
     const locales: LocaleDefinition[] = await Promise.all(discoveredLocales.map(async code => ({
       code,
@@ -81,16 +97,66 @@ export class GenericAdapter implements FrameworkAdapter {
 
     return {
       rootDir: projectDir,
-      defaultLocale: projectConfig.defaultLocale,
-      fallbackLocale: { default: [projectConfig.defaultLocale] },
+      defaultLocale,
+      fallbackLocale: { default: [defaultLocale] },
       locales,
       localeDirs,
       layerRootDirs: [projectDir],
-      projectConfig,
+      ...(projectConfig ? { projectConfig } : {}),
       localeFileFormat: detectedFormat,
       apps: [{ name: 'default', rootDir: projectDir, layers: localeDirs.map(d => d.layer) }],
     }
   }
+}
+
+/**
+ * The directories to read, declared first: a project that writes down where
+ * its locale files are has settled the question, and probing is only for the
+ * one that has not.
+ */
+async function resolveLocaleDirs(projectDir: string, projectConfig: ProjectConfig | null): Promise<LocaleDir[]> {
+  const declared = projectConfig?.localeDirs ?? []
+  if (declared.length > 0) {
+    return declared.map(entry => (typeof entry === 'string'
+      ? { path: resolve(projectDir, entry), layer: 'default', layerRootDir: projectDir }
+      : { path: resolve(projectDir, entry.path), layer: entry.layer, layerRootDir: projectDir }))
+  }
+
+  const probed = await findLocaleDir(projectDir)
+  if (!probed) {
+    throw new ConfigError(
+      'GenericAdapter requires both "localeDirs" and "defaultLocale" in .i18n-mcp.json '
+      + `when the locale files are not in a conventional directory. Looked in ${projectDir} for: `
+      + `${COMMON_LOCALE_DIRS.join(', ')}.`,
+    )
+  }
+
+  // One probed directory, one layer. Several directories are a layout only the
+  // project can describe, so `localeDirs` names them and their layers.
+  return [{ path: probed, layer: 'default', layerRootDir: projectDir }]
+}
+
+/**
+ * The first conventional directory that holds locales, by the same rule that
+ * resolves one. Judging a candidate on its contents rather than its existence
+ * is what keeps an empty `src/i18n` beside a populated `locales` from claiming
+ * a project and then resolving to nothing.
+ *
+ * Runs on every project the CLI is pointed at, including ones this adapter
+ * will lose, so it reads directory entries and nothing else — no project code.
+ */
+async function findLocaleDir(projectDir: string): Promise<string | null> {
+  for (const candidate of COMMON_LOCALE_DIRS) {
+    const path = join(projectDir, candidate)
+    if (!existsSync(path)) continue
+
+    const format = await detectFormatInDir(path)
+    if (!format) continue
+
+    const dir: LocaleDir = { path, layer: 'default', layerRootDir: projectDir }
+    if ((await discoverLocales([dir], format)).length > 0) return path
+  }
+  return null
 }
 
 /**

@@ -8,8 +8,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
  *
  * One directory *per test*, not per file: Node caches an ES module by URL for
  * the life of the process, so two tests writing different configs to the same
- * path would both see whichever ran first. Which is also the reason the
- * production code remembers what it read — see `readVueI18nLocaleDirs`.
+ * path would both see whichever ran first.
  */
 export function tmpProject(name: string) {
   const root = resolve(import.meta.dirname, `../../.tmp-${name}`)

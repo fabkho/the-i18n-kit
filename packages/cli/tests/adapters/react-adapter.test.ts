@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os'
 import { ReactAdapter } from '../../src/adapters/react/index'
 import { registerAdapter, resetRegistry, detectFramework } from '../../src/adapters/registry'
 import { NuxtAdapter } from '../../src/adapters/nuxt/index'
-import { VueAdapter } from '../../src/adapters/vue/index'
 import { readLocaleData, mutateLocaleData } from '../../src/io/locale-data'
 import { clearFileCache } from '../../src/io/json-reader'
 import { loadProjectConfig } from '../../src/config/project-config'
@@ -119,7 +118,9 @@ describe('ReactAdapter.detect', () => {
     expect(await adapter.detect(tempDir)).toBe(0)
   })
 
-  it('returns 0 for Vue project (react deps present but vue first)', async () => {
+  // A Vue project resolves through the generic adapter, which cannot outscore
+  // this one — so the exclusion has to stay here for the project to reach it.
+  it('returns 0 for Vue project (react deps present but vue too)', async () => {
     writeFileSync(join(tempDir, 'package.json'), JSON.stringify({
       dependencies: { react: '^18.0.0', 'react-dom': '^18.0.0', vue: '^3.0.0' },
     }))
@@ -319,14 +320,13 @@ describe('Adapter registry: React vs others', () => {
     resetRegistry()
   })
 
-  it('selects ReactAdapter when Next.js signals present without Nuxt/Vue', async () => {
+  it('selects ReactAdapter when Next.js signals present without Nuxt', async () => {
     const tempDir = join(tmpdir(), `registry-react-test-${Date.now()}`)
     mkdirSync(tempDir, { recursive: true })
     createReactProject(tempDir)
 
     try {
       registerAdapter(new NuxtAdapter())
-      registerAdapter(new VueAdapter())
       registerAdapter(new ReactAdapter())
 
       const adapter = await detectFramework(tempDir)

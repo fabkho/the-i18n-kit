@@ -25,16 +25,12 @@ import { log } from '../../utils/logger.js'
  */
 export async function executeConfig(
   path: string,
-  options: { alias?: Record<string, string>, fresh?: boolean } = {},
+  options: { alias?: Record<string, string> } = {},
 ): Promise<Record<string, unknown> | null> {
   try {
     const { createJiti } = await import('jiti')
     const jiti = createJiti(import.meta.url, {
       interopDefault: false,
-      // A file already evaluated in this process comes back from the module
-      // cache without running again — which is what a reader wants when it
-      // reads exports, and useless to one that works by recording a call.
-      ...(options.fresh ? { moduleCache: false } : {}),
       ...(options.alias ? { alias: options.alias } : {}),
     })
     const module = await jiti.import(path)

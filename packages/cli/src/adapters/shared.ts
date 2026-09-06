@@ -1,5 +1,5 @@
 /**
- * Helpers shared by the single-locale-dir adapters (react, vue).
+ * Helpers for an adapter that resolves a project to a single locale directory.
  */
 
 import { existsSync } from 'node:fs'

@@ -1,14 +1,16 @@
 import { defineI18nKitConfig } from '@the-i18n-kit/cli/config'
 
 /**
- * The half no config file of Vue's can state: which locale is the source of
- * truth, and how the product wants to be translated.
+ * Everything about this project the kit cannot see for itself: where the
+ * locale files are, which locale is the source of truth, and how the product
+ * wants to be translated.
  *
- * `vite.config.ts` says where the files are; this says what to do with them.
  * Typed, so a misspelled key is an editor error rather than a silently
  * ignored one.
  */
 export default defineI18nKitConfig({
+  // Not one of the conventional directories, so it is named here.
+  localeDirs: ['src/translations'],
   defaultLocale: 'en-US',
   context: 'A SaaS booking platform. Vue 3 SPA with vue-i18n.',
   glossary: {

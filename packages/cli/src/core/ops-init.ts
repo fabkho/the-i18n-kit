@@ -122,13 +122,13 @@ async function guessDefaultLocale(
 }
 
 /**
- * Config for a project whose framework was detected.
+ * Config for a project whose framework was detected by an adapter that derives
+ * its own locale settings.
  *
  * Deliberately minimal: an adapter that derives locales, layers and the
  * default locale gets none of them written down. Generating a copy of what
  * `nuxt.config.ts` already states creates the second source of truth that
- * #305 exists to remove, and it goes stale silently. Only an adapter that
- * cannot resolve without them contributes any.
+ * #305 exists to remove, and it goes stale silently.
  */
 function detectedProject(
   match: FrameworkMatch,
@@ -142,7 +142,7 @@ function detectedProject(
       confidence: match.confidence,
       // A property of the adapter, not of this run: forcing over a config that
       // happens to carry localeDirs must not make Nuxt look like it needs them.
-      derivesLocaleConfig: match.adapter.name !== GENERIC_ADAPTER,
+      derivesLocaleConfig: true,
       ...(match.runnersUp.length > 0 ? { runnersUp: match.runnersUp } : {}),
     },
   }
@@ -175,15 +175,45 @@ async function carryLocaleConfig(configPath: string): Promise<CarriedLocaleConfi
 }
 
 /**
- * Config for a project no adapter claimed. The generic adapter only activates
- * with explicit localeDirs + defaultLocale, so these must be written or the
- * project stays unresolvable — the one case where init writes locale data it
- * inferred rather than read.
+ * Config for a project the generic adapter resolves: one no adapter claimed,
+ * or one it claimed by probing a conventional directory rather than by reading
+ * a declaration. Its locale settings are written down — the one case where
+ * init writes locale data it inferred rather than read — because a committed
+ * path is the only thing that survives moving the files somewhere less
+ * conventional.
+ *
+ * A file that already declares both keys is left to say what it says: probing
+ * over it would add a locale list nobody asked for.
  */
-async function undetectedProject(
+async function genericProject(
   projectDir: string,
   carried: CarriedLocaleConfig,
+  match: FrameworkMatch | undefined,
 ): Promise<{ config: GeneratedProjectConfig; detected: Detected }> {
+  const declared = carried.localeDirs !== undefined && carried.defaultLocale !== undefined
+  const probe = declared ? null : await probeLocaleConfig(projectDir)
+
+  return {
+    config: {
+      ...authoringScaffold(),
+      ...probe?.config,
+      ...carried,
+    },
+    detected: {
+      adapter: GENERIC_ADAPTER,
+      label: 'Generic',
+      confidence: match?.confidence ?? 0,
+      derivesLocaleConfig: false,
+      ...(match && match.runnersUp.length > 0 ? { runnersUp: match.runnersUp } : {}),
+      ...(probe?.note ? { note: probe.note } : {}),
+    },
+  }
+}
+
+/** The locale settings a probe of the conventional directories yields. */
+async function probeLocaleConfig(
+  projectDir: string,
+): Promise<{ config: CarriedLocaleConfig; note?: string }> {
   const localeDirs = await probeLocaleDirs(projectDir)
   const [firstDir] = localeDirs
   const locales = firstDir ? await probeLocaleCodes(projectDir, firstDir) : []
@@ -198,24 +228,16 @@ async function undetectedProject(
 
   return {
     config: {
-      ...authoringScaffold(),
       localeDirs: localeDirs.length > 0 ? localeDirs : ['locales'],
       defaultLocale: guessed ?? 'en',
       ...(locales.length > 0 ? { locales } : {}),
-      ...carried,
     },
-    detected: {
-      adapter: GENERIC_ADAPTER,
-      label: 'Generic',
-      confidence: 0,
-      derivesLocaleConfig: false,
-      ...(localeDirs.length === 0
-        ? { note: 'No framework and no locale directory found. Wrote a template — set localeDirs and defaultLocale before running other commands.' }
-        : {}),
-      ...(phpOnly
-        ? { note: `Found ${firstDir} but no JSON locale files in it. Flat PHP locale files are not resolvable by the generic adapter — see the-i18n-kit#308.` }
-        : {}),
-    },
+    ...(localeDirs.length === 0
+      ? { note: 'No framework and no locale directory found. Wrote a template — set localeDirs and defaultLocale before running other commands.' }
+      : {}),
+    ...(phpOnly
+      ? { note: `Found ${firstDir} but no JSON locale files in it. Flat PHP locale files are not resolvable by the generic adapter — see the-i18n-kit#308.` }
+      : {}),
   }
 }
 
@@ -239,9 +261,9 @@ export async function initProjectConfig(opts: {
 
   const carried = await carryLocaleConfig(configPath)
   const match = await detectFrameworkMatch(dir)
-  const { config, detected } = match
+  const { config, detected } = match && match.adapter.name !== GENERIC_ADAPTER
     ? detectedProject(match, carried)
-    : await undetectedProject(dir, carried)
+    : await genericProject(dir, carried, match)
 
   // A generated config the tool would then reject is a bug in init, not
   // something to hand the user.
