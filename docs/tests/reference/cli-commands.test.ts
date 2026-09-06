@@ -39,11 +39,10 @@ describe('the CLI reference against the command registry', () => {
   })
 
   it('documents no command the CLI filters out of its own registry', () => {
-    // Those cannot be invoked — running one prints "Unknown command" — because
-    // the operations are reachable through MCP tools instead. A page for one
-    // would document a command that fails when a reader tries it.
+    // Those cannot be invoked — running one prints "Unknown command". A page
+    // for one would document a command that fails when a reader tries it.
+    // Nothing is hidden today; the loop below is a guard for when something is.
     const hidden = Object.keys(commands).filter(name => !source.exposed.includes(name))
-    expect(hidden.length).toBeGreaterThan(0)
 
     for (const name of hidden) {
       expect(output.has(`content/9.reference/1.cli/${name}.md`)).toBe(false)

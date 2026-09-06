@@ -52,8 +52,8 @@ describe('every public command is invocable through the binary', () => {
 // The flag has to keep meaning what it says, in both directions: hiding a
 // command removes it from the executed map, not merely from --help (#307).
 describe('hidden commands', () => {
-  it('names the ones reachable another way, and nothing else', () => {
-    expect(hiddenCommands).toEqual(['detect', 'list-dirs', 'empty'])
+  it('is empty: every registered command is invocable from the terminal', () => {
+    expect(hiddenCommands).toEqual([])
   })
 
   // Invoked bare, not with --help: runCli hands any --help straight to citty,

@@ -18,12 +18,15 @@ The command pages are generated from the command definitions, so a flag that no 
 | Command | What it does |
 | --- | --- |
 | [`init`](/reference/cli/init) | Create a schema-valid .i18n-mcp.json from framework detection. Non-interactive; refuses to overwrite without --force |
+| [`detect`](/reference/cli/detect) | Detect i18n configuration from the project |
+| [`list-dirs`](/reference/cli/list-dirs) | List all i18n locale directories, grouped by layer |
 | [`get`](/reference/cli/get) | Get translation values for specific keys |
 | [`write`](/reference/cli/write) | Write translation keys (add/update/upsert). Default mode: upsert. |
 | [`add`](/reference/cli/add) | Add new translation keys (skips keys that already exist) |
 | [`update`](/reference/cli/update) | Update existing translation keys (skips keys that do not exist) |
 | [`missing`](/reference/cli/missing) | Find translation keys missing in target locales |
 | [`status`](/reference/cli/status) | Translation coverage per locale and per layer, with an overall completion percentage |
+| [`empty`](/reference/cli/empty) | Find translation keys with empty string values |
 | [`search`](/reference/cli/search) | Search translation files by key or value |
 | [`remove`](/reference/cli/remove) | Remove translation keys from all locale files in a layer |
 | [`rename`](/reference/cli/rename) | Rename/move a translation key across all locale files |

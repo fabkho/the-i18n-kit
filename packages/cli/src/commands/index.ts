@@ -13,9 +13,9 @@ export interface CommandEntry {
   load: () => Promise<CommandDef>
   /**
    * Kept out of the executed map, not merely out of `--help`: a hidden name
-   * cannot be invoked at all. Only for operations reachable another way —
-   * `discover` covers `detect` and `list-dirs`, `find_empty_translations`
-   * covers `empty` (#252). A command with no other route must stay exposed.
+   * cannot be invoked at all. Nothing is hidden today; every command an MCP
+   * tool pairs with must be invocable from the terminal, or the docs describe
+   * a command that does not exist.
    */
   hidden?: true
 }
@@ -24,22 +24,17 @@ const command = (load: () => Promise<{ default: unknown }>): CommandEntry => ({
   load: () => load().then(m => m.default as CommandDef),
 })
 
-const hidden = (load: () => Promise<{ default: unknown }>): CommandEntry => ({
-  ...command(load),
-  hidden: true,
-})
-
 export const commands = {
   'init': command(() => import('./init.js')),
-  'detect': hidden(() => import('./detect.js')),
-  'list-dirs': hidden(() => import('./list-dirs.js')),
+  'detect': command(() => import('./detect.js')),
+  'list-dirs': command(() => import('./list-dirs.js')),
   'get': command(() => import('./get.js')),
   'write': command(() => import('./write.js')),
   'add': command(() => import('./add.js')),
   'update': command(() => import('./update.js')),
   'missing': command(() => import('./missing.js')),
   'status': command(() => import('./status.js')),
-  'empty': hidden(() => import('./empty.js')),
+  'empty': command(() => import('./empty.js')),
   'search': command(() => import('./search.js')),
   'remove': command(() => import('./remove.js')),
   'rename': command(() => import('./rename.js')),
