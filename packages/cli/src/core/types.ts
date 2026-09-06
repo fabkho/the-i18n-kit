@@ -394,6 +394,30 @@ export type TranslateFailReason =
 /** Why a key or locale was intentionally not attempted. */
 export type TranslateSkipReason = 'no-provider' | 'already-translated' | 'protected-locale'
 
+/** What translate_missing accepts. `layer` omitted means every layer at once. */
+export interface TranslateMissingOptions {
+  layer?: string
+  referenceLocale?: string
+  targetLocales?: string[]
+  locales?: string[]
+  keys?: string[]
+  batchSize?: number
+  dryRun?: boolean
+  compact?: boolean
+  projectDir?: string
+  /**
+   * Also re-translate keys whose target was written from source text that has
+   * changed since (translation memory only). Off by default: without it the
+   * operation still never touches an existing value, it only reports the stale
+   * ones in `stale`.
+   */
+  overwriteStale?: boolean
+  translateFn?: TranslateFn
+  progressFn?: ProgressFn
+  /** Called once after the pre-scan with the computed total number of progress steps. */
+  onProgressTotal?: (total: number) => void
+}
+
 export interface TranslateMissingLocaleResult {
   mode: TranslateMode
   /** Number of missing keys found for this locale. Always equals
@@ -404,6 +428,14 @@ export interface TranslateMissingLocaleResult {
   wouldTranslate?: string[]
   failed: Array<{ key: string, reason: TranslateFailReason }>
   skipped: Array<{ key: string, reason: TranslateSkipReason }>
+  /**
+   * Translation-memory only: keys whose target value was written from source
+   * text that has changed since, and which this run left untouched. A bucket of
+   * its own, not part of `missing` — these keys are translated, just outdated —
+   * so the invariant above still holds. Re-translating them needs
+   * `overwriteStale`, which counts them into `missing` instead.
+   */
+  stale?: string[]
   batches?: number
   model?: string
   writeError?: string
@@ -419,6 +451,7 @@ export interface TranslateMissingCompactEntry {
   failed: number
   skipped: number
   wouldTranslate?: number
+  stale?: number
   batches?: number
   model?: string
   writeError?: string
@@ -436,6 +469,8 @@ export interface TranslateMissingResult {
     totalFailed: number
     totalSkipped: number
     totalWouldTranslate?: number
+    /** Translation-memory only: stale keys left untouched, across all locales. */
+    staleCount?: number
     layer: string
     referenceLocale: string | LocaleRefInfo
     targetLocales: Array<string | LocaleRefInfo>
@@ -458,6 +493,8 @@ export interface TranslateAllLayersSummary {
   totalFailed: number
   totalSkipped: number
   totalWouldTranslate?: number
+  /** Translation-memory only: stale keys left untouched, across all layers and locales. */
+  staleCount?: number
   /** Layer names that were translated. */
   layers: string[]
   byLayer: TranslateLayerTotals[]
@@ -497,6 +534,19 @@ export interface TranslateKeyLocaleIssue {
   detail?: string
 }
 
+/**
+ * One locale translate_key deliberately left alone. `reason` is a closed set;
+ * `stale` refines 'already-translated' rather than extending it, so a caller
+ * can tell an existing translation that still matches its source from one the
+ * source has since outgrown.
+ */
+export interface TranslateKeySkip {
+  locale: string
+  reason: TranslateSkipReason
+  /** Translation-memory only: whether the existing value is out of date. */
+  stale?: boolean
+}
+
 export interface TranslateKeyResult {
   key: string
   sourceLocale: LocaleRefInfo
@@ -505,7 +555,7 @@ export interface TranslateKeyResult {
   translated: string[]
   /** Dry-run only: locales that would be translated. */
   wouldTranslate?: string[]
-  skipped: Array<{ locale: string, reason: TranslateSkipReason }>
+  skipped: TranslateKeySkip[]
   failed: TranslateKeyLocaleIssue[]
   filesWritten: number
   dryRun: boolean

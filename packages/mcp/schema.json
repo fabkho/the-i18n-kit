@@ -231,6 +231,10 @@
       ],
       "description": "Override the auto-detected locale file format. Useful when both formats exist or auto-detection picks wrong."
     },
+    "translationMemory": {
+      "type": "boolean",
+      "description": "Write a translation memory to '.i18n-kit.lock.json' at the project root, recording per layer, key and target locale a hash of the source text each translation was made from, so later runs can tell targets that are still current from ones whose source has changed since. Off by default; no file is created until you enable it."
+    },
     "providerBaseUrl": {
       "type": "string",
       "minLength": 1,
