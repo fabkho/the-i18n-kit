@@ -14,7 +14,7 @@ inputs:
     description: 'Model name (e.g. gpt-4o, claude-3-5-sonnet-20241022, gemini-2.0-flash)'
     required: true
   api_key:
-    description: 'API key for the chosen provider'
+    description: 'API key for the chosen provider. Passed to the step under the provider''s own environment variable name.'
     required: true
   layer:
     description: 'Layer name to translate (e.g. common, dashboard)'
@@ -44,44 +44,18 @@ inputs:
     description: 'Project root directory (default: github.workspace)'
     required: false
     default: ${{ github.workspace }}
-  create_pr:
-    description: 'Create a PR with the translated files'
-    required: false
-    default: 'true'
-  pr_branch:
-    description: 'Branch name for the PR (default: i18n/translate-missing-<timestamp>)'
-    required: false
-  commit_message:
-    description: 'Commit message (default: "chore(i18n): translate missing keys via <provider>")'
-    required: false
-  pr_title:
-    description: 'PR title (default: "chore(i18n): translate missing keys")'
-    required: false
-  github_token:
-    description: 'GitHub token for creating PRs. Defaults to GITHUB_TOKEN.'
-    required: false
-    default: ${{ github.token }}
-  base_branch:
-    description: 'Base branch for the PR (default: the branch that triggered the workflow)'
-    required: false
   cli_version:
     description: '@the-i18n-kit/cli version to install (npm dist-tag or version). Use "skip" if the CLI is already installed (e.g. a local build).'
     required: false
     default: 'latest'
 
 outputs:
-  gate_tripped:
-    description: 'Names of any CI gates that tripped. The job fails after the translations are committed.'
-    value: ${{ steps.translate.outputs.gate_tripped }}
   translated_count:
-    description: 'Number of keys translated'
+    description: 'Number of keys translated, or of keys that would be translated on a dry run'
     value: ${{ steps.translate.outputs.translated_count }}
   failed_count:
     description: 'Number of keys that failed to translate'
     value: ${{ steps.translate.outputs.failed_count }}
-  pr_url:
-    description: 'URL of the created PR (only when create_pr is true)'
-    value: ${{ steps.create-pr.outputs.pr_url }}
 
 runs:
   using: 'composite'
@@ -96,187 +70,48 @@ runs:
       shell: bash
       env:
         CLI_VERSION: ${{ inputs.cli_version }}
-      run: |
-        set -euo pipefail
-        npm install -g "@the-i18n-kit/cli@${CLI_VERSION}"
+      run: npm install -g "@the-i18n-kit/cli@${CLI_VERSION}"
 
     - name: Translate missing keys
       id: translate
       shell: bash
       working-directory: ${{ inputs.working_directory }}
       env:
-        I18N_API_KEY: ${{ inputs.api_key }}
-        I18N_PROVIDER: ${{ inputs.provider }}
+        # The CLI resolves the key from the env var of the provider it was
+        # asked for, so all three carry the same input and only one is read.
+        OPENAI_API_KEY: ${{ inputs.api_key }}
+        ANTHROPIC_API_KEY: ${{ inputs.api_key }}
+        GEMINI_API_KEY: ${{ inputs.api_key }}
+        PROVIDER: ${{ inputs.provider }}
+        MODEL: ${{ inputs.model }}
+        LAYER: ${{ inputs.layer }}
+        BATCH_SIZE: ${{ inputs.batch_size }}
+        LOCALES: ${{ inputs.locales }}
+        SOURCE_LOCALE: ${{ inputs.source_locale }}
+        KEYS: ${{ inputs.keys }}
+        DRY_RUN: ${{ inputs.dry_run }}
+        FAIL_ON_FAILED: ${{ inputs.fail_on_failed }}
       run: |
         set -euo pipefail
 
-        # Route API key to the provider-specific env var
-        case "$I18N_PROVIDER" in
-          openai)   export OPENAI_API_KEY="$I18N_API_KEY" ;;
-          anthropic) export ANTHROPIC_API_KEY="$I18N_API_KEY" ;;
-          google)   export GEMINI_API_KEY="$I18N_API_KEY" ;;
-          *)        echo "::error::Unknown provider: $I18N_PROVIDER"; exit 1 ;;
-        esac
-
-        args=(
-          --provider "${{ inputs.provider }}"
-          --model "${{ inputs.model }}"
-          --layer "${{ inputs.layer }}"
-          --batch-size "${{ inputs.batch_size }}"
-          --json
-        )
-
-        if [ -n "${{ inputs.locales }}" ]; then
-          args+=(--targets "${{ inputs.locales }}")
-        fi
-        if [ -n "${{ inputs.source_locale }}" ]; then
-          args+=(--ref "${{ inputs.source_locale }}")
-        fi
-        if [ -n "${{ inputs.keys }}" ]; then
-          args+=(--keys "${{ inputs.keys }}")
-        fi
-        if [ "${{ inputs.dry_run }}" = "true" ]; then
-          args+=(--dry-run)
-        fi
-        if [ "${{ inputs.fail_on_failed }}" = "true" ]; then
-          args+=(--fail-on-failed)
-        fi
+        args=(--provider "$PROVIDER" --model "$MODEL" --layer "$LAYER" --batch-size "$BATCH_SIZE" --json)
+        [ -z "$LOCALES" ] || args+=(--targets "$LOCALES")
+        [ -z "$SOURCE_LOCALE" ] || args+=(--ref "$SOURCE_LOCALE")
+        [ -z "$KEYS" ] || args+=(--keys "$KEYS")
+        [ "$DRY_RUN" != "true" ] || args+=(--dry-run)
+        [ "$FAIL_ON_FAILED" != "true" ] || args+=(--fail-on-failed)
 
         # The CLI owns the pass/fail decision and reports it as an exit code:
-        # 0 success, 1 the run itself failed, 2 a requested gate tripped. Parsing
-        # counts to decide that here would re-couple this action to output field
-        # names, which is the defect class that broke downstream pipelines.
+        # 0 success, 1 the run itself failed, 2 a requested gate tripped. The
+        # counts below feed the step outputs and never a decision.
+        result="${RUNNER_TEMP}/i18n-translate.json"
         set +e
-        output=$(the-i18n-cli translate "${args[@]}")
-        status=$?
+        the-i18n-cli translate "${args[@]}" | tee "$result"
+        status=${PIPESTATUS[0]}
         set -e
-        echo "$output"
 
-        # Counts are read for the step outputs and the log only — never to
-        # decide pass/fail. Tolerant, so a malformed result cannot mask $status.
-        # Dry runs report their counts as totalWouldTranslate.
-        # head -n1: a single result yields a single line today, but a multi-document
-        # stdout would make these multiline and turn the -gt below into a hard
-        # bash error under set -e, defeating the tolerance this fallback exists for.
-        count=$(echo "$output" | jq -r '(.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0)' 2>/dev/null | head -n1 || echo 0)
-        failed=$(echo "$output" | jq -r '.summary.totalFailed // 0' 2>/dev/null | head -n1 || echo 0)
-        count=${count:-0}
-        failed=${failed:-0}
-        echo "translated_count=$count" >> "$GITHUB_OUTPUT"
-        echo "failed_count=$failed" >> "$GITHUB_OUTPUT"
+        jq -r '"translated_count=\((.summary.totalTranslated // 0) + (.summary.totalWouldTranslate // 0))",
+               "failed_count=\(.summary.totalFailed // 0)"' "$result" >> "$GITHUB_OUTPUT" || true
 
-        # A tripped gate is recorded, not acted on here. Failing this step would
-        # skip the PR step below, throwing away the translations the run did
-        # produce — reported red and lost, with the next run redoing all of it.
-        # The gate fails the job in a later step, once the work is safe.
-        case "$status" in
-          0) ;;
-          2)
-            gates=$(echo "$output" | jq -rc '[.gatesTripped[]?.name] | join(", ")' 2>/dev/null || echo "unknown")
-            # An absent or empty gatesTripped joins to "", which the final step
-            # reads as "no gate" and skips — turning exit 2 into a green job.
-            # The exit code is the authority on whether a gate tripped; the
-            # names only shape the message.
-            gates=${gates:-unnamed gate}
-            echo "::warning::CI gate tripped: ${gates}. The run itself succeeded — the job fails after the translations are committed."
-            echo "gate_tripped=${gates}" >> "$GITHUB_OUTPUT"
-            ;;
-          *)
-            echo "::error::translate failed (exit ${status}) — check provider, model, and API key."
-            exit "$status"
-            ;;
-        esac
-
-        if [ "$failed" -gt 0 ]; then
-          echo "::warning::$failed keys failed to translate ($count succeeded). They are still missing, so re-running retries them. Set fail_on_failed: true to make this fail the step instead."
-        fi
-
-    - name: Create PR with translations
-      id: create-pr
-      if: inputs.dry_run == 'false' && inputs.create_pr == 'true'
-      shell: bash
-      working-directory: ${{ inputs.working_directory }}
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
-        BASE_BRANCH: ${{ inputs.base_branch }}
-        PR_BRANCH: ${{ inputs.pr_branch }}
-        COMMIT_MSG: ${{ inputs.commit_message }}
-        PR_TITLE: ${{ inputs.pr_title }}
-        PROVIDER: ${{ inputs.provider }}
-        LAYER: ${{ inputs.layer }}
-      run: |
-        set -euo pipefail
-
-        # Determine base branch
-        if [ -z "${BASE_BRANCH:-}" ]; then
-          BASE="${GITHUB_BASE_REF:-$GITHUB_REF_NAME}"
-        else
-          BASE="$BASE_BRANCH"
-        fi
-
-        # Branch name
-        if [ -z "${PR_BRANCH:-}" ]; then
-          TS=$(date +%s)
-          BRANCH="i18n/translate-missing-${TS}"
-        else
-          BRANCH="$PR_BRANCH"
-        fi
-
-        # Commit message
-        if [ -z "${COMMIT_MSG:-}" ]; then
-          MSG="chore(i18n): translate missing keys via ${PROVIDER}"
-        else
-          MSG="$COMMIT_MSG"
-        fi
-
-        # PR title
-        if [ -z "${PR_TITLE:-}" ]; then
-          TITLE="chore(i18n): translate missing keys (${LAYER})"
-        else
-          TITLE="$PR_TITLE"
-        fi
-
-        git config user.name "${{ github.actor }}"
-        git config user.email "${{ github.actor }}@users.noreply.github.com"
-
-        # Check if there are changes
-        if git diff --quiet && git diff --cached --quiet; then
-          echo "No translation changes to commit"
-          echo "pr_url=" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        git checkout -b "$BRANCH"
-        git add .
-        git commit -m "$MSG"
-        git push origin "$BRANCH"
-
-        PR_URL=$(gh pr create \
-          --base "$BASE" \
-          --head "$BRANCH" \
-          --title "$TITLE" \
-          --body "Automated translation of missing i18n keys in layer \`${LAYER}\` using \`${PROVIDER}\`.
-
-        | | |
-        |---|---|
-        | Provider | ${PROVIDER} |
-        | Model | ${{ inputs.model }} |
-        | Layer | ${LAYER} |
-        | Keys translated | ${{ steps.translate.outputs.translated_count }} |")
-
-        echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-        echo "Created PR: $PR_URL"
-
-    - name: Dry run summary
-      if: inputs.dry_run == 'true'
-      shell: bash
-      run: |
-        echo "::notice::Dry run complete. ${{ steps.translate.outputs.translated_count }} keys would be translated."
-
-    # Last, so the gate reddens the job without costing the run its work.
-    - name: Fail on tripped gate
-      if: steps.translate.outputs.gate_tripped != ''
-      shell: bash
-      run: |
-        echo "::error::CI gate tripped: ${{ steps.translate.outputs.gate_tripped }}. Findings exist; the translations that succeeded were still committed."
-        exit 2
+        [ "$status" -ne 1 ] || echo "::error::translate failed (exit 1) — check provider, model, and API key."
+        exit "$status"

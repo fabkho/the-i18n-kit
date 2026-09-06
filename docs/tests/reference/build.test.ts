@@ -285,7 +285,7 @@ describe('the GitHub Action reference, from a fixture manifest', () => {
     const markdown = buildAction()
     for (const input of fixtureActionSource().inputs) {
       // Angle brackets are entity-escaped, since a markdown renderer reads
-      // `<timestamp>` as the start of a tag and drops the rest of the sentence.
+      // `<config>` as the start of a tag and drops the rest of the sentence.
       expect(markdown).toContain(input.description.replace(/</g, '&lt;'))
     }
   })
@@ -307,9 +307,12 @@ describe('the GitHub Action reference, from a fixture manifest', () => {
       .toContain('`${{ github.workspace }}`')
   })
 
-  it('leaves out the gate note when the manifest reports no gate', () => {
-    const source = fixtureActionSource({ outputs: [{ name: 'pr_url', description: 'URL' }] })
-    expect(buildAction(source)).not.toContain('::note')
+  it('points at the command it runs and at the workflow around it', () => {
+    // The action installs the CLI and runs one command; its flags, its exit
+    // codes and the step that commits what it wrote live where they belong.
+    const markdown = buildAction()
+    expect(markdown).toContain('(/reference/cli/translate)')
+    expect(markdown).toContain('(/ci-cd/github-actions)')
   })
 })
 

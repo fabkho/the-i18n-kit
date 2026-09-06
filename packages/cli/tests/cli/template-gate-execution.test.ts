@@ -54,14 +54,31 @@ async function runScript(
   }
 }
 
-interface Job { script: string[], variables?: Record<string, string>, extends?: string }
+interface Job { script?: string[], variables?: Record<string, string>, extends?: string }
 
-async function readJob(name: string): Promise<Job> {
+/**
+ * The job as GitLab assembles it: `extends` is followed, hash keys merged and
+ * list keys replaced. The two report jobs share one script through a hidden
+ * base, so a test that read the job's own keys would find nothing to run.
+ */
+async function readJob(name: string): Promise<Required<Pick<Job, 'script' | 'variables'>>> {
   const raw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
   const doc = parse(raw) as Record<string, Job>
-  const job = doc[name]
-  if (!job) throw new Error(`job ${name} not found in gitlab-ci.yml`)
-  return job
+
+  const chain: Job[] = []
+  for (let job = doc[name]; job; job = job.extends ? doc[job.extends] : undefined) {
+    chain.unshift(job)
+  }
+  if (chain.length === 0) throw new Error(`job ${name} not found in gitlab-ci.yml`)
+
+  let script: string[] | undefined
+  let variables: Record<string, string> = {}
+  for (const link of chain) {
+    variables = { ...variables, ...link.variables }
+    script = link.script ?? script
+  }
+  if (!script) throw new Error(`job ${name} resolves to no script`)
+  return { script, variables }
 }
 
 async function jobScript(name: string): Promise<string> {
@@ -75,9 +92,7 @@ async function jobScript(name: string): Promise<string> {
  * mid-run, which reads as a template bug rather than a fixture gap.
  */
 async function jobVariables(name: string): Promise<Record<string, string>> {
-  const job = await readJob(name)
-  const inherited = job.extends ? await jobVariables(job.extends) : {}
-  return { ...inherited, ...(job.variables ?? {}) }
+  return (await readJob(name)).variables
 }
 
 describe('gitlab-ci.yml job scripts, executed', () => {
@@ -112,30 +127,30 @@ describe('gitlab-ci.yml job scripts, executed', () => {
     await rm(projectDir, { recursive: true, force: true })
   })
 
-  const cleanupEnv = (failOnOrphans: string) => ({
-    I18N_LAYER: '',
-    I18N_FAIL_ON_ORPHANS: failOnOrphans,
-    CI_JOB_URL: 'https://example.test/job/1',
-  })
+  async function scanEnv(job: string, overrides: Record<string, string> = {}) {
+    return { ...await jobVariables(job), ...overrides }
+  }
 
   describe('.i18n-cleanup', () => {
     it('exits 0 on findings when the gate is not requested', async () => {
-      const run = await runScript(await jobScript('.i18n-cleanup'), projectDir, cleanupEnv('false'), binDir)
+      const run = await runScript(await jobScript('.i18n-cleanup'), projectDir, await scanEnv('.i18n-cleanup'), binDir)
 
       expect(run.code).toBe(0)
       // The findings are still reported — the gate governs the outcome, not the report.
-      expect(run.stdout).toContain('Orphan keys found: 1')
+      expect(run.stdout).toContain('"orphanCount": 1')
     })
 
     it('exits 2 on findings when I18N_FAIL_ON_ORPHANS is true', async () => {
-      const run = await runScript(await jobScript('.i18n-cleanup'), projectDir, cleanupEnv('true'), binDir)
+      const env = await scanEnv('.i18n-cleanup', { I18N_FAIL_ON_ORPHANS: 'true' })
+      const run = await runScript(await jobScript('.i18n-cleanup'), projectDir, env, binDir)
 
       expect(run.code).toBe(2)
-      expect(run.stdout).toContain('Orphan keys found: 1')
+      expect(run.stdout).toContain('"orphanCount": 1')
     })
 
     it('still writes the Code Quality artifact when the gate trips', async () => {
-      await runScript(await jobScript('.i18n-cleanup'), projectDir, cleanupEnv('true'), binDir)
+      const env = await scanEnv('.i18n-cleanup', { I18N_FAIL_ON_ORPHANS: 'true' })
+      await runScript(await jobScript('.i18n-cleanup'), projectDir, env, binDir)
 
       const report = JSON.parse(await readFile(join(projectDir, 'gl-codequality.json'), 'utf-8'))
       expect(Array.isArray(report)).toBe(true)
@@ -146,11 +161,23 @@ describe('gitlab-ci.yml job scripts, executed', () => {
     // only tells warnings from failures if a broken run exits something else.
     it('exits 1, not 2, when the scan itself fails', async () => {
       const brokenDir = await mkdtemp(join(tmpdir(), 'i18n-tpl-broken-'))
-      const run = await runScript(await jobScript('.i18n-cleanup'), brokenDir, cleanupEnv('true'), binDir)
+      const env = await scanEnv('.i18n-cleanup', { I18N_FAIL_ON_ORPHANS: 'true' })
+      const run = await runScript(await jobScript('.i18n-cleanup'), brokenDir, env, binDir)
 
       expect(run.code).toBe(1)
-      expect(run.stdout).toContain('orphan scan failed (exit 1)')
+      expect(run.stdout).toContain('CONFIG_ERROR')
       await rm(brokenDir, { recursive: true, force: true })
+    })
+  })
+
+  // Same script, second command: `check` gates unconditionally, so a project
+  // with nothing undefined has to come back green through the shared job.
+  describe('.i18n-check', () => {
+    it('exits 0 when every used key resolves', async () => {
+      const run = await runScript(await jobScript('.i18n-check'), projectDir, await scanEnv('.i18n-check'), binDir)
+
+      expect(run.code).toBe(0)
+      expect(run.stdout).toContain('"undefinedCount": 0')
     })
   })
 
@@ -211,12 +238,7 @@ describe('gitlab-ci.yml job scripts, executed', () => {
         CI_JOB_TOKEN: 'stub',
         I18N_PROVIDER: 'openai',
         I18N_MODEL: 'stub-model',
-        I18N_API_KEY: 'stub',
-        I18N_LAYER: '',
-        I18N_LOCALES: '',
-        I18N_SOURCE_LOCALE: '',
-        I18N_KEYS: '',
-        I18N_BATCH_SIZE: '50',
+        I18N_API_KEY: 'secret-key',
         I18N_DRY_RUN: 'true',
         ...env,
       }, stubBin)
@@ -233,7 +255,8 @@ describe('gitlab-ci.yml job scripts, executed', () => {
       const run = await runTranslate(JSON.stringify({ summary: { totalTranslated: 3, totalFailed: 0 } }), 0)
 
       expect(run.code).toBe(0)
-      expect(run.stdout).toContain('Translated: 3, failed: 0')
+      // The CLI's own result reaches the job log unaltered.
+      expect(run.stdout).toContain('"totalTranslated":3')
     })
 
     it('exits 1 and explains the failure when the run itself failed', async () => {
@@ -243,14 +266,14 @@ describe('gitlab-ci.yml job scripts, executed', () => {
       expect(run.stdout).toContain('translate failed (exit 1)')
     })
 
-    it('exits 2 and names the gate, distinctly from a failure', async () => {
+    it('exits 2 on a tripped gate, distinctly from a failure', async () => {
       const run = await runTranslate(JSON.stringify({
         summary: { totalTranslated: 5, totalFailed: 0 },
         gatesTripped: [{ name: 'fail-on-missing', observed: 12, threshold: 0 }],
       }), 2)
 
       expect(run.code).toBe(2)
-      expect(run.stdout).toContain('GATE: fail-on-missing tripped')
+      expect(run.stdout).toContain('"fail-on-missing"')
       expect(run.stdout).not.toContain('translate failed')
     })
 
@@ -263,7 +286,7 @@ describe('gitlab-ci.yml job scripts, executed', () => {
     // The gate must outlive the steps that follow it rather than short-circuit
     // them. Exiting at the status check threw away whatever the run did
     // translate — 54 keys discarded because 3 failed, seen on a real project.
-    // Proven here by the gate message arriving after a later step's output.
+    // Proven here by the job reaching a later step before it goes red.
     it('reports the gate after continuing, not at the status check', async () => {
       const partial = JSON.stringify({
         summary: { totalTranslated: 54, totalFailed: 3 },
@@ -272,8 +295,7 @@ describe('gitlab-ci.yml job scripts, executed', () => {
       const run = await runTranslate(partial, 2)
 
       expect(run.code).toBe(2)
-      expect(run.stdout.indexOf('Dry run complete'))
-        .toBeLessThan(run.stdout.indexOf('GATE: fail-on-failed tripped'))
+      expect(run.stdout).toContain('Dry run complete')
     })
 
     // The case the dry run cannot reach: with a gate tripped, the work the run
@@ -287,9 +309,7 @@ describe('gitlab-ci.yml job scripts, executed', () => {
 
       expect(run.code).toBe(2)
       expect(run.log).toContain('i18n: auto-translate missing keys')
-      expect(run.stdout).toContain('Pushed 1 locale file(s) to feat/translate')
-      expect(run.stdout.indexOf('Pushed 1 locale file(s)'))
-        .toBeLessThan(run.stdout.indexOf('GATE: fail-on-failed tripped'))
+      expect(run.stdout).toContain('Pushed to feat/translate')
     })
 
     it('requests the partial-failure gate only when asked', async () => {
@@ -302,7 +322,7 @@ describe('gitlab-ci.yml job scripts, executed', () => {
 
     // The gate is opt-in, so the ungated run is the one most projects get. Its
     // only trace of a partial failure is the CLI's own summary.message, which
-    // the job must surface without parsing it — the counts stay display-only.
+    // the job surfaces by printing the result rather than by parsing it.
     it('surfaces the CLI guidance on a partial failure it does not gate on', async () => {
       const partial = JSON.stringify({
         summary: {
@@ -314,11 +334,17 @@ describe('gitlab-ci.yml job scripts, executed', () => {
       const run = await runTranslate(partial, 0)
 
       expect(run.code).toBe(0)
-      expect(run.stdout).toContain('Translated: 795, failed: 141')
       expect(run.stdout).toContain('Those keys remain missing')
     })
-  })
 
+    // The key belongs in the environment, not in argv: the CLI resolves it from
+    // the provider's own variable, and a command line is readable by `ps`.
+    it('hands the API key to the CLI through the environment', async () => {
+      const clean = JSON.stringify({ summary: { totalTranslated: 1, totalFailed: 0 } })
+
+      expect((await runTranslate(clean, 0)).args).not.toContain('secret-key')
+    })
+  })
 })
 
 /**
@@ -338,20 +364,49 @@ describe('action.yml translate step, executed against a stub CLI', () => {
     await rm(workDir, { recursive: true, force: true })
   })
 
-  async function translateStepScript(): Promise<string> {
+  /** Input values the runner would resolve the step's `env:` expressions to. */
+  const ACTION_INPUTS: Record<string, string> = {
+    provider: 'openai',
+    model: 'stub-model',
+    api_key: 'stub-key',
+    layer: 'root',
+    batch_size: '50',
+    locales: '',
+    source_locale: '',
+    keys: '',
+    dry_run: 'false',
+    fail_on_failed: 'false',
+  }
+
+  /**
+   * The step's script plus the environment it declares. Both come from the
+   * manifest: the script runs under `set -u`, so an env var the step adds but a
+   * test does not know about would abort it mid-run.
+   */
+  async function translateStep(): Promise<{ run: string, env: Record<string, string> }> {
     const raw = await readFile(join(repoRoot, 'action.yml'), 'utf-8')
-    const doc = parse(raw) as { runs: { steps: Array<{ id?: string, run?: string }> } }
+    const doc = parse(raw) as {
+      runs: { steps: Array<{ id?: string, run?: string, env?: Record<string, string> }> }
+    }
     const step = doc.runs.steps.find(s => s.id === 'translate')
     if (!step?.run) throw new Error('translate step not found in action.yml')
 
-    // Composite-action expressions are resolved by the runner, not by bash.
-    return step.run
-      .replace(/\$\{\{\s*inputs\.dry_run\s*\}\}/g, 'false')
-      .replace(/\$\{\{\s*inputs\.(locales|source_locale|keys)\s*\}\}/g, '')
-      .replace(/\$\{\{\s*inputs\.\w+\s*\}\}/g, 'stub')
+    const env: Record<string, string> = {}
+    for (const [name, value] of Object.entries(step.env ?? {})) {
+      const input = /\$\{\{\s*inputs\.(\w+)\s*\}\}/.exec(value)?.[1]
+      if (input === undefined) throw new Error(`env ${name} is not an action input: ${value}`)
+      const resolved = ACTION_INPUTS[input]
+      if (resolved === undefined) throw new Error(`no test value for input ${input}`)
+      env[name] = resolved
+    }
+    return { run: step.run, env }
   }
 
-  async function runStep(stubResult: string, stubExit: number): Promise<Run & { outputs: string }> {
+  async function runStep(
+    stubResult: string,
+    stubExit: number,
+    inputs: Record<string, string> = {},
+  ): Promise<Run & { outputs: string }> {
     const dir = await mkdtemp(join(workDir, 'case-'))
     const binDir = join(dir, '.bin')
     await mkdir(binDir, { recursive: true })
@@ -362,10 +417,12 @@ describe('action.yml translate step, executed against a stub CLI', () => {
     const outputFile = join(dir, 'github_output')
     await writeFile(outputFile, '')
 
-    const run = await runScript(await translateStepScript(), dir, {
-      I18N_PROVIDER: 'openai',
-      I18N_API_KEY: 'stub',
+    const step = await translateStep()
+    const run = await runScript(step.run, dir, {
+      ...step.env,
+      ...inputs,
       GITHUB_OUTPUT: outputFile,
+      RUNNER_TEMP: dir,
     }, binDir, 'bash')
 
     return { ...run, outputs: await readFile(outputFile, 'utf-8') }
@@ -379,6 +436,13 @@ describe('action.yml translate step, executed against a stub CLI', () => {
     expect(run.outputs).toContain('failed_count=0')
   })
 
+  it('counts what a dry run would have translated', async () => {
+    const run = await runStep(JSON.stringify({ summary: { totalWouldTranslate: 7 } }), 0, { DRY_RUN: 'true' })
+
+    expect(run.code).toBe(0)
+    expect(run.outputs).toContain('translated_count=7')
+  })
+
   it('propagates exit 1 as a run failure', async () => {
     const run = await runStep(JSON.stringify({ error: { code: 'CONFIG_ERROR', message: 'nope' } }), 1)
 
@@ -386,31 +450,18 @@ describe('action.yml translate step, executed against a stub CLI', () => {
     expect(run.stdout).toContain('translate failed (exit 1)')
   })
 
-  // The gate is recorded here and acted on in a later step. Failing this one
-  // would skip the PR step, so a partial success would be reported red AND
-  // lost — 54 good translations discarded because 3 failed, observed on a real
-  // project before this changed.
-  it('records a tripped gate for a later step instead of failing here', async () => {
+  // A gate is a finding, not a broken run: the step passes the CLI's exit 2
+  // straight through, and the counts are written before it does — a follow-up
+  // step guarded with `if: '!cancelled()'` still commits what the run produced.
+  it('propagates a tripped gate as exit 2, counts written first', async () => {
     const run = await runStep(JSON.stringify({
       summary: { totalTranslated: 5, totalFailed: 0 },
       gatesTripped: [{ name: 'fail-on-missing', observed: 12, threshold: 0 }],
     }), 2)
 
-    expect(run.code).toBe(0)
-    expect(run.stdout).toContain('CI gate tripped: fail-on-missing')
+    expect(run.code).toBe(2)
+    expect(run.outputs).toContain('translated_count=5')
     expect(run.stdout).not.toContain('translate failed')
-  })
-
-  // The later step keys off gate_tripped being non-empty, so a gate the CLI
-  // did not name would leave it blank and quietly turn exit 2 into a green job.
-  it('records an unnamed gate under a placeholder rather than an empty output', async () => {
-    const run = await runStep(JSON.stringify({
-      summary: { totalTranslated: 5, totalFailed: 0 },
-      gatesTripped: [],
-    }), 2)
-
-    expect(run.code).toBe(0)
-    expect(run.outputs).toContain('gate_tripped=unnamed gate')
   })
 
   // The old implementation decided from these counts, so a payload whose
@@ -427,49 +478,69 @@ describe('action.yml translate step, executed against a stub CLI', () => {
 
     expect(run.outputs).toContain('failed_count=4')
   })
+
+  // A payload the step cannot parse must not mask the CLI's exit code.
+  it('survives a result jq cannot read', async () => {
+    const run = await runStep('not json at all', 0)
+
+    expect(run.code).toBe(0)
+  })
 })
 
 describe('gitlab-ci.yml gate configuration', () => {
+  async function template(): Promise<Record<string, {
+    allow_failure?: { exit_codes?: number[] }
+    before_script?: string[]
+    script?: string[]
+    variables?: Record<string, string>
+    extends?: string
+  }>> {
+    const raw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
+    return parse(raw) as Record<string, never>
+  }
+
   // Both findings jobs draw the same line: findings are informational, a scan
   // that fell over is not. `check` could not do this while its findings and
   // its failures were both exit 1 (#369).
   it.each(['.i18n-cleanup', '.i18n-check'])('allows exit 2 only in %s, so a broken scan still fails it red', async (job) => {
-    const raw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
-    const doc = parse(raw) as Record<string, { allow_failure?: unknown }>
+    const doc = await template()
+    const base = doc[doc[job]!.extends!]!
 
-    expect(doc[job].allow_failure).toEqual({ exit_codes: [2] })
+    expect(doc[job]!.allow_failure ?? base.allow_failure).toEqual({ exit_codes: [2] })
   })
 
   // allow_failure.exit_codes covers the whole job, before_script included. A
   // setup step that happened to exit 2 would be read as findings, and the job
   // would pass yellow having never run the scan it exists to run.
   it('keeps setup failures off exit 2 in every job that allowlists it', async () => {
-    const raw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
-    const doc = parse(raw) as Record<string, { allow_failure?: { exit_codes?: number[] }, before_script?: string[] }>
+    const doc = await template()
 
     const allowlisted = Object.entries(doc)
       .filter(([, job]) => job?.allow_failure?.exit_codes?.includes(2))
     expect(allowlisted.length).toBeGreaterThan(0)
 
     for (const [name, job] of allowlisted) {
-      for (const line of job.before_script ?? []) {
+      // The setup is inherited, so it is checked wherever the chain provides it.
+      const setup = job.before_script ?? doc[job.extends ?? '']?.before_script ?? []
+      expect(setup.length, `${name}: inherits no before_script`).toBeGreaterThan(0)
+      for (const line of setup) {
         expect(line, `${name}: "${line}" can end the job on its own exit code`).toContain('|| exit 1')
       }
     }
   })
 
   it('declares the orphan gate as an opt-in variable defaulting to off', async () => {
-    const raw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
-    const doc = parse(raw) as Record<string, { variables: Record<string, string> }>
+    const doc = await template()
+    const cleanup = doc['.i18n-cleanup']!
 
-    expect(doc['.i18n-cleanup'].variables.I18N_FAIL_ON_ORPHANS).toBe('false')
+    const variables = { ...doc[cleanup.extends!]!.variables, ...cleanup.variables }
+    expect(variables.I18N_FAIL_ON_ORPHANS).toBe('false')
   })
 
   it('never decides an outcome from a parsed count', async () => {
     // Both shipped templates, so the regression cannot come back through
     // whichever one is not under active edit.
-    const gitlabRaw = await readFile(join(repoRoot, 'gitlab-ci.yml'), 'utf-8')
-    const gitlabDoc = parse(gitlabRaw) as Record<string, { script?: string[] }>
+    const gitlabDoc = await template()
 
     const actionRaw = await readFile(join(repoRoot, 'action.yml'), 'utf-8')
     const actionDoc = parse(actionRaw) as { runs: { steps: Array<{ name?: string, id?: string, run?: string }> } }
