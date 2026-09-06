@@ -36,6 +36,13 @@ const localeDirEntrySchema = z.union([
   }),
 ])
 
+const appEntrySchema = z.object({
+  name: nonEmptyString
+    .describe('App name, as it appears in orphan and status reports (e.g., \'shop\', \'@acme/admin\').'),
+  layers: z.array(nonEmptyString)
+    .describe('Layer names this app can render — its own layer plus every shared layer it consumes.'),
+})
+
 export const projectConfigSchema = z.object({
   $schema: z.string()
     .describe('Path or URL to the JSON schema for IDE autocompletion.')
@@ -120,6 +127,20 @@ export const projectConfigSchema = z.object({
     .optional(),
   defaultLocale: nonEmptyString
     .describe('Default locale code. Required for generic adapter activation.')
+    .optional(),
+  apps: z.array(appEntrySchema)
+    .describe(
+      'Which app consumes which layers — the consumer graph behind app-scoped orphan detection, '
+      + 'misplaced-usage reports and unconsumed-layer warnings. Declaring it overrides both framework '
+      + 'discovery and workspace inference.',
+    )
+    .optional(),
+  consumerGraph: z.enum(['auto', 'off'])
+    .describe(
+      'Whether to infer the consumer graph from the package manager workspace and package.json '
+      + 'dependencies when the framework provides no app information: \'auto\' (default) infers it, '
+      + '\'off\' keeps every layer in one app.',
+    )
     .optional(),
   locales: z.array(nonEmptyString)
     .describe(

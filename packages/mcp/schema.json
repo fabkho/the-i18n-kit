@@ -157,6 +157,41 @@
       "minLength": 1,
       "description": "Default locale code. Required for generic adapter activation."
     },
+    "apps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "App name, as it appears in orphan and status reports (e.g., 'shop', '@acme/admin')."
+          },
+          "layers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Layer names this app can render — its own layer plus every shared layer it consumes."
+          }
+        },
+        "required": [
+          "name",
+          "layers"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Which app consumes which layers — the consumer graph behind app-scoped orphan detection, misplaced-usage reports and unconsumed-layer warnings. Declaring it overrides both framework discovery and workspace inference."
+    },
+    "consumerGraph": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "off"
+      ],
+      "description": "Whether to infer the consumer graph from the package manager workspace and package.json dependencies when the framework provides no app information: 'auto' (default) infers it, 'off' keeps every layer in one app."
+    },
     "locales": {
       "type": "array",
       "items": {
