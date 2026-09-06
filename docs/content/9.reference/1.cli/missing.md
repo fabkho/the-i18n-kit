@@ -23,4 +23,5 @@ the-i18n-cli missing
 | `--referenceLocale`, `--ref` | `string` | no | — | Locale code used as the source of truth (e.g., "en", "en-US"). Defaults to the project default locale. |
 | `--targetLocales`, `--targets` | `string` | no | — | Locale codes to check for missing keys (e.g., ["de", "fr", "es"]). Defaults to all locales except the reference. Comma-separated. |
 | `--outputFile` | `string` | no | — | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/missing-translations.json" |
+| `--codequalityOutput` | `string` | no | — | Also write the missing translations as a GitLab Code Quality (CodeClimate) JSON report to this file path. |
 | `--failOnMissing` | `boolean` | no | `false` | Exit 2 when any key is missing (CI gate). |

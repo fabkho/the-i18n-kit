@@ -23,4 +23,5 @@ the-i18n-cli status
 | `--referenceLocale`, `--ref` | `string` | no | — | Locale code used as the source of truth (e.g., "en", "en-US"). Defaults to the project default locale. |
 | `--listEmpty` | `boolean` | no | `false` | Also list the keys whose value is an empty string, under "empty", by locale and layer — useful after a scaffold or an interrupted translation run. Default: false, which returns counts only. |
 | `--outputFile` | `string` | no | — | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/translation-status.json" |
+| `--codequalityOutput` | `string` | no | — | Also write the incomplete locales and unconsumed layers as a GitLab Code Quality (CodeClimate) JSON report to this file path. |
 | `--failUnder` | `string` | no | — | Exit 2 when overall completion is below this percentage (CI gate). |

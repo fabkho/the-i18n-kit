@@ -17,7 +17,9 @@ import { join, relative } from 'node:path'
 import type { I18nConfig, LocaleDefinition } from '../config/types.js'
 
 import type { UndefinedKeyFinding } from './ops-check.js'
-import { resolveReferenceLocale } from './shared.js'
+import type { FindDuplicateKeysResult } from './ops-duplicates.js'
+import { findLocaleImpl, resolveReferenceLocale } from './shared.js'
+import type { MissingTranslationsResult, TranslationStatusResult } from './types.js'
 
 export interface CodeQualityIssue {
   description: string
@@ -32,6 +34,10 @@ export interface CodeQualityIssue {
 
 const UNDEFINED_KEY_CHECK = 'i18n.undefined-key'
 const ORPHAN_KEY_CHECK = 'i18n.orphan-key'
+const MISSING_TRANSLATION_CHECK = 'i18n.missing-translation'
+const INCOMPLETE_LOCALE_CHECK = 'i18n.incomplete-locale'
+const UNCONSUMED_LAYER_CHECK = 'i18n.unconsumed-layer'
+const DUPLICATE_KEY_CHECK = 'i18n.duplicate-key'
 
 /** NUL-joined so no part can bleed into its neighbor (keys/paths never contain NUL). */
 function fingerprintOf(...parts: string[]): string {
@@ -120,6 +126,150 @@ export function orphanResultToCodeQuality(
     orphansByLayer,
     referenceLocaleAnchorPaths(ctx.config, Object.keys(orphansByLayer), localeDef, ctx.projectDir),
   )
+}
+
+/**
+ * The locale file of one layer, or the layer name when the config has no path
+ * for it. Every issue below anchors at a locale file rather than a call site:
+ * these findings are about what a file holds, so there is no line to point at
+ * and `lines.begin` is 1 throughout.
+ */
+function anchorPathOf(
+  ctx: { config: I18nConfig; projectDir: string },
+  layer: string,
+  localeRef: string,
+): string {
+  const locale = findLocaleImpl(ctx.config, localeRef)
+  const anchors = locale === undefined
+    ? {}
+    : referenceLocaleAnchorPaths(ctx.config, [layer], locale, ctx.projectDir)
+  return toReportPath(anchors[layer] ?? layer)
+}
+
+/**
+ * `missing` findings → one issue per key per locale, anchored at the locale file
+ * of the layer that is short of it.
+ *
+ * Minor rather than major: a missing key falls back to another locale and
+ * renders text, where an undefined key renders its own name at the user.
+ */
+export function missingTranslationsToCodeQuality(
+  result: MissingTranslationsResult,
+  ctx: { config: I18nConfig; projectDir: string },
+): CodeQualityIssue[] {
+  const issues: CodeQualityIssue[] = []
+  for (const [localeCode, byLayer] of Object.entries(result.missing)) {
+    const locale = findLocaleImpl(ctx.config, localeCode)
+    // Resolved once per locale rather than per key: a locale short of a
+    // thousand keys would otherwise walk the config a thousand times.
+    const anchors = locale === undefined
+      ? {}
+      : referenceLocaleAnchorPaths(ctx.config, Object.keys(byLayer), locale, ctx.projectDir)
+
+    for (const [layer, keys] of Object.entries(byLayer)) {
+      const path = toReportPath(anchors[layer] ?? layer)
+      for (const key of keys) {
+        issues.push({
+          description: `Missing translation for "${key}" in ${localeCode} — the reference locale defines it, layer "${layer}" does not carry it in this locale.`,
+          check_name: MISSING_TRANSLATION_CHECK,
+          fingerprint: fingerprintOf(MISSING_TRANSLATION_CHECK, layer, localeCode, key),
+          severity: 'minor',
+          location: { path, lines: { begin: 1 } },
+        })
+      }
+    }
+  }
+  return issues
+}
+
+/**
+ * `status` findings → one issue per locale under the bar, plus one per layer no
+ * app consumes.
+ *
+ * The bar is `failUnder` when the caller named one and 100% otherwise, so the
+ * report says what the gate says. A locale is `info`: coverage is a figure that
+ * moves with every merge request and is not a defect. An unconsumed layer is
+ * `minor` — keys nothing can render, which is a fact about the project rather
+ * than about today's translation work.
+ *
+ * Protected locales are skipped. Their gaps are deliberate and already excluded
+ * from the overall figure; reporting them would be reporting a decision.
+ */
+export function statusToCodeQuality(
+  result: TranslationStatusResult,
+  ctx: { config: I18nConfig; projectDir: string; failUnder?: number },
+): CodeQualityIssue[] {
+  const threshold = ctx.failUnder ?? 100
+  // A locale's coverage spans every scanned layer, so no single file is behind
+  // it; the first scanned layer is where the report stands to say so.
+  const primaryLayer = result.summary.layersScanned[0] ?? ''
+  const issues: CodeQualityIssue[] = []
+
+  for (const locale of result.locales) {
+    if (locale.protected === true || locale.completion >= threshold) continue
+    issues.push({
+      description: `Locale "${locale.code}" is ${locale.completion}% translated, below the ${threshold}% expected — ${locale.missing} key(s) missing, ${locale.empty} empty.`,
+      check_name: INCOMPLETE_LOCALE_CHECK,
+      // Neither the percentage nor the counts are part of this: a locale gaining
+      // one key would otherwise resolve its finding and open a new one.
+      fingerprint: fingerprintOf(INCOMPLETE_LOCALE_CHECK, locale.code),
+      severity: 'info',
+      location: {
+        path: anchorPathOf(ctx, primaryLayer, locale.code) || locale.code,
+        lines: { begin: 1 },
+      },
+    })
+  }
+
+  const referenceCode = result.summary.referenceLocale.code
+  for (const layer of result.summary.unconsumedLayers) {
+    issues.push({
+      description: `Layer "${layer}" is consumed by no app — the keys it defines cannot render anywhere. Fold it into a consumed layer or declare the app that uses it.`,
+      check_name: UNCONSUMED_LAYER_CHECK,
+      fingerprint: fingerprintOf(UNCONSUMED_LAYER_CHECK, layer),
+      severity: 'minor',
+      location: { path: anchorPathOf(ctx, layer, referenceCode), lines: { begin: 1 } },
+    })
+  }
+
+  return issues
+}
+
+/**
+ * `find-duplicates` collisions → one issue per key defined in both a shared and
+ * a consuming layer, anchored at the shadowing layer's file: that is the copy
+ * whose value wins at runtime and the one a reader has to look at.
+ *
+ * Value duplicates (`byValue`) are not mapped. Two keys carrying the same text
+ * are a consolidation opportunity, not a defect in the file, and the group has
+ * no single key or layer to anchor a stable fingerprint on.
+ */
+export function duplicateKeysToCodeQuality(
+  result: FindDuplicateKeysResult,
+  ctx: { config: I18nConfig; projectDir: string; locale?: string },
+): CodeQualityIssue[] {
+  const { localeDef } = resolveReferenceLocale(ctx.config, ctx.locale)
+  const anchors = referenceLocaleAnchorPaths(
+    ctx.config,
+    [...new Set(result.collisions.map(collision => collision.childLayer))],
+    localeDef,
+    ctx.projectDir,
+  )
+
+  return result.collisions.map(collision => ({
+    description: `i18n key "${collision.key}" is defined in both "${collision.sharedLayer}" and "${collision.childLayer}"`
+      + (collision.divergent
+        ? ', with different values — the shared value never shows. Delete one side; never move the key.'
+        : ', with the same value — the shared definition never shows. Delete one side; never move the key.'),
+    check_name: DUPLICATE_KEY_CHECK,
+    // Values are left out on purpose: rewording one side is not a new finding.
+    fingerprint: fingerprintOf(DUPLICATE_KEY_CHECK, collision.sharedLayer, collision.childLayer, collision.key),
+    severity: 'minor' as const,
+    location: {
+      path: toReportPath(anchors[collision.childLayer] ?? collision.childLayer),
+      lines: { begin: 1 },
+    },
+  }))
 }
 
 /**

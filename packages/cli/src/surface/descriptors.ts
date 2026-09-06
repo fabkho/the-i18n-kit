@@ -16,7 +16,13 @@ import { BASE_URL_ENV } from '../llm/providers.js'
 // The two mappings a report can carry. Imported outright rather than per run
 // like the operations below: they are pure transforms over a result, with
 // nothing behind them but a hash and a path join.
-import { orphanResultToCodeQuality, undefinedKeysToCodeQuality } from '../core/codequality.js'
+import {
+  duplicateKeysToCodeQuality,
+  missingTranslationsToCodeQuality,
+  orphanResultToCodeQuality,
+  statusToCodeQuality,
+  undefinedKeysToCodeQuality,
+} from '../core/codequality.js'
 // The result types the report builders below are written against. Type-only,
 // so the core barrel is still not loaded to print usage text.
 import type { CheckUndefinedKeysResult } from '../core/ops-check.js'
@@ -286,6 +292,13 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       name: 'get_missing_translations',
       outputFile: { example: '/tmp/missing-translations.json' },
       summary: (result: MissingTranslationsResult) => result.summary,
+      codequality: {
+        findings: 'missing translations',
+        issues: (result: MissingTranslationsResult, ctx) => missingTranslationsToCodeQuality(result, {
+          config: ctx.config,
+          projectDir: ctx.projectDir,
+        }),
+      },
     },
     async run(args) {
       const { getMissingTranslations } = await core()
@@ -327,6 +340,16 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       // Summary only: the per-locale and per-layer arrays grow with the
       // project, and a health check must never flood a caller's context.
       summary: (result: TranslationStatusResult) => result.summary,
+      codequality: {
+        findings: 'incomplete locales and unconsumed layers',
+        // The gate's threshold is the report's threshold: a pipeline that asks
+        // to fail under 90% should not see a finding for every locale at 97%.
+        issues: (result: TranslationStatusResult, ctx) => statusToCodeQuality(result, {
+          config: ctx.config,
+          projectDir: ctx.projectDir,
+          failUnder: ctx.args.failUnder,
+        }),
+      },
     },
     async run(args) {
       const { getTranslationStatus } = await core()
@@ -807,6 +830,14 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       name: 'find_duplicate_keys',
       outputFile: { example: '/tmp/duplicate-keys.json' },
       summary: (result: FindDuplicateKeysResult) => result.summary,
+      codequality: {
+        findings: 'duplicate keys',
+        issues: (result: FindDuplicateKeysResult, ctx) => duplicateKeysToCodeQuality(result, {
+          config: ctx.config,
+          projectDir: ctx.projectDir,
+          locale: ctx.args.locale,
+        }),
+      },
     },
     async run(args) {
       const { findDuplicateKeys } = await core()
