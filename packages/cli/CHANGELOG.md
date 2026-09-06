@@ -1,5 +1,16 @@
 # Changelog
 
+## [8.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-cli-7.0.0...the-i18n-kit-cli-8.0.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **scanner:** the `I18N_SCANNER` environment variable is removed. Setting `I18N_SCANNER=regex` no longer restores the pattern scanner; it is ignored. The exports `createOxcFrontend`, `createBladeFrontend`, `getPatternSet` and `VUE_NUXT_PATTERNS`, and the types `CallSite`, `CallArgument` and `FileEvidence`, are removed from `@the-i18n-kit/cli`. `scanSourceFiles`, `createPatternsFrontend`, `createPhpFrontend`, `LARAVEL_PATTERNS`, `ScanResult` and `LanguageFrontend` remain.
+
+### Code Refactoring
+
+* **scanner:** remove the I18N_SCANNER escape hatch and the differential harness ([#454](https://github.com/fabkho/the-i18n-kit/issues/454)) ([d6753c5](https://github.com/fabkho/the-i18n-kit/commit/d6753c5ddc1fb86003b2042b281e1bc3812178f6))
+
 ## [7.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-cli-6.0.0...the-i18n-kit-cli-7.0.0) (2026-09-06)
 
 
