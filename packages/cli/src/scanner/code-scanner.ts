@@ -337,33 +337,11 @@ async function extractFileEvidence(
 }
 
 /**
- * Opt-in, via `I18N_SCANNER=ast`.
- *
- * The architecture is settled; the migration is not. #332 gates each frontend
- * on a differential run showing it is at least as conservative as what it
- * replaces, and on anny-ui the AST frontend still misses 13 keys the patterns
- * find — most of them regex artifacts, a handful genuine. A key the outgoing
- * frontend saw and the incoming one does not becomes an orphan, and orphans
- * get deleted, so the default stays where the evidence is.
- *
- * Flip it once `packages/cli/scripts/scanner-diff.mjs` reports nothing in that direction.
- */
-let warnedRegexHatch = false
-
-/**
- * The syntax frontends are the default (#402 for JS/TS/Vue, #405 for
- * PHP/Blade); patterns read only what they decline. `I18N_SCANNER=regex`
- * restores the old scanner for exactly one release — an escape hatch for
- * reporting a regression, not a mode.
+ * Syntax decides what a translation usage is. The pattern frontend sits last
+ * and never declines, so a file no parser can read still contributes evidence
+ * instead of dropping out of the scan.
  */
 function defaultFrontends(pat: ScanPatternSet): LanguageFrontend[] {
-  if (process.env.I18N_SCANNER === 'regex') {
-    if (!warnedRegexHatch) {
-      warnedRegexHatch = true
-      log.warn('I18N_SCANNER=regex is deprecated and will be removed in the next major. If the default scanner misses something the regex found, please file it: https://github.com/fabkho/the-i18n-kit/issues')
-    }
-    return [createPatternsFrontend(pat)]
-  }
   const syntax = pat.bareShapes === 'php' ? [phpFrontend, bladeFrontend] : [oxcFrontend]
   return [...syntax, createPatternsFrontend(pat)]
 }

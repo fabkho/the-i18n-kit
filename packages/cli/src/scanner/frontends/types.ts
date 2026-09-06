@@ -45,7 +45,7 @@ export interface FileEvidence {
 }
 
 export interface LanguageFrontend {
-  /** For diagnostics and for the differential harness. */
+  /** Names the frontend in diagnostics, so a decline says which one declined. */
   readonly name: string
 
   /** Whether this frontend reads that file. */

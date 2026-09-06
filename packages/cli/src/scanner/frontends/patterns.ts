@@ -2,7 +2,8 @@ import type { CallSite, LanguageFrontend } from './types.js'
 import type { ScanPatternSet } from '../patterns.js'
 
 /**
- * The regex path as a language frontend (#332).
+ * Pattern matching as a language frontend, reached only for a file a syntax
+ * frontend declined.
  *
  * Regexes frame text and report call sites; what a site means is decided once,
  * in the rules, the same as for every other frontend. Binding is always
