@@ -4,6 +4,9 @@
 #   .i18n-cleanup    report orphan keys as a Code Quality report
 #   .i18n-check      report keys that render as their raw key
 #
+# Include it at a `v<major>` ref, which moves with each CLI release of that
+# major; `main` can change ahead of the CLI a pinned project installs.
+#
 # Each takes its outcome from the CLI's exit code: 0 pass, 1 the run failed, 2 a
 # gate tripped. Variables, the `lint` stage, the default-branch rule the Code
 # Quality widget needs and the two ways to let the translate job push:
@@ -52,8 +55,8 @@
 
       args="--provider $I18N_PROVIDER --model $I18N_MODEL --batch-size $I18N_BATCH_SIZE"
       [ -n "$I18N_LAYER" ]         && args="$args --layer $I18N_LAYER"
-      [ -n "$I18N_LOCALES" ]       && args="$args --targets $I18N_LOCALES"
-      [ -n "$I18N_SOURCE_LOCALE" ] && args="$args --ref $I18N_SOURCE_LOCALE"
+      [ -n "$I18N_LOCALES" ]       && args="$args --targetLocales $I18N_LOCALES"
+      [ -n "$I18N_SOURCE_LOCALE" ] && args="$args --referenceLocale $I18N_SOURCE_LOCALE"
       [ -n "$I18N_KEYS" ]          && args="$args --keys $I18N_KEYS"
       [ "$I18N_DRY_RUN" = "true" ] && args="$args --dry-run"
       [ "$I18N_FAIL_ON_FAILED" = "true" ] && args="$args --fail-on-failed"

@@ -103,6 +103,17 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # CI consumers pin `uses: fabkho/the-i18n-kit@v7` and the GitLab include at
+      # `.../v7/gitlab-ci.yml`. The ref follows the CLI major, so a template
+      # change reaches them together with the CLI release it was written for,
+      # never ahead of it.
+      - name: Move the v<major> ref to this release
+        if: ${{ steps.targets.outputs.cli == 'true' }}
+        run: |
+          major="v$(jq -r .version packages/cli/package.json | cut -d. -f1)"
+          git tag -f "$major"
+          git push -f origin "$major"
+
       - name: Publish @the-i18n-kit/mcp
         if: ${{ steps.targets.outputs.mcp == 'true' }}
         run: pnpm --filter @the-i18n-kit/mcp publish --no-git-checks --access public

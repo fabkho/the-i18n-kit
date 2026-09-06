@@ -95,8 +95,8 @@ runs:
         set -euo pipefail
 
         args=(--provider "$PROVIDER" --model "$MODEL" --layer "$LAYER" --batch-size "$BATCH_SIZE" --json)
-        [ -z "$LOCALES" ] || args+=(--targets "$LOCALES")
-        [ -z "$SOURCE_LOCALE" ] || args+=(--ref "$SOURCE_LOCALE")
+        [ -z "$LOCALES" ] || args+=(--targetLocales "$LOCALES")
+        [ -z "$SOURCE_LOCALE" ] || args+=(--referenceLocale "$SOURCE_LOCALE")
         [ -z "$KEYS" ] || args+=(--keys "$KEYS")
         [ "$DRY_RUN" != "true" ] || args+=(--dry-run)
         [ "$FAIL_ON_FAILED" != "true" ] || args+=(--fail-on-failed)
