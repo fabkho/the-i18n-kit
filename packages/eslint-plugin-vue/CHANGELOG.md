@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-eslint-plugin-vue-0.2.1...the-i18n-kit-eslint-plugin-vue-0.2.2) (2026-09-06)
+
+
+### Features
+
+* **cli:** declared namespaces for keys the scanner cannot see ([#455](https://github.com/fabkho/the-i18n-kit/issues/455)) ([a2f95f5](https://github.com/fabkho/the-i18n-kit/commit/a2f95f5d16ac868b03360b46ccaf4b695ee74c0e))
+
 ## [0.2.1](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-eslint-plugin-vue-0.2.0...the-i18n-kit-eslint-plugin-vue-0.2.1) (2026-09-06)
 
 
