@@ -20,9 +20,11 @@ import {
 } from '../scanner/code-scanner.js'
 import type { DynamicKeyUsage, KeyUsage, ScanResult, ScanUnit } from '../scanner/code-scanner.js'
 import { getPatternSet } from '../scanner/patterns.js'
+import { ToolError } from '../utils/errors.js'
 
-import { resolveReferenceLocale } from './shared.js'
+import { findWritableLayerOrThrow, resolveReferenceLocale } from './shared.js'
 import { buildOrphanScanPlan, resolveOrphanIgnorePatterns } from './ops-orphans.js'
+import { writeTranslations } from './ops-write.js'
 
 export interface KeyUsageLocation {
   /** Source file path, relative to the project dir. */
@@ -44,10 +46,27 @@ export interface UncertainKeyFinding extends UndefinedKeyFinding {
   reason: string
 }
 
+/** The locale file `write` extracted the undefined keys into. */
+export interface ExtractedUndefinedKeys {
+  layer: string
+  /** The project's default locale — the source every other locale is filled from. */
+  locale: string
+  /** The keys that reached the file, in alphabetical order. */
+  keys: string[]
+}
+
 export interface CheckUndefinedKeysSummary {
   /** Distinct statically referenced keys across all scan units. */
   usedKeysChecked: number
+  /**
+   * Keys that render raw at runtime, which is what the gate reads. After a
+   * `write` run this counts the ones still undefined: an extracted key now has
+   * a definition — an empty one — so it resolves, and `status` reports it as an
+   * empty translation instead.
+   */
   undefinedCount: number
+  /** Keys extracted into a locale file. Present only alongside `written`. */
+  writtenCount?: number
   uncertainCount: number
   /** Unresolvable keys excluded by orphanScan ignorePatterns. */
   ignoredCount: number
@@ -61,9 +80,19 @@ export interface CheckUndefinedKeysSummary {
 }
 
 export interface CheckUndefinedKeysResult {
+  /**
+   * The findings as the scan made them. A `write` run leaves them in place —
+   * what was extracted is named in `written`, and the summary counts what is
+   * left — because the call sites are what a reader has to visit either way.
+   */
   undefinedKeys: UndefinedKeyFinding[]
   uncertainKeys: UncertainKeyFinding[]
   limitation: string
+  /**
+   * Present only when `write` was asked for and the scan found something to
+   * write. A clean scan reports nothing here, having written nothing.
+   */
+  written?: ExtractedUndefinedKeys
   summary: CheckUndefinedKeysSummary
 }
 
@@ -306,6 +335,106 @@ function classifyUnitUsages(scan: ScanResult, ctx: UnitCheckContext): UnitCheckO
   return outcome
 }
 
+// ─── Extraction ─────────────────────────────────────────────────
+
+/**
+ * The layer the undefined keys are extracted into.
+ *
+ * The findings already carry the layers the using code resolves against, so
+ * that is what decides: a project — or an app — with one such layer has exactly
+ * one answer and needs no flag. Where the code resolves several, nothing in the
+ * evidence says which of them a key belongs in; that is a judgement about the
+ * project's topology, so the run refuses rather than writing keys into a layer
+ * someone then has to move them out of.
+ */
+function resolveExtractionLayer(
+  config: I18nConfig,
+  findings: UndefinedKeyFinding[],
+  requested: string | undefined,
+): string {
+  if (requested !== undefined) {
+    findWritableLayerOrThrow(config, requested)
+    return requested
+  }
+
+  const candidates = new Set(findings.flatMap(finding => finding.searchedLayers))
+  // A scan unit that resolves no layer at all leaves nothing to read here; the
+  // project's own layers are the candidates then, which is still one answer for
+  // a single-layer project.
+  if (candidates.size === 0) {
+    for (const localeDir of config.localeDirs.filter(d => !d.aliasOf)) candidates.add(localeDir.layer)
+  }
+
+  const [only] = candidates
+  if (candidates.size === 1 && only !== undefined) {
+    findWritableLayerOrThrow(config, only)
+    return only
+  }
+
+  throw new ToolError(
+    `The undefined keys resolve against ${candidates.size} layers (${[...candidates].join(', ')}), so `
+    + 'there is no single layer to write them into. Name the one they belong in: '
+    + '--layer <name> at a terminal, layer over MCP.',
+    'AMBIGUOUS_LAYER',
+  )
+}
+
+function buildExtractionNote(written: ExtractedUndefinedKeys, skipped: number): string {
+  const note = ` ${written.keys.length} key(s) written to layer "${written.layer}" as empty `
+    + `${written.locale} translations — fill them in (status --listEmpty lists them).`
+  return skipped === 0
+    ? note
+    : `${note} ${skipped} key(s) already had a value in that layer and were left untouched.`
+}
+
+/**
+ * Write the undefined keys into one layer's default-locale file and account for
+ * it in the result.
+ *
+ * The value is the empty string rather than the key: an empty value is the kit's
+ * own "scaffolded, not filled in" state, so `status --listEmpty` lists exactly
+ * these keys and a translate run fills the other locales once the source text is
+ * written. Mode `add` is what keeps the run non-destructive — a key that already
+ * has a value in that layer is skipped and stays a finding.
+ */
+async function extractUndefinedKeys(
+  result: CheckUndefinedKeysResult,
+  ctx: { config: I18nConfig; projectDir: string; layer?: string },
+): Promise<CheckUndefinedKeysResult> {
+  const layer = resolveExtractionLayer(ctx.config, result.undefinedKeys, ctx.layer)
+  // Resolved rather than read off the config, so a default locale nothing
+  // matches says so instead of writing every key into no file at all.
+  const { localeCode } = resolveReferenceLocale(ctx.config)
+  const keys = [...new Set(result.undefinedKeys.map(finding => finding.key))].sort()
+
+  const write = await writeTranslations({
+    layer,
+    translations: Object.fromEntries(keys.map(key => [key, { [localeCode]: '' }])),
+    mode: 'add',
+    projectDir: ctx.projectDir,
+  })
+
+  const written: ExtractedUndefinedKeys = {
+    layer,
+    locale: localeCode,
+    keys: [...new Set(write.written ?? [])].sort(),
+  }
+  const extracted = new Set(written.keys)
+  const remaining = result.undefinedKeys.filter(finding => !extracted.has(finding.key)).length
+
+  return {
+    ...result,
+    written,
+    summary: {
+      ...result.summary,
+      undefinedCount: remaining,
+      writtenCount: written.keys.length,
+      message: buildCheckMessage(remaining, result.summary.uncertainCount)
+        + buildExtractionNote(written, keys.length - written.keys.length),
+    },
+  }
+}
+
 function buildCheckMessage(undefinedCount: number, uncertainCount: number): string {
   const uncertainNote = uncertainCount > 0
     ? ` ${uncertainCount} reference(s) are uncertain (see uncertainKeys).`
@@ -331,6 +460,9 @@ function buildCheckMessage(undefinedCount: number, uncertainCount: number): stri
  * scopeByLayer — a unit resolves exactly the layers it vouches for). The
  * graph's degenerate semantics carry over: with no app info every layer is
  * resolvable everywhere, so only keys defined in NO layer are flagged.
+ *
+ * With `write`, the findings are also extracted into a locale file as empty
+ * translations, which is what turns a report into the first half of the fix.
  */
 export async function checkUndefinedKeys(opts: {
   locale?: string
@@ -340,6 +472,10 @@ export async function checkUndefinedKeys(opts: {
    */
   scanDirs?: string[]
   excludeDirs?: string[]
+  /** Extract the undefined keys into a locale file. See extractUndefinedKeys. */
+  write?: boolean
+  /** The layer to extract into, where the findings alone do not decide. */
+  layer?: string
   projectDir?: string
 } = {}): Promise<CheckUndefinedKeysResult> {
   const dir = opts.projectDir ?? process.cwd()
@@ -413,10 +549,16 @@ export async function checkUndefinedKeys(opts: {
     message: buildCheckMessage(undefinedKeys.length, uncertainKeys.length),
   }
 
-  return {
+  const result: CheckUndefinedKeysResult = {
     undefinedKeys,
     uncertainKeys,
     limitation: CHECK_LIMITATION,
     summary,
   }
+
+  // Nothing found is nothing to write: a clean scan must not fail on an
+  // ambiguous layer it never had to pick, which is what a pipeline running
+  // `check --write` on every merge request would hit on its good days.
+  if (opts.write !== true || undefinedKeys.length === 0) return result
+  return await extractUndefinedKeys(result, { config, projectDir: dir, layer: opts.layer })
 }

@@ -82,6 +82,53 @@ async function runCheck(): Promise<CheckUndefinedKeysResult> {
 }
 
 /**
+ * Run `body` against a throwaway project built from `files`, restoring the
+ * shared holder config afterwards (tests in this file share it). Unlike
+ * checkTempProject the directory reaches the case, which is what a write test
+ * needs: the assertion is the locale file on disk.
+ */
+async function inTempProject<T>(opts: {
+  prefix: string
+  files: Record<string, string>
+  config: (dir: string) => I18nConfig
+  body: (dir: string) => Promise<T>
+}): Promise<T> {
+  const dir = await mkdtemp(join(tmpdir(), opts.prefix))
+  try {
+    for (const [rel, content] of Object.entries(opts.files)) {
+      const path = join(dir, rel)
+      await mkdir(dirname(path), { recursive: true })
+      await writeFile(path, content)
+    }
+    holder.config = opts.config(dir)
+    return await opts.body(dir)
+  }
+  finally {
+    holder.config = config
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+/** A one-layer project: nothing about it can be ambiguous. */
+function singleLayerConfig(dir: string): I18nConfig {
+  return {
+    rootDir: dir,
+    defaultLocale: 'de',
+    fallbackLocale: { default: ['en'] },
+    locales: [
+      { code: 'de', language: 'de-DE', file: 'de-DE.json' },
+      { code: 'en', language: 'en-US', file: 'en-US.json' },
+    ],
+    localeDirs: [{ path: join(dir, 'i18n/locales'), layer: 'root', layerRootDir: dir }],
+    layerRootDirs: [dir],
+    apps: [{ name: 'root', rootDir: dir, layers: ['root'] }],
+  }
+}
+
+const readJson = async (path: string): Promise<Record<string, any>> =>
+  JSON.parse(await readFile(path, 'utf-8')) as Record<string, any>
+
+/**
  * Run one check against a throwaway multi-app project built from `files`,
  * restoring the shared holder config afterwards (tests in this file share it).
  */
@@ -338,5 +385,141 @@ describe('checkUndefinedKeys — scope-aware', () => {
     const serialized = JSON.stringify(issues)
     expect(serialized).not.toContain('admin.optional')
     expect(serialized).not.toContain('admin.dyn')
+  })
+})
+
+/**
+ * `write` extracts the hard findings into a locale file as empty translations.
+ * What matters is which layer they land in, that nothing already written is
+ * touched, and that the gate counter follows: an extracted key has a
+ * definition, so it no longer renders raw.
+ */
+describe('checkUndefinedKeys — write', () => {
+  const singleLayerFiles = {
+    'i18n/locales/de-DE.json': JSON.stringify({ root: { used: 'Benutzt', legacy: 'Alt' } }),
+    'i18n/locales/en-US.json': JSON.stringify({ root: { used: 'Used' } }),
+    'components/App.vue': [
+      `{{ $t('root.used') }}`,
+      `{{ $t('root.ghost') }}`,
+      `{{ $t('root.legacy') }}`,
+    ].join('\n'),
+  }
+
+  it('writes the undefined keys into the one layer, as empty strings in the default locale', async () => {
+    await inTempProject({
+      prefix: 'i18n-check-write-single-',
+      files: singleLayerFiles,
+      config: singleLayerConfig,
+      body: async (dir) => {
+        const result = await runOperation<CheckUndefinedKeysResult>('check', { projectDir: dir, write: true })
+
+        expect(result.written).toEqual({ layer: 'root', locale: 'de', keys: ['root.ghost'] })
+        expect(result.summary.writtenCount).toBe(1)
+        // Everything found was written, so nothing renders raw any more and the
+        // always-on gate reads zero.
+        expect(result.summary.undefinedCount).toBe(0)
+        // The finding itself stays: the call site is still what a reader visits.
+        expect(result.undefinedKeys.map(f => f.key)).toEqual(['root.ghost'])
+        expect(result.summary.message).toContain('written to layer "root"')
+
+        const de = await readJson(join(dir, 'i18n/locales/de-DE.json'))
+        expect(de.root).toEqual({ used: 'Benutzt', legacy: 'Alt', ghost: '' })
+        // Only the default locale is touched.
+        expect(await readJson(join(dir, 'i18n/locales/en-US.json'))).toEqual({ root: { used: 'Used' } })
+      },
+    })
+  })
+
+  it('leaves an existing value untouched, and that key stays undefined', async () => {
+    await inTempProject({
+      prefix: 'i18n-check-write-add-',
+      files: singleLayerFiles,
+      config: singleLayerConfig,
+      body: async (dir) => {
+        // Checked against en, where root.legacy is undefined — but de already
+        // defines it, so the add-only write must not overwrite "Alt".
+        const result = await runOperation<CheckUndefinedKeysResult>('check', {
+          projectDir: dir,
+          locale: 'en',
+          write: true,
+        })
+
+        expect(result.written).toEqual({ layer: 'root', locale: 'de', keys: ['root.ghost'] })
+        expect(result.summary.writtenCount).toBe(1)
+        expect(result.summary.undefinedCount).toBe(1)
+        expect(result.summary.message).toContain('already had a value')
+
+        const de = await readJson(join(dir, 'i18n/locales/de-DE.json'))
+        expect(de.root).toEqual({ used: 'Benutzt', legacy: 'Alt', ghost: '' })
+      },
+    })
+  })
+
+  it('refuses when the using code resolves against several layers, and writes nothing', async () => {
+    await inTempProject({
+      prefix: 'i18n-check-write-ambiguous-',
+      files: {
+        'i18n/locales/de-DE.json': '{}',
+        'app-admin/i18n/locales/de-DE.json': '{}',
+        'app-shop/i18n/locales/de-DE.json': '{}',
+        'app-admin/pages/index.vue': `{{ $t('admin.ghost') }}`,
+      },
+      config: createTempMultiAppConfig,
+      body: async (dir) => {
+        await expect(runOperation('check', { projectDir: dir, write: true })).rejects.toMatchObject({
+          code: 'AMBIGUOUS_LAYER',
+          message: expect.stringContaining('--layer'),
+        })
+
+        expect(await readJson(join(dir, 'app-admin/i18n/locales/de-DE.json'))).toEqual({})
+        expect(await readJson(join(dir, 'i18n/locales/de-DE.json'))).toEqual({})
+      },
+    })
+  })
+
+  it('writes into the layer the caller names when the findings do not decide', async () => {
+    await inTempProject({
+      prefix: 'i18n-check-write-layer-',
+      files: {
+        'i18n/locales/de-DE.json': '{}',
+        'app-admin/i18n/locales/de-DE.json': '{}',
+        'app-shop/i18n/locales/de-DE.json': '{}',
+        'app-admin/pages/index.vue': `{{ $t('admin.ghost') }}`,
+      },
+      config: createTempMultiAppConfig,
+      body: async (dir) => {
+        const result = await runOperation<CheckUndefinedKeysResult>('check', {
+          projectDir: dir,
+          write: true,
+          layer: 'app-admin',
+        })
+
+        expect(result.written).toEqual({ layer: 'app-admin', locale: 'de', keys: ['admin.ghost'] })
+        expect(result.summary.undefinedCount).toBe(0)
+        expect(await readJson(join(dir, 'app-admin/i18n/locales/de-DE.json')))
+          .toEqual({ admin: { ghost: '' } })
+        expect(await readJson(join(dir, 'i18n/locales/de-DE.json'))).toEqual({})
+      },
+    })
+  })
+
+  it('a clean scan writes nothing and never asks which layer', async () => {
+    await inTempProject({
+      prefix: 'i18n-check-write-clean-',
+      files: {
+        'i18n/locales/de-DE.json': '{}',
+        'app-admin/i18n/locales/de-DE.json': JSON.stringify({ admin: { used: 'a' } }),
+        'app-shop/i18n/locales/de-DE.json': '{}',
+        'app-admin/pages/index.vue': `{{ $t('admin.used') }}`,
+      },
+      config: createTempMultiAppConfig,
+      body: async (dir) => {
+        const result = await runOperation<CheckUndefinedKeysResult>('check', { projectDir: dir, write: true })
+
+        expect(result.written).toBeUndefined()
+        expect(result.summary.writtenCount).toBeUndefined()
+        expect(result.summary.undefinedCount).toBe(0)
+      },
+    })
   })
 })

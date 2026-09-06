@@ -612,11 +612,20 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
     cli: { name: 'check' },
     mcp: { name: 'find_undefined_keys', title: 'Find Used-But-Undefined Translation Keys' },
     description: 'Find keys referenced in source code but defined in NO locale layer the using app consumes — the direction that ships raw keys to production.',
-    longDescription: 'The inverse of find_orphan_keys. Scope-aware: each scan unit (app) is checked against the layers it consumes (summary.searchedLayersByApp), so a key defined only in a layer the using app does not consume is still undefined for that app. Known limitation: extraction is line-based and static — dynamically built keys (template literals, concatenation) cannot be verified and are reported as uncertainKeys, never as hard findings.',
+    longDescription: 'The inverse of find_orphan_keys. Scope-aware: each scan unit (app) is checked against the layers it consumes (summary.searchedLayersByApp), so a key defined only in a layer the using app does not consume is still undefined for that app. Known limitation: extraction is line-based and static — dynamically built keys (template literals, concatenation) cannot be verified and are reported as uncertainKeys, never as hard findings. With write, the hard findings are also added to a locale file as empty translations, which is the first half of the fix; uncertain findings are never written.',
     params: {
       locale: {
         ...readLocale,
         description: 'Reference locale to resolve key definitions in (e.g., "en", "en-US"). Defaults to the project default locale.',
+      },
+      write: {
+        type: 'boolean',
+        default: false,
+        description: 'Add every undefined key to a locale file, with an empty string as its value, in the project default locale only. Existing values are never touched, and uncertain findings are never written. The layer is the one the using code resolves against; when that is more than one layer, the run refuses and asks for a layer name. Default: false, which only reports.',
+      },
+      layer: {
+        type: 'string',
+        description: 'Layer to write the undefined keys into (e.g., "root", "app-admin"). Only read together with write, and only needed when the using code resolves against more than one layer. Call discover to list the layers.',
       },
       scanDirs,
       excludeDirs,
@@ -629,6 +638,11 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
      *
      * Reads summary.undefinedCount, which the result carries whether or not it
      * was diverted to a file. Uncertain findings never trip it.
+     *
+     * A `write` run counts what it wrote out of that number: a key with a
+     * definition, even an empty one, no longer renders raw, so extracting every
+     * finding exits 0 and anything left over — a key the layer already defined,
+     * skipped by the add-only write — still exits 2.
      */
     gates: [{ name: 'undefined-keys', counter: 'undefinedCount', threshold: 0 }],
     report: {
@@ -645,6 +659,8 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       const { checkUndefinedKeys } = await core()
       return checkUndefinedKeys({
         locale: args.locale,
+        write: args.write,
+        layer: args.layer,
         scanDirs: args.scanDirs,
         excludeDirs: args.excludeDirs,
         projectDir: args.projectDir,

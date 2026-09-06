@@ -20,5 +20,7 @@ the-i18n-cli check
 | Flag | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `--locale` | `string` | no | — | Reference locale to resolve key definitions in (e.g., "en", "en-US"). Defaults to the project default locale. |
+| `--write` | `boolean` | no | `false` | Add every undefined key to a locale file, with an empty string as its value, in the project default locale only. Existing values are never touched, and uncertain findings are never written. The layer is the one the using code resolves against; when that is more than one layer, the run refuses and asks for a layer name. Default: false, which only reports. |
+| `--layer` | `string` | no | — | Layer to write the undefined keys into (e.g., "root", "app-admin"). Only read together with write, and only needed when the using code resolves against more than one layer. Call discover to list the layers. |
 | `--outputFile` | `string` | no | — | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/undefined-keys.json" |
 | `--codequalityOutput` | `string` | no | — | Also write the findings as a GitLab Code Quality (CodeClimate) JSON report to this file path. |
