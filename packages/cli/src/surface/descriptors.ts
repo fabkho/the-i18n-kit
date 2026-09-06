@@ -290,7 +290,7 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
     gates: [{ flag: 'failOnMissing', counter: 'totalMissingKeys', threshold: 0 }],
     report: {
       name: 'get_missing_translations',
-      outputFile: { example: '/tmp/missing-translations.json' },
+      outputFile: { example: '.i18n-reports/missing-translations.json' },
       summary: (result: MissingTranslationsResult) => result.summary,
       codequality: {
         findings: 'missing translations',
@@ -336,7 +336,7 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
     gates: [{ flag: 'failUnder', counter: 'completionPercent', direction: 'below' }],
     report: {
       name: 'get_translation_status',
-      outputFile: { example: '/tmp/translation-status.json' },
+      outputFile: { example: '.i18n-reports/translation-status.json' },
       // Summary only: the per-locale and per-layer arrays grow with the
       // project, and a health check must never flood a caller's context.
       summary: (result: TranslationStatusResult) => result.summary,
@@ -405,7 +405,7 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
     report: {
       name: 'search_translations',
       outputFile: {
-        example: '/tmp/search-results.json',
+        example: '.i18n-reports/search-results.json',
         // The only read operation the CLI never gave a report path to. Left as
         // it was rather than quietly growing the command's surface.
         cli: { hidden: true },
@@ -689,7 +689,7 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
     gates: [{ name: 'undefined-keys', counter: 'undefinedCount', threshold: 0 }],
     report: {
       name: 'find_undefined_keys',
-      outputFile: { example: '/tmp/undefined-keys.json' },
+      outputFile: { example: '.i18n-reports/undefined-keys.json' },
       summary: (result: CheckUndefinedKeysResult) => result.summary,
       codequality: {
         findings: 'findings',
@@ -761,7 +761,7 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       name: args => (args.usages === true
         ? 'scan_code_usage'
         : args.remove === true ? 'remove_orphan_keys' : 'find_orphan_keys'),
-      outputFile: { example: '/tmp/orphan-keys.json' },
+      outputFile: { example: '.i18n-reports/orphan-keys.json' },
       summary: (result: OrphanCommandResult) => result.summary,
       codequality: {
         findings: 'orphan findings',
@@ -847,7 +847,7 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
     },
     report: {
       name: 'find_duplicate_keys',
-      outputFile: { example: '/tmp/duplicate-keys.json' },
+      outputFile: { example: '.i18n-reports/duplicate-keys.json' },
       summary: (result: FindDuplicateKeysResult) => result.summary,
       codequality: {
         findings: 'duplicate keys',

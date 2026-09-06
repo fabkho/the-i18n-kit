@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod'
-import { divertToReport, ToolError, toErrorMessage } from '@the-i18n-kit/cli'
+import { assertReportPaths, divertToReport, ToolError, toErrorMessage } from '@the-i18n-kit/cli'
 import type { AnyOperationDescriptor, ParamSpec, ProgressFn, TranslateFn } from '@the-i18n-kit/cli'
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
 
@@ -95,6 +95,7 @@ export function registerFromDescriptor(
           ...rest,
           projectDir: (projectDir as string | undefined) ?? ctx.defaultProjectDir,
         }
+        await assertReportPaths(descriptor, operationArgs)
         const result = await descriptor.run(
           operationArgs,
           { surface: 'mcp', translateFn: ctx.translateFn, ...progressReporter(requestCtx) },

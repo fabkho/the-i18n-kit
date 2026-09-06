@@ -43,7 +43,7 @@ export { descriptors, descriptorsFor, visibleParams } from './surface/descriptor
 // The file-diversion a surface applies to a large result. Operations return
 // their whole result; a caller that wants the { reportFile, summary } shape
 // asks for it the way the CLI and the server do.
-export { divertToReport } from './surface/report.js'
+export { assertReportPaths, divertToReport } from './surface/report.js'
 export type {
   AnyOperationDescriptor,
   AnyReportSpec,

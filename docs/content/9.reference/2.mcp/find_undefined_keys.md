@@ -18,7 +18,7 @@ Find keys referenced in source code but defined in NO locale layer the using app
 | `layer` | `string` | no | Layer to write the undefined keys into (e.g., "root", "app-admin"). Only read together with write, and only needed when the using code resolves against more than one layer. Call discover to list the layers. |
 | `scanDirs` | `string[]` | no | Absolute paths of the directories to scan for source usage. Overrides scope-aware scanning: every layer is then checked against these directories alone. Example: ["/home/user/my-app/apps/admin"]. |
 | `excludeDirs` | `string[]` | no | Directory names to skip when scanning source files. Example: ["storybook", "__tests__", "node_modules"]. |
-| `outputFile` | `string` | no | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/undefined-keys.json" |
+| `outputFile` | `string` | no | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: ".i18n-reports/undefined-keys.json" |
 | `projectDir` | `string` | no | Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |
 
 ## Paired CLI Command

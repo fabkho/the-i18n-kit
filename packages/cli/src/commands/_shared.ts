@@ -7,7 +7,7 @@ import { createTranslateFn, resolveProviderBaseUrl, BASE_URL_ENV } from '../llm/
 import type { LlmProvider } from '../llm/providers.js'
 import type { TranslateFn } from '../core/types.js'
 import { loadProjectConfig } from '../config/project-config.js'
-import { divertToReport } from '../surface/report.js'
+import { assertReportPaths, divertToReport } from '../surface/report.js'
 import type {
   AnyOperationDescriptor,
   FlaggedGateSpec,
@@ -308,14 +308,18 @@ export function commandFromDescriptor(descriptor: AnyOperationDescriptor): Comma
     description: descriptor.description,
     args: cliArgs(descriptor.params),
     gates: descriptor.gates,
-    run: async args => descriptor.run(operationArgs(descriptor.params, args), {
-      surface: 'cli',
-      // Resolved from the provider flags rather than passed through: which
-      // flags select a backend is the CLI's business, not the operation's.
-      translateFn: descriptor.usesTranslateFn === true
-        ? await resolveProviderTranslateFn(args)
-        : undefined,
-    }),
+    run: async (args) => {
+      const operation = operationArgs(descriptor.params, args)
+      await assertReportPaths(descriptor, operation)
+      return descriptor.run(operation, {
+        surface: 'cli',
+        // Resolved from the provider flags rather than passed through: which
+        // flags select a backend is the CLI's business, not the operation's.
+        translateFn: descriptor.usesTranslateFn === true
+          ? await resolveProviderTranslateFn(args)
+          : undefined,
+      })
+    },
     divert: async (result, args) =>
       divertToReport(result, descriptor, operationArgs(descriptor.params, args)),
   })

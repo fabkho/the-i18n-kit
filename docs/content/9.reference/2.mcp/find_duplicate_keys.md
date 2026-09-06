@@ -16,7 +16,7 @@ Find translation keys defined in BOTH a shared layer and an app layer that consu
 | `locale` | `string` | no | Locale code to compare values in (e.g., "de", "en-US"). Defaults to the project default locale. |
 | `byValue` | `boolean` | no | Also group different keys carrying the same value — e.g. common.actions.save and calendar.views.save both "Speichern". Each group says what to do about it: "reuse" (a shared layer already has it — delete the app copies and repoint the call sites), "promote" (move one to a shared layer) or "consolidate" (duplication inside one layer). Default: false. |
 | `minValueLength` | `integer` | no | Shortest value worth grouping when byValue is set. Default: 4 — below that, values like "OK" repeat across unrelated namespaces legitimately. |
-| `outputFile` | `string` | no | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/duplicate-keys.json" |
+| `outputFile` | `string` | no | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: ".i18n-reports/duplicate-keys.json" |
 | `projectDir` | `string` | no | Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |
 
 ## Paired CLI Command

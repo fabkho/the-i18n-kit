@@ -24,6 +24,6 @@ the-i18n-cli orphans
 | `--remove` | `boolean` | no | `false` | Permanently delete the orphan keys from every locale file of their layer. Default: false, which only reports them — run without it first and read the findings. Uncertain keys and misplaced usages are never deleted. |
 | `--usages` | `boolean` | no | `false` | Report where keys are referenced in source (file paths and line numbers) instead of which keys are unreferenced. |
 | `--keys` | `string` | no | — | Keys to report usages for. Only read together with usages; without it, every key is considered. Comma-separated. |
-| `--outputFile` | `string` | no | — | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/orphan-keys.json" |
+| `--outputFile` | `string` | no | — | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: ".i18n-reports/orphan-keys.json" |
 | `--codequalityOutput` | `string` | no | — | Also write the orphan findings as a GitLab Code Quality (CodeClimate) JSON report to this file path. |
 | `--failOnOrphans` | `boolean` | no | `false` | Exit 2 when any orphan key is found (CI gate). |

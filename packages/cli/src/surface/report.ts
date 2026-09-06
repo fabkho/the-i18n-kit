@@ -69,6 +69,28 @@ export function withReportParams(
 }
 
 /**
+ * Reject a report path that leaves the project before the operation runs.
+ * The same check runs again when the file is written; doing it first spares a
+ * caller a full monorepo scan whose result it was never going to receive.
+ */
+export async function assertReportPaths(
+  descriptor: AnyOperationDescriptor,
+  args: Record<string, unknown>,
+): Promise<void> {
+  if (descriptor.report === undefined) return
+  const projectDir = typeof args.projectDir === 'string' ? args.projectDir : process.cwd()
+  const { resolveOutputFile, validateReportPath } = await import('../core/report.js')
+  for (const key of ['outputFile', 'codequalityOutput'] as const) {
+    const value = pathArg(args[key])
+    if (value === undefined) continue
+    // resolveOutputFile turns a relative path into one under the project dir
+    // and validates; an absolute path is validated as given.
+    if (key === 'outputFile') resolveOutputFile(projectDir, value)
+    else validateReportPath(projectDir, value)
+  }
+}
+
+/**
  * Write the result where the caller asked for it, and hand back the compact
  * stand-in — or hand back the result untouched when nothing asked for a file.
  *

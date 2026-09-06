@@ -18,7 +18,7 @@ Report translation keys that no source code references. Nothing is deleted unles
 | `remove` | `boolean` | no | Permanently delete the orphan keys from every locale file of their layer. Default: false, which only reports them — run without it first and read the findings. Uncertain keys and misplaced usages are never deleted. |
 | `scanDirs` | `string[]` | no | Absolute paths of the directories to scan for source usage. Overrides scope-aware scanning: every layer is then checked against these directories alone. Example: ["/home/user/my-app/apps/admin"]. |
 | `excludeDirs` | `string[]` | no | Directory names to skip when scanning source files. Example: ["storybook", "__tests__", "node_modules"]. |
-| `outputFile` | `string` | no | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/orphan-keys.json" |
+| `outputFile` | `string` | no | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: ".i18n-reports/orphan-keys.json" |
 | `projectDir` | `string` | no | Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |
 
 ## Paired CLI Command
