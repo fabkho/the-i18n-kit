@@ -18,6 +18,7 @@ import { descriptors, visibleParams } from '../../src/surface/descriptors.js'
  * - the flags that command accepts are exactly the ones the table declares
  * - a parameter both surfaces expose is spelled the same on both, and one only
  *   a single surface exposes says so on the parameter
+ * - the parameters that ask for a report exist exactly where a report does
  *
  * The other half — that the server advertises exactly these operations with
  * exactly these parameters — is asserted in `packages/mcp/tests/descriptors.test.ts`,
@@ -125,6 +126,25 @@ describe('the two surfaces agree', () => {
         const spellings = typeof declared === 'string' ? [declared] : declared ?? []
         expect(spellings, `${command} --${param}`).toContain(alias)
       }
+    }
+  })
+
+  /**
+   * The parameters are generated from the `report` declaration, so the two
+   * cannot drift apart by construction. Asserted anyway: the generation is
+   * what a reader has to be able to rely on, and a command that offers
+   * `--output-file` and then ignores it is exactly the failure the diversion
+   * was moved out of the operations to make impossible.
+   */
+  it('offers the report parameters exactly where a report is declared', () => {
+    for (const descriptor of descriptors) {
+      const params = Object.keys(descriptor.params)
+      const report = descriptor.report
+
+      expect(params.includes('outputFile'), `${descriptor.id}.outputFile`)
+        .toBe(report !== undefined)
+      expect(params.includes('codequalityOutput'), `${descriptor.id}.codequalityOutput`)
+        .toBe(report?.codequality !== undefined)
     }
   })
 

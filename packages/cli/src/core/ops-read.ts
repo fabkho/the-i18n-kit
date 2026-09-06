@@ -9,16 +9,21 @@ import { readdir } from 'node:fs/promises'
 import { detectI18nConfig, clearConfigCache } from '../config/detector.js'
 import { serializeLayerGraph } from '../config/layer-graph.js'
 import type { I18nConfig } from '../config/types.js'
-import { writeReportFile } from '../io/json-writer.js'
 import { readLocaleData, readLocaleDataIfPresent, resolveLocaleEntries } from '../io/locale-data.js'
 import { getFormat } from '../io/formats.js'
 import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { ToolError } from '../utils/errors.js'
 
-import type { DescribeProjectResult, LocaleDirInfo, SearchMatch, MissingTranslationsResult, EmptyTranslationsResult } from './types.js'
+import type {
+  DescribeProjectResult,
+  LocaleDirInfo,
+  MissingTranslationsResult,
+  EmptyTranslationsResult,
+  SearchMatch,
+  SearchTranslationsResult,
+} from './types.js'
 import { findLayerOrThrow, findReferenceLocaleOrThrow, findLocaleImpl, localeRefInfo, resolveLayersToScan } from './shared.js'
 import { resolveProtectedLocales } from './ops-translate.js'
-import { resolveOutputFile, resolveReportFilePath } from './report.js'
 
 /**
  * Everything a caller needs to know about a project before touching it:
@@ -198,7 +203,6 @@ export async function getMissingTranslations(opts: {
   targetLocales?: string[]
   locales?: string[]
   projectDir?: string
-  outputFile?: string
 }): Promise<MissingTranslationsResult> {
   const { layer } = opts
   const dir = opts.projectDir ?? process.cwd()
@@ -251,7 +255,7 @@ export async function getMissingTranslations(opts: {
     }
   }
 
-  const output = {
+  return {
     missing: result,
     summary: {
       referenceLocale: localeRefInfo(refLocale),
@@ -260,17 +264,6 @@ export async function getMissingTranslations(opts: {
       totalMissingKeys: totalMissing,
     },
   }
-
-  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'get_missing_translations')
-  if (reportPath) {
-    await writeReportFile(reportPath, output, {
-      tool: 'get_missing_translations',
-      args: { layer, referenceLocale: opts.referenceLocale, targetLocales: opts.targetLocales },
-    })
-    return { reportFile: reportPath, summary: output.summary }
-  }
-
-  return output
 }
 
 /**
@@ -280,34 +273,20 @@ export async function findEmptyTranslations(opts: {
   layer?: string
   locale?: string
   projectDir?: string
-  outputFile?: string
 }): Promise<EmptyTranslationsResult> {
   const { layer, locale } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
-  const output = await collectEmptyTranslations(config, { layer, locale })
-
-  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_empty_translations')
-  if (reportPath) {
-    await writeReportFile(reportPath, output, {
-      tool: 'find_empty_translations',
-      args: { layer, locale },
-    })
-    return { reportFile: reportPath, summary: output.summary }
-  }
-
-  return output
+  return collectEmptyTranslations(config, { layer, locale })
 }
 
 /**
- * The scan behind {@link findEmptyTranslations}, without the report-file
- * plumbing around it.
+ * The scan behind {@link findEmptyTranslations}, against a config the caller
+ * already has.
  *
  * Separate so `getTranslationStatus` can embed the listing under its own
- * `--list-empty` flag: routed through the public function it would divert to a
- * file of its own whenever `reportOutput` is configured, and the status result
- * would arrive with the section it was asked for missing.
+ * `--list-empty` flag without detecting the project a second time.
  */
 export async function collectEmptyTranslations(
   config: I18nConfig,
@@ -379,9 +358,8 @@ export async function searchTranslations(opts: {
   layer?: string
   locale?: string
   projectDir?: string
-  outputFile?: string
-}): Promise<{ matches: SearchMatch[]; totalMatches: number } | { reportFile: string; summary: { totalMatches: number } }> {
-  const { query, layer, locale, outputFile } = opts
+}): Promise<SearchTranslationsResult> {
+  const { query, layer, locale } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
@@ -441,18 +419,7 @@ export async function searchTranslations(opts: {
     }
   }
 
-  const output = { matches, totalMatches: matches.length }
-
-  const reportPath = resolveOutputFile(dir, outputFile) ?? resolveReportFilePath(config, dir, 'search_translations')
-  if (reportPath) {
-    await writeReportFile(reportPath, output, {
-      tool: 'search_translations',
-      args: { query, searchIn: opts.searchIn, layer, locale },
-    })
-    return { reportFile: reportPath, summary: { totalMatches: matches.length } }
-  }
-
-  return output
+  return { matches, totalMatches: matches.length }
 }
 
 // ─── list_namespaces ────────────────────────────────────────────

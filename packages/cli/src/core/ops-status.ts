@@ -6,11 +6,9 @@ import { detectI18nConfig } from '../config/detector.js'
 import { buildLayerGraph } from '../config/layer-graph.js'
 import { readLocaleData, readLocaleDataIfPresent } from '../io/locale-data.js'
 import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
-import { writeReportFile } from '../io/json-writer.js'
 import { findReferenceLocaleOrThrow, localeRefInfo, resolveLayersToScan } from './shared.js'
 import { resolveProtectedLocales } from './ops-translate.js'
 import { collectEmptyTranslations } from './ops-read.js'
-import { resolveOutputFile, resolveReportFilePath } from './report.js'
 import type { LocaleDefinition, LocaleDir, I18nConfig } from '../config/types.js'
 import type { TranslationStatusResult, LocaleStatus, LayerStatus } from './types.js'
 
@@ -87,7 +85,6 @@ export async function getTranslationStatus(opts: {
    */
   listEmpty?: boolean
   projectDir?: string
-  outputFile?: string
 }): Promise<TranslationStatusResult> {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
@@ -136,7 +133,7 @@ export async function getTranslationStatus(opts: {
   const overallTranslated = counted.reduce((n, l) => n + l.translated, 0)
   const overallTotal = counted.reduce((n, l) => n + l.total, 0)
 
-  const output: TranslationStatusResult = {
+  return {
     locales,
     layers,
     ...(opts.listEmpty
@@ -156,20 +153,6 @@ export async function getTranslationStatus(opts: {
       completionPercent: percent(overallTranslated, overallTotal),
     },
   }
-
-  const reportPath = resolveOutputFile(dir, opts.outputFile)
-    ?? resolveReportFilePath(config, dir, 'get_translation_status')
-  if (reportPath) {
-    await writeReportFile(reportPath, output as unknown as Record<string, unknown>, {
-      tool: 'get_translation_status',
-      args: { layer: opts.layer, referenceLocale: opts.referenceLocale },
-    })
-    // Summary only: the per-locale and per-layer arrays grow with the project,
-    // and a health check must never flood a caller's context.
-    return { reportFile: reportPath, summary: output.summary }
-  }
-
-  return output
 }
 
 async function readTargetData(
