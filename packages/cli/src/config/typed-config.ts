@@ -138,10 +138,9 @@ export async function loadTypedConfig(
 }
 
 /**
- * The specifier the documentation tells you to import from. Both spellings
- * publish the same code at the same versions (#315), so a config file may
- * legitimately name either — but only one of them belongs in a message that
- * tells someone what to write.
+ * The specifier the documentation tells you to import from. Configs written
+ * before the rename may still name the old one; it keeps resolving, but only
+ * the new one belongs in a message that tells someone what to write.
  */
 const CONFIG_SPECIFIER = '@the-i18n-kit/cli/config'
 const DEPRECATED_CONFIG_SPECIFIER = 'the-i18n-cli/config'
@@ -157,8 +156,8 @@ const DEPRECATED_CONFIG_SPECIFIER = 'the-i18n-cli/config'
  * ourselves costs nothing and is the same function either way: identity.
  *
  * Both spellings are aliased: the rescue path is worth nothing if it covers a
- * name the docs no longer recommend, and the deprecated one has to keep working
- * until the window in #344 closes.
+ * name the docs no longer recommend, and the deprecated one keeps working so
+ * existing configs do not break.
  *
  * Returns no alias when the entry cannot be located, which leaves normal
  * resolution to find the installed package.

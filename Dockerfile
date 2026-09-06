@@ -13,7 +13,7 @@ COPY packages/mcp/src/ ./packages/mcp/src/
 COPY playground/nuxt/package.json ./playground/nuxt/
 RUN pnpm install --frozen-lockfile
 RUN pnpm build
-RUN pnpm --filter the-i18n-mcp deploy --legacy /app/prod
+RUN pnpm --filter @the-i18n-kit/mcp deploy --legacy /app/prod
 
 # Runtime stage
 FROM node:22-alpine

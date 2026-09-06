@@ -14,7 +14,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 echo "── packing the CLI"
-(cd "$root" && pnpm --filter the-i18n-cli build >/dev/null)
+(cd "$root" && pnpm --filter @the-i18n-kit/cli build >/dev/null)
 tarball="$(cd "$root/packages/cli" && npm pack --pack-destination "$work" 2>/dev/null | tail -1)"
 
 echo "── installing into a scratch project (no php-parser)"
@@ -25,7 +25,7 @@ printf '<?php echo __("smoke.from.php");' > probe.php
 
 run() {
   node --input-type=module -e "
-    const { scanSourceFiles, createPhpFrontend, createPatternsFrontend, LARAVEL_PATTERNS } = await import('$work/node_modules/the-i18n-cli/dist/index.js')
+    const { scanSourceFiles, createPhpFrontend, createPatternsFrontend, LARAVEL_PATTERNS } = await import('$work/node_modules/@the-i18n-kit/cli/dist/index.js')
     const r = await scanSourceFiles('$work', undefined, LARAVEL_PATTERNS, [createPhpFrontend(), createPatternsFrontend(LARAVEL_PATTERNS)])
     console.log(JSON.stringify({ declined: r.declinedFiles, keys: [...r.uniqueKeys] }))
   "

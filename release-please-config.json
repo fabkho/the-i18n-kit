@@ -3,7 +3,7 @@
   "packages": {
     "packages/cli": {
       "release-type": "node",
-      "package-name": "the-i18n-cli",
+      "package-name": "@the-i18n-kit/cli",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
@@ -11,11 +11,11 @@
       "prerelease": false,
       "include-component-in-tag": true,
       "include-v-in-tag": false,
-      "component": "the-i18n-cli"
+      "component": "the-i18n-kit-cli"
     },
     "packages/mcp": {
       "release-type": "node",
-      "package-name": "the-i18n-mcp",
+      "package-name": "@the-i18n-kit/mcp",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
@@ -23,7 +23,7 @@
       "prerelease": false,
       "include-component-in-tag": true,
       "include-v-in-tag": false,
-      "component": "the-i18n-mcp"
+      "component": "the-i18n-kit-mcp"
     },
     "packages/nuxt": {
       "release-type": "node",

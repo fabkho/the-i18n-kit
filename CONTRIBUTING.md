@@ -11,8 +11,8 @@ The monorepo uses pnpm workspaces with two packages:
 
 | Package | Description |
 |---------|-------------|
-| `packages/cli` (`the-i18n-cli`) | CLI tool for i18n management — JSON/PHP locale files, code scanning, LLM translation, config detection |
-| `packages/mcp` (`the-i18n-mcp`) | MCP server wrapping the CLI as 13 tools for AI agents |
+| `packages/cli` (`@the-i18n-kit/cli`) | CLI tool for i18n management — JSON/PHP locale files, code scanning, LLM translation, config detection |
+| `packages/mcp` (`@the-i18n-kit/mcp`) | MCP server wrapping the CLI as tools for AI agents |
 
 ## Development
 
@@ -26,8 +26,8 @@ pnpm typecheck      # build CLI + typecheck both packages
 To work on a single package:
 
 ```bash
-pnpm --filter the-i18n-cli dev     # watch mode
-pnpm --filter the-i18n-cli test    # run CLI tests only
+pnpm --filter @the-i18n-kit/cli dev     # watch mode
+pnpm --filter @the-i18n-kit/cli test    # run CLI tests only
 ```
 
 ## Architecture

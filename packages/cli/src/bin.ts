@@ -13,14 +13,5 @@ const isHelpOrVersion = args.includes('--help') || args.includes('-h')
 if (!isHelpOrVersion) {
   guardStdout()
 }
-// Renamed packages announce themselves once per invocation, on stderr so the
-// JSON on stdout is untouched. The package reads its own name, so this is
-// silent when running as @the-i18n-kit/cli (#315).
-const { renameNotice } = await import('./utils/rename-notice.js')
-const { createRequire } = await import('node:module')
-const { name } = createRequire(import.meta.url)('../package.json') as { name: string }
-const notice = renameNotice(name)
-if (notice) process.stderr.write(`[the-i18n-cli] ${notice}\n`)
-
 const { runCli } = await import('./cli.js')
 await runCli()

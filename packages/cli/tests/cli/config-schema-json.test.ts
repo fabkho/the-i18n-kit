@@ -36,7 +36,7 @@ describe('packages/mcp/schema.json', () => {
     expect(doc.$id).toBe(
       'https://raw.githubusercontent.com/fabkho/the-i18n-kit/main/packages/mcp/schema.json',
     )
-    expect(doc.title).toBe('the-i18n-mcp project configuration')
+    expect(doc.title).toBe('the-i18n-kit project configuration')
     expect(doc.description).toBeTruthy()
     // Self-contained: no $ref out of the file, nothing to resolve.
     expect(JSON.stringify(doc)).not.toContain('$ref')

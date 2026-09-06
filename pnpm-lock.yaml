@@ -112,12 +112,12 @@ importers:
 
   packages/eslint-plugin-vue:
     dependencies:
+      '@the-i18n-kit/cli':
+        specifier: workspace:^
+        version: link:../cli
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
-      the-i18n-cli:
-        specifier: workspace:^
-        version: link:../cli
     devDependencies:
       '@intlify/eslint-plugin-vue-i18n':
         specifier: ^4.5.1
@@ -146,7 +146,7 @@ importers:
       '@modelcontextprotocol/server':
         specifier: ^2.0.0
         version: 2.0.0
-      the-i18n-cli:
+      '@the-i18n-kit/cli':
         specifier: workspace:*
         version: link:../cli
       zod:

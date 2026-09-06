@@ -11,7 +11,7 @@ One project per supported adapter, so that every detection and resolution path h
 | [`generic`](./generic) | Generic | `translations/` | `i18n-kit.config.ts` — the only source there is |
 
 ```bash
-pnpm --filter the-i18n-cli build
+pnpm --filter @the-i18n-kit/cli build
 
 for p in nuxt react vue laravel generic; do
   node packages/cli/dist/bin.js status --projectDir "playground/$p"

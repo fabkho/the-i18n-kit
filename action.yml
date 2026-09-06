@@ -65,7 +65,7 @@ inputs:
     description: 'Base branch for the PR (default: the branch that triggered the workflow)'
     required: false
   cli_version:
-    description: 'the-i18n-cli version to install (npm dist-tag or version). Use "skip" if the CLI is already installed (e.g. a local build).'
+    description: '@the-i18n-kit/cli version to install (npm dist-tag or version). Use "skip" if the CLI is already installed (e.g. a local build).'
     required: false
     default: 'latest'
 
@@ -91,7 +91,7 @@ runs:
       with:
         node-version: 22
 
-    - name: Install the-i18n-cli
+    - name: Install @the-i18n-kit/cli
       if: inputs.cli_version != 'skip'
       shell: bash
       env:
@@ -108,7 +108,7 @@ runs:
           *)         echo "::error::Unknown provider: $PROVIDER"; exit 1 ;;
         esac
         # --legacy-peer-deps: openai@5 declares peerOptional zod@^3, the CLI uses zod@^4
-        npm install -g --legacy-peer-deps "the-i18n-cli@${CLI_VERSION}" "$SDK"
+        npm install -g --legacy-peer-deps "@the-i18n-kit/cli@${CLI_VERSION}" "$SDK"
 
     - name: Translate missing keys
       id: translate

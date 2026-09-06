@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { serveStdio } from '@modelcontextprotocol/server/stdio'
-import { toErrorMessage } from 'the-i18n-cli'
+import { toErrorMessage } from '@the-i18n-kit/cli'
 import { createServer } from './server.js'
 
 // serveStdio owns the era decision: the opening exchange pins the connection

@@ -73,8 +73,8 @@ export async function layerAware(options: LayerAwareOptions = {}): Promise<Linte
 }
 
 async function detect(projectDir: string): Promise<DetectedConfig> {
-  const cli = await import('the-i18n-cli').catch(() => {
-    throw new Error('@the-i18n-kit/eslint-plugin: layerAware() needs the-i18n-cli installed to detect the project. Install it: npm i -D the-i18n-cli')
+  const cli = await import('@the-i18n-kit/cli').catch(() => {
+    throw new Error('@the-i18n-kit/eslint-plugin: layerAware() needs @the-i18n-kit/cli installed to detect the project. Install it: npm i -D @the-i18n-kit/cli')
   })
   return await (cli as { detectI18nConfig: (dir: string) => Promise<DetectedConfig> }).detectI18nConfig(projectDir)
 }

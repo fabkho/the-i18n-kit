@@ -28,7 +28,7 @@ const {
   scanSourceFiles, createOxcFrontend, createPatternsFrontend, createPhpFrontend, createBladeFrontend,
   VUE_NUXT_PATTERNS, LARAVEL_PATTERNS,
 } = await import('../dist/index.js').catch(() => {
-  console.error('Build the CLI first: pnpm --filter the-i18n-cli build')
+  console.error('Build the CLI first: pnpm --filter @the-i18n-kit/cli build')
   process.exit(1)
 })
 

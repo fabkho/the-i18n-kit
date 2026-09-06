@@ -47,15 +47,6 @@ describe('bin stream routing', () => {
     expect(stdout).toContain('--batchSize')
   })
 
-  // The rename notice (#315) is a diagnostic, and CI pipes stdout into jq.
-  it('prints the rename notice on stderr, leaving stdout parseable', async () => {
-    const { stdout, stderr } = await runBin(['--version'])
-
-    expect(stderr).toContain('@the-i18n-kit/cli')
-    expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/)
-    expect(stdout).not.toContain('@the-i18n-kit/cli')
-  })
-
   it('--version prints the version on stdout', async () => {
     const { stdout, code } = await runBin(['--version'])
     expect(code).toBe(0)

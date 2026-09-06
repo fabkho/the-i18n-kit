@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/mcp)
 [![npm downloads](https://img.shields.io/npm/dm/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/mcp)
-[![License](https://img.shields.io/npm/l/the-i18n-mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
+[![License](https://img.shields.io/npm/l/@the-i18n-kit/mcp?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
 
 MCP server for managing i18n translation files. Gives your agent 18 purpose-built
 tools so it can touch the keys it needs without reading whole locale files into
@@ -63,9 +63,8 @@ server returns fallback contexts for your agent rather than translating nothing.
 
 ## Migrating
 
-`the-i18n-mcp` was renamed to `@the-i18n-kit/mcp`. The old name still publishes
-during the deprecation window and the binary is unchanged; see
-[#344](https://github.com/fabkho/the-i18n-kit/issues/344).
+`the-i18n-mcp` was renamed to `@the-i18n-kit/mcp`. The old name is deprecated
+and receives no updates; the binary name is unchanged.
 
 ## License
 

@@ -1,5 +1,5 @@
 {
-  "name": "the-i18n-mcp",
+  "name": "@the-i18n-kit/mcp",
   "version": "7.5.0",
   "mcpName": "io.github.fabkho/the-i18n-mcp",
   "description": "Let your AI agent manage translations — find orphans, translate missing keys, add languages. Works with Cursor, Claude, VS Code. Supports Nuxt, Laravel, Vue, React/Next.js, and any framework.",
@@ -54,8 +54,8 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@the-i18n-kit/cli": "workspace:*",
     "@modelcontextprotocol/server": "^2.0.0",
-    "the-i18n-cli": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

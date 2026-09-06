@@ -1,7 +1,7 @@
 # @the-i18n-kit/cli
 
 [![npm version](https://img.shields.io/npm/v/@the-i18n-kit/cli?style=flat&colorA=18181b&colorB=4fc08d)](https://npmjs.com/package/@the-i18n-kit/cli)
-[![License](https://img.shields.io/npm/l/the-i18n-cli?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
+[![License](https://img.shields.io/npm/l/@the-i18n-kit/cli?style=flat&colorA=18181b&colorB=4fc08d)](https://github.com/fabkho/the-i18n-kit/blob/main/LICENSE)
 
 Find missing translation keys, remove dead ones, and rename across every locale
 and layer at once. Supports Nuxt, Laravel, Vue, React/Next.js, and any project

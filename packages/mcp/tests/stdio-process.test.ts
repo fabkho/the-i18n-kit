@@ -35,7 +35,7 @@ function spawnParams() {
 
 beforeAll(async () => {
   if (!existsSync(distEntry)) {
-    throw new Error('dist/index.js missing — run `pnpm --filter the-i18n-mcp build` first')
+    throw new Error('dist/index.js missing — run `pnpm --filter @the-i18n-kit/mcp build` first')
   }
   projectDir = await mkdtemp(join(tmpdir(), 'i18n-mcp-stdio-'))
   const localesDir = join(projectDir, 'i18n', 'locales')

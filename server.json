@@ -10,7 +10,7 @@
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "the-i18n-mcp",
+      "identifier": "@the-i18n-kit/mcp",
       "version": "7.5.0",
       "transport": {
         "type": "stdio"

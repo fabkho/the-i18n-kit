@@ -61,13 +61,9 @@ jobs:
         id: targets
         run: |
           set -euo pipefail
-          # Each entry is <output key>:<package dir>:<name>. The scoped names
-          # are the rename in #315: the same source published a second time, so
-          # nobody has to choose between a package that stops moving and one
-          # they have not heard of.
-          targets="cli:cli:the-i18n-cli mcp:mcp:the-i18n-mcp nuxt:nuxt:@the-i18n-kit/nuxt"
+          # Each entry is <output key>:<package dir>:<name>.
+          targets="cli:cli:@the-i18n-kit/cli mcp:mcp:@the-i18n-kit/mcp nuxt:nuxt:@the-i18n-kit/nuxt"
           targets="$targets eslint_plugin_vue:eslint-plugin-vue:@the-i18n-kit/eslint-plugin-vue"
-          targets="$targets cli_scoped:cli:@the-i18n-kit/cli mcp_scoped:mcp:@the-i18n-kit/mcp"
 
           for target in $targets; do
             pkg=${target%%:*}
@@ -97,38 +93,27 @@ jobs:
             fi
           done
 
-      - name: Publish the-i18n-cli
-        if: ${{ steps.targets.outputs.cli == 'true' }}
-        run: pnpm --filter the-i18n-cli publish --no-git-checks --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish the-i18n-mcp
-        if: ${{ steps.targets.outputs.mcp == 'true' }}
-        run: pnpm --filter the-i18n-mcp publish --no-git-checks --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # The rename (#315). Published after their originals so that
-      # @the-i18n-kit/mcp, which depends on @the-i18n-kit/cli, never points at a
-      # version that is not on the registry yet.
+      # Scoped, so --access public is load-bearing rather than a formality:
+      # without it npm defaults @the-i18n-kit/* to restricted. The CLI goes
+      # first: the MCP package depends on it and must never point at a version
+      # that is not on the registry yet.
       - name: Publish @the-i18n-kit/cli
-        if: ${{ steps.targets.outputs.cli_scoped == 'true' }}
-        run: node scripts/mirror-package.mjs packages/cli @the-i18n-kit/cli
+        if: ${{ steps.targets.outputs.cli == 'true' }}
+        run: pnpm --filter @the-i18n-kit/cli publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @the-i18n-kit/mcp
-        if: ${{ steps.targets.outputs.mcp_scoped == 'true' }}
-        run: node scripts/mirror-package.mjs packages/mcp @the-i18n-kit/mcp
+        if: ${{ steps.targets.outputs.mcp == 'true' }}
+        run: pnpm --filter @the-i18n-kit/mcp publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # Scoped, so --access public is load-bearing rather than a formality:
-      # without it npm defaults @the-i18n-kit/* to restricted.
       - name: Publish @the-i18n-kit/nuxt
         if: ${{ steps.targets.outputs.nuxt == 'true' }}
         run: pnpm --filter @the-i18n-kit/nuxt publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish @the-i18n-kit/eslint-plugin-vue
         if: ${{ steps.targets.outputs.eslint_plugin_vue == 'true' }}
