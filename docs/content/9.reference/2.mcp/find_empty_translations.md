@@ -17,5 +17,3 @@ Find keys whose value is an empty string. These exist in the locale file, so the
 | `locale` | `string` | no | Locale to check (e.g., "de"). If omitted, checks every locale. |
 | `projectDir` | `string` | no | Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |
 | `outputFile` | `string` | no | Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/empty-translations.json" |
-
-Every tool is advertised by `the-i18n-mcp` and listed on the [MCP tools overview](/reference/mcp).

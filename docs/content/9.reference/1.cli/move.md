@@ -24,5 +24,3 @@ the-i18n-cli move --fromLayer <fromLayer> --toLayer <toLayer> --key <key>
 | `--key` | `string` | yes | — | Dot-separated key path to move |
 | `--newKey` | `string` | no | — | Key path in the target layer, when the move also renames it |
 | `--dryRun` | `boolean` | no | `false` | Preview changes without writing |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

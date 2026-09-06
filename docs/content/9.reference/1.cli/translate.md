@@ -34,5 +34,3 @@ the-i18n-cli translate
 ## Other Names
 
 `the-i18n-cli translate-missing` runs this same command with the same flags. Alias of "translate" — matches the MCP tool translate_missing.
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

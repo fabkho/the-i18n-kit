@@ -23,5 +23,3 @@ the-i18n-cli find-duplicates
 | `--byValue` | `boolean` | no | `false` | Also group different keys carrying the same value, ranked by what to do about each group |
 | `--minValueLength` | `string` | no | — | Shortest value worth grouping with --byValue (default: 4) — below it, repetition is usually legitimate |
 | `--outputFile` | `string` | no | — | Write full output to this file path and return only a summary (useful for large outputs) |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

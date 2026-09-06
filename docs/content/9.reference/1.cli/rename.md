@@ -23,5 +23,3 @@ the-i18n-cli rename --layer <layer> --oldKey <oldKey> --newKey <newKey>
 | `--oldKey` | `string` | yes | — | Current key path |
 | `--newKey` | `string` | yes | — | New key path |
 | `--dryRun` | `boolean` | no | `false` | Preview changes without writing |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

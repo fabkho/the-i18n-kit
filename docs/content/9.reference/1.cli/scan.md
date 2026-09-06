@@ -21,5 +21,3 @@ the-i18n-cli scan
 | --- | --- | --- | --- | --- |
 | `--keys` | `string` | no | — | Comma-separated keys to filter by |
 | `--outputFile` | `string` | no | — | Write full output to file, return summary only |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

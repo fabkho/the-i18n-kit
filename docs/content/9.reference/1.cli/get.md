@@ -22,5 +22,3 @@ the-i18n-cli get --layer <layer> --locale <locale> --keys <keys>
 | `--layer` | `string` | yes | — | Layer name |
 | `--locale` | `string` | yes | — | Locale code, or "*" for all |
 | `--keys` | `string` | yes | — | Comma-separated key paths |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

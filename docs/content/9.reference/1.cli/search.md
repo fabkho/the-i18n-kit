@@ -23,5 +23,3 @@ the-i18n-cli search --query <query>
 | `--in` | `string` | no | `"both"` | Where to search: keys, values, or both |
 | `--layer` | `string` | no | — | Filter to a specific layer |
 | `--locale` | `string` | no | — | Filter to a specific locale |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

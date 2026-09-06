@@ -19,5 +19,3 @@ Move a key from one layer to another, carrying every locale that defines it — 
 | `newKey` | `string` | no | Key path in the target layer, when the move also renames it. Example: "common.actions.save". Defaults to the same path. |
 | `dryRun` | `boolean` | no | When true, returns the plan without writing any files. Default: false. |
 | `projectDir` | `string` | no | Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. |
-
-Every tool is advertised by `the-i18n-mcp` and listed on the [MCP tools overview](/reference/mcp).

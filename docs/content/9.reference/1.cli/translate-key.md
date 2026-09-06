@@ -31,5 +31,3 @@ the-i18n-cli translate-key --layer <layer> --key <key> --sourceLocale <sourceLoc
 | `--model` | `string` | no | — | Model name (required when --provider is set) |
 | `--apiKey` | `string` | no | — | API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env). |
 | `--baseUrl` | `string` | no | — | Provider base URL for gateways, self-hosted models and proxies speaking the provider's protocol. Falls back to I18N_BASE_URL, then providerBaseUrl in .i18n-mcp.json. Not supported by "google". |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

@@ -22,5 +22,3 @@ the-i18n-cli remove --layer <layer> --keys <keys>
 | `--layer` | `string` | yes | — | Layer name |
 | `--keys` | `string` | yes | — | Comma-separated key paths to remove |
 | `--dryRun` | `boolean` | no | `false` | Preview changes without writing |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

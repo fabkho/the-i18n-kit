@@ -18,5 +18,3 @@ the-i18n-cli detect
 ## Flags
 
 `detect` declares no flags of its own.
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

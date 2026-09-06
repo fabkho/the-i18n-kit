@@ -22,5 +22,3 @@ the-i18n-cli empty
 | `--layer` | `string` | no | — | Filter to a specific layer |
 | `--locale` | `string` | no | — | Filter to a specific locale |
 | `--outputFile` | `string` | no | — | Write full output to this file path and return only a summary (useful for large outputs) |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.
