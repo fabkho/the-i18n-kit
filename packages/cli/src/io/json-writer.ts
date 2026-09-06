@@ -40,7 +40,7 @@ export async function writeLocaleFile(
 
 export async function writeReportFile(
   filePath: string,
-  output: Record<string, unknown>,
+  output: object,
   meta: { tool: string; args: Record<string, unknown> },
 ): Promise<void> {
   const report = {

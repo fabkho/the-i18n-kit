@@ -17,7 +17,10 @@
  * the drift test reads.
  */
 
+import type { I18nConfig } from '../config/types.js'
+import type { CodeQualityIssue } from '../core/codequality.js'
 import type { ProgressFn, TranslateFn } from '../core/types.js'
+import { withReportParams } from './report.js'
 
 /** Which surface is invoking an operation. They differ only in the prose they own. */
 export type Surface = 'cli' | 'mcp'
@@ -122,6 +125,73 @@ export interface AlwaysOnGateSpec extends GateSpecBase {
   threshold: number
 }
 
+/**
+ * What the surface hands a report builder beyond the result: the project the
+ * operation ran against and the arguments it ran with.
+ */
+export interface ReportContext<A = Record<string, unknown>> {
+  projectDir: string
+  /** The project's resolved i18n configuration, as the operation itself read it. */
+  config: I18nConfig
+  /** The operation's arguments, as the surface resolved them. */
+  args: A
+}
+
+/**
+ * How a result too large to hand back is diverted to a file.
+ *
+ * An operation always returns its whole result. Whether that result is written
+ * to disk and replaced by a compact stand-in is the surface's decision — it is
+ * the surface that owns `outputFile`, the configured report directory and the
+ * name the file is written under — so the operations know nothing about any of
+ * it, and a descriptor declaring this is what gives an operation the parameters
+ * that request it.
+ */
+export interface ReportSpec<R = unknown, A = Record<string, unknown>> {
+  /**
+   * The file's base name under the configured report directory, and the tool
+   * name recorded inside the report. A function where one operation answers
+   * different questions and writes each under its own name — pipelines archive
+   * these paths, so they are part of the contract.
+   */
+  name: string | ((args: A) => string)
+  /** The compact stand-in returned once the full result is on disk. */
+  summary: (result: R) => unknown
+  /**
+   * The `outputFile` parameter as this operation offers it. Declared here and
+   * nowhere else, so an operation cannot advertise the parameter without the
+   * plumbing behind it, nor grow the plumbing without the parameter.
+   */
+  outputFile: {
+    /** The example path its description carries. */
+    example: string
+    cli?: CliParamOptions
+    mcp?: McpParamOptions
+  }
+  /** The same findings, as a GitLab Code Quality report the pipeline collects. */
+  codequality?: {
+    /** What the findings are called in the parameter's description. */
+    findings: string
+    /**
+     * Returning undefined writes nothing, which is not the same as writing an
+     * empty array: the empty array is the baseline the merge-request widget
+     * diffs against, so it is only right for a run that looked for these
+     * findings and found none.
+     */
+    issues: (result: R, ctx: ReportContext<A>) => CodeQualityIssue[] | undefined
+  }
+}
+
+/**
+ * A report spec with its result type erased, as the runner sees it.
+ *
+ * `any` rather than `unknown`: the runner holds a result whose type it cannot
+ * know, while every declaration site is checked against its own operation's
+ * result type.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
+export type AnyReportSpec = ReportSpec<any>
+
 /** How the MCP server advertises an operation as a tool. */
 export interface McpToolSpec {
   name: string
@@ -152,8 +222,17 @@ export interface OperationContext {
   surface: Surface
   /** Provider-backed translation, when the surface resolved one. */
   translateFn?: TranslateFn
-  /** Progress reporting, when the caller asked for it. Only MCP does. */
+  /**
+   * Progress reporting, when the caller asked for it. Only MCP does — a
+   * terminal is left with its exit code. The operations that take long enough
+   * to report call it (translating, orphan scans); the rest never do.
+   */
   progressFn?: ProgressFn
+  /**
+   * The number of steps the operation is about to report, counted in whatever
+   * unit it reports in. Called once, before the first `progressFn` call, so a
+   * notification never goes out against an unknown total.
+   */
   onProgressTotal?: (total: number) => void
 }
 
@@ -214,6 +293,18 @@ export interface OperationDescriptor<P extends Params = Params> {
    */
   usesTranslateFn?: boolean
   /**
+   * The result is large enough to be worth writing to a file instead of
+   * returning. Declaring this is what adds the parameters that request it and
+   * what makes the configured report directory apply to the operation.
+   *
+   * The result type stays open: a `run` whose parameters are contextually typed
+   * is not an inference site, so nothing here can see the operation's own
+   * result type. Declaration sites annotate it on the builder instead, which is
+   * what type-checks them.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
+  report?: ReportSpec<any, OperationArgs<P>>
+  /**
    * Declared as a method so the table can hold descriptors with different
    * parameter maps: method parameters are compared bivariantly, which is what
    * lets `run` be typed against each operation's own arguments and still be
@@ -228,8 +319,9 @@ export interface OperationDescriptor<P extends Params = Params> {
  * per-operation type, so the erasure happens once, in `defineOperation`,
  * instead of at every call site.
  */
-export type AnyOperationDescriptor = Omit<OperationDescriptor<Params>, 'run' | 'params'> & {
+export type AnyOperationDescriptor = Omit<OperationDescriptor<Params>, 'run' | 'params' | 'report'> & {
   params: Params
+  report?: AnyReportSpec
   run(args: Record<string, unknown>, ctx: OperationContext): Promise<unknown>
 }
 
@@ -237,9 +329,14 @@ export type AnyOperationDescriptor = Omit<OperationDescriptor<Params>, 'run' | '
  * Declare one operation. The `const` type parameter is what keeps `required:
  * true` and `enum: [...]` literal, so `run` receives `layer: string` rather
  * than `string | undefined` for a parameter the surface guarantees.
+ *
+ * An operation that declares a `report` gains the parameters that request one
+ * here, so the two cannot drift apart.
  */
 export function defineOperation<const P extends Params>(
   descriptor: OperationDescriptor<P>,
 ): AnyOperationDescriptor {
-  return descriptor as unknown as AnyOperationDescriptor
+  const erased = descriptor as unknown as AnyOperationDescriptor
+  if (erased.report === undefined) return erased
+  return { ...erased, params: withReportParams(erased.params, erased.gates, erased.report) }
 }

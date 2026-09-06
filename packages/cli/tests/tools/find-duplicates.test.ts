@@ -30,6 +30,7 @@ vi.mock('../../src/config/detector.js', async (importOriginal) => {
 })
 
 const { findDuplicateKeys } = await import('../../src/core/operations.js')
+const { runOperation } = await import('../fixtures/surface.js')
 
 const locales = [
   { code: 'de', file: 'de.json' },
@@ -156,14 +157,9 @@ afterAll(async () => {
   state.configs.clear()
 })
 
-function asResult(result: Awaited<ReturnType<typeof findDuplicateKeys>>) {
-  if ('reportFile' in result) throw new Error('Expected inline result, got report file')
-  return result
-}
-
 describe('findDuplicateKeys — multi-layer collisions', () => {
   it('reports a collision with identical values as divergent: false', async () => {
-    const result = asResult(await findDuplicateKeys({ projectDir: multiDir }))
+    const result = await findDuplicateKeys({ projectDir: multiDir })
 
     expect(result.collisions).toContainEqual({
       key: 'common.save',
@@ -176,7 +172,7 @@ describe('findDuplicateKeys — multi-layer collisions', () => {
   })
 
   it('reports a collision with divergent values as divergent: true, with both values', async () => {
-    const result = asResult(await findDuplicateKeys({ projectDir: multiDir }))
+    const result = await findDuplicateKeys({ projectDir: multiDir })
 
     expect(result.collisions).toContainEqual({
       key: 'common.cancel',
@@ -189,7 +185,7 @@ describe('findDuplicateKeys — multi-layer collisions', () => {
   })
 
   it('does not report keys that exist only in the child layer', async () => {
-    const result = asResult(await findDuplicateKeys({ projectDir: multiDir }))
+    const result = await findDuplicateKeys({ projectDir: multiDir })
 
     expect(result.collisions.map(c => c.key)).not.toContain('shop.checkout')
     // Shared-only keys are no collision either.
@@ -197,7 +193,7 @@ describe('findDuplicateKeys — multi-layer collisions', () => {
   })
 
   it('summarizes collisions, divergence, checked pairs, and the locale used', async () => {
-    const result = asResult(await findDuplicateKeys({ projectDir: multiDir }))
+    const result = await findDuplicateKeys({ projectDir: multiDir })
 
     // Pairs: (root, app-shop) and (root, app-admin); app-admin has no overlap.
     expect(result.summary).toEqual({
@@ -209,7 +205,7 @@ describe('findDuplicateKeys — multi-layer collisions', () => {
   })
 
   it('compares in the requested locale instead of the default', async () => {
-    const result = asResult(await findDuplicateKeys({ projectDir: multiDir, locale: 'en' }))
+    const result = await findDuplicateKeys({ projectDir: multiDir, locale: 'en' })
 
     expect(result.summary.locale).toBe('en')
     // In en, common.save diverges ('Save' vs 'Save!') unlike in de.
@@ -220,16 +216,17 @@ describe('findDuplicateKeys — multi-layer collisions', () => {
   })
 
   it('gives delete-one-side guidance, never moving', async () => {
-    const result = asResult(await findDuplicateKeys({ projectDir: multiDir }))
+    const result = await findDuplicateKeys({ projectDir: multiDir })
 
     expect(result.guidance.toLowerCase()).toContain('shadow')
     expect(result.guidance.toLowerCase()).toContain('delet')
     expect(result.guidance.toLowerCase()).not.toContain('moving')
   })
 
+  // The file is the surface's doing, so this asks for one the way a surface does.
   it('honors outputFile: writes the full report and returns only the summary', async () => {
     const reportPath = join(multiDir, 'duplicate-report.json')
-    const result = await findDuplicateKeys({ projectDir: multiDir, outputFile: reportPath })
+    const result = await runOperation('find-duplicates', { projectDir: multiDir, outputFile: reportPath })
 
     expect(result).toEqual({
       reportFile: reportPath,
@@ -257,7 +254,7 @@ describe('findDuplicateKeys — degenerate config without app info', () => {
     const symDir = `${dir}-sym`
     state.configs.set(symDir, config)
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: symDir }))
+      const result = await findDuplicateKeys({ projectDir: symDir })
 
       const pairIds = result.collisions.map(c => [c.sharedLayer, c.childLayer].sort().join('↔'))
       const keyPair = result.collisions.map(c => `${c.key}|${pairIds[0]}`)
@@ -277,7 +274,7 @@ describe('findDuplicateKeys — degenerate config without app info', () => {
       { list: { equal: ['a', 'b'], different: ['x'] } },
       { list: { equal: ['a', 'b'], different: ['y'] } })
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: dir }))
+      const result = await findDuplicateKeys({ projectDir: dir })
       expect(result.collisions).toContainEqual(
         expect.objectContaining({ key: 'list.equal', divergent: false }),
       )
@@ -317,7 +314,7 @@ describe('findDuplicateKeys — degenerate config without app info', () => {
     const precDir = `${dir}-prec`
     state.configs.set(precDir, config)
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: precDir }))
+      const result = await findDuplicateKeys({ projectDir: precDir })
       expect(result.summary.pairsChecked).toBe(1)
       for (const c of result.collisions) {
         expect(c.childLayer).toBe('app-shop') // big overrides → child
@@ -330,7 +327,7 @@ describe('findDuplicateKeys — degenerate config without app info', () => {
   })
 
   it('returns an empty result with a clear message instead of guessing pairs', async () => {
-    const result = asResult(await findDuplicateKeys({ projectDir: noAppsDir }))
+    const result = await findDuplicateKeys({ projectDir: noAppsDir })
 
     expect(result.collisions).toEqual([])
     expect(result.summary.totalCollisions).toBe(0)
@@ -362,7 +359,7 @@ describe('findDuplicateKeys — value duplicates', () => {
   }
 
   it('is absent unless asked for, so the existing result shape is untouched', async () => {
-    const result = asResult(await findDuplicateKeys({ projectDir: multiDir }))
+    const result = await findDuplicateKeys({ projectDir: multiDir })
 
     expect(result.valueDuplicates).toBeUndefined()
     expect(result.summary.valueGroups).toBeUndefined()
@@ -371,7 +368,7 @@ describe('findDuplicateKeys — value duplicates', () => {
   it('groups keys that carry the same value across layers', async () => {
     const dir = await makeValueDuplicateProject()
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      const result = await findDuplicateKeys({ projectDir: dir, byValue: true })
       const group = result.valueDuplicates?.find(g => g.normalized === 'speichern')
 
       expect(group?.members.map(m => m.key).sort()).toEqual([
@@ -388,7 +385,7 @@ describe('findDuplicateKeys — value duplicates', () => {
   it('calls a group reuse when a shared layer already carries the value', async () => {
     const dir = await makeValueDuplicateProject()
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      const result = await findDuplicateKeys({ projectDir: dir, byValue: true })
 
       expect(result.valueDuplicates?.[0]?.action).toBe('reuse')
       expect(result.valueDuplicates?.[0]?.members.filter(m => m.shared)).toHaveLength(1)
@@ -405,7 +402,7 @@ describe('findDuplicateKeys — value duplicates', () => {
       { b: { save: 'speichern. ' } },
     )
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      const result = await findDuplicateKeys({ projectDir: dir, byValue: true })
 
       expect(result.valueDuplicates).toHaveLength(1)
       expect(result.valueDuplicates?.[0]?.members).toHaveLength(2)
@@ -421,7 +418,7 @@ describe('findDuplicateKeys — value duplicates', () => {
       { b: { save: 'Jetzt speichern' } },
     )
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      const result = await findDuplicateKeys({ projectDir: dir, byValue: true })
 
       expect(result.valueDuplicates).toHaveLength(1)
       expect(result.valueDuplicates?.[0]?.normalized).toBe('jetzt speichern')
@@ -439,7 +436,7 @@ describe('findDuplicateKeys — value duplicates', () => {
       { common: { save: 'Speichern' } },
     )
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      const result = await findDuplicateKeys({ projectDir: dir, byValue: true })
 
       expect(result.collisions.map(c => c.key)).toEqual(['common.save'])
       expect(result.valueDuplicates).toEqual([])
@@ -467,10 +464,10 @@ describe('findDuplicateKeys — value duplicates', () => {
   it('leaves short values alone, and takes a floor from the caller', async () => {
     const dir = await makeValueDuplicateProject()
     try {
-      const byDefault = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      const byDefault = await findDuplicateKeys({ projectDir: dir, byValue: true })
       expect(byDefault.valueDuplicates?.some(g => g.normalized === 'ja')).toBe(false)
 
-      const withFloor = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true, minValueLength: 2 }))
+      const withFloor = await findDuplicateKeys({ projectDir: dir, byValue: true, minValueLength: 2 })
       expect(withFloor.valueDuplicates?.some(g => g.normalized === 'ja')).toBe(true)
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -484,7 +481,7 @@ describe('findDuplicateKeys — value duplicates', () => {
       { unrelated: { title: 'Etwas anderes' } },
     )
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      const result = await findDuplicateKeys({ projectDir: dir, byValue: true })
 
       expect(result.valueDuplicates?.[0]?.action).toBe('consolidate')
     } finally {
@@ -499,7 +496,7 @@ describe('findDuplicateKeys — value duplicates', () => {
       { b: { cancel: 'Abbrechen' } },
     )
     try {
-      const result = asResult(await findDuplicateKeys({ projectDir: dir, byValue: true }))
+      const result = await findDuplicateKeys({ projectDir: dir, byValue: true })
 
       expect(result.valueDuplicates).toEqual([])
       expect(result.summary.valueGroups).toBe(0)

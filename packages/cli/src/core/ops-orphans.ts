@@ -8,20 +8,17 @@ import { isAbsolute, relative } from 'node:path'
 import { detectI18nConfig } from '../config/detector.js'
 import { buildLayerGraph } from '../config/layer-graph.js'
 import type { I18nConfig, LocaleDefinition, LocaleDir } from '../config/types.js'
-import { writeCodequalityFile, writeReportFile } from '../io/json-writer.js'
 import { readLocaleData, mutateLocaleData } from '../io/locale-data.js'
 import { getLeafKeys, removeNestedValue } from '../io/key-operations.js'
 import { scanSourceFiles, toRelativePath, findOrphanKeysForConfig } from '../scanner/code-scanner.js'
-import type { OrphanScanPlan, OrphanScanResult } from '../scanner/code-scanner.js'
+import type { OrphanScanPlan, OrphanScanProgress, OrphanScanResult } from '../scanner/code-scanner.js'
 import { getPatternSet } from '../scanner/patterns.js'
-import type { FindOrphanKeysResult, RemoveOrphanKeysResult, CodeUsageResult } from './types.js'
+import type { FindOrphanKeysResult, RemoveOrphanKeysResult, CodeUsageResult, ProgressFn } from './types.js'
 import { ToolError } from '../utils/errors.js'
 
 import { log } from '../utils/logger.js'
 
 import { findLayerOrThrow, resolveReferenceLocale } from './shared.js'
-import { validateReportPath, resolveOutputFile, resolveReportFilePath } from './report.js'
-import { orphanKeysToCodeQuality, referenceLocaleAnchorPaths } from './codequality.js'
 
 const MISPLACED_USAGE_NOTE
   = 'Keys referenced only from apps that do not consume their layer. '
@@ -122,6 +119,57 @@ function relativeScanScope(result: OrphanScanResult, projectDir: string): Record
   return scanScope
 }
 
+/** What a surface passes in to watch a scan. Only MCP does; the CLI reports nothing. */
+interface ScanProgressOptions {
+  progressFn?: ProgressFn
+  /** Called once with the number of progress steps, before the first `progressFn` call. */
+  onProgressTotal?: (total: number) => void
+}
+
+/**
+ * Most progress notifications one scan sends, whatever the project size.
+ * A monorepo with 12k source files reporting each one would put more traffic
+ * on the wire than the scan it describes, so files are reported in strides of
+ * `ceil(total / MAX_PROGRESS_STEPS)`.
+ */
+const MAX_PROGRESS_STEPS = 100
+
+/**
+ * Adapt the scanner's per-file hooks to a surface's progress callbacks.
+ *
+ * The reporter on the other end counts calls rather than files, so the total
+ * is announced in that same unit — one step per stride — and the last file
+ * always reports, which is what makes the final step equal the total.
+ *
+ * `ProgressFn` is async while the scanner's hooks are not, so calls are
+ * chained onto one promise: notifications keep the order the files completed
+ * in, a failing notification cannot fail a scan, and `drain` waits for the
+ * queue so no notification arrives after the result it describes.
+ */
+function scanProgress(opts: ScanProgressOptions): { progress?: OrphanScanProgress; drain: () => Promise<void> } {
+  const { progressFn, onProgressTotal } = opts
+  if (!progressFn && !onProgressTotal) return { drain: async () => {} }
+
+  let queue: Promise<void> = Promise.resolve()
+  let stride = 1
+
+  return {
+    progress: {
+      onTotal: (total) => {
+        stride = Math.max(1, Math.ceil(total / MAX_PROGRESS_STEPS))
+        onProgressTotal?.(Math.ceil(total / stride))
+      },
+      onFile: (done, total, unit, file) => {
+        if (!progressFn) return
+        if (done % stride !== 0 && done !== total) return
+        const message = `Scanning ${unit}: ${done}/${total} files (${file})`
+        queue = queue.then(() => progressFn(message)).catch(() => {})
+      },
+    },
+    drain: async () => { await queue },
+  }
+}
+
 /**
  * Shared scan entry for findOrphanKeys/removeOrphanKeys: explicit scanDirs
  * keep the global combined-scan behavior; otherwise a scope-aware plan is
@@ -130,16 +178,20 @@ function relativeScanScope(result: OrphanScanResult, projectDir: string): Record
 async function runOrphanScan(
   config: I18nConfig,
   keysByLayer: Map<string, { keys: string[]; localeDir: LocaleDir }>,
-  opts: { scanDirs?: string[]; excludeDirs?: string[]; dir: string },
+  opts: { scanDirs?: string[]; excludeDirs?: string[]; dir: string } & ScanProgressOptions,
 ): Promise<OrphanScanResult> {
-  return findOrphanKeysForConfig({
+  const { progress, drain } = scanProgress(opts)
+  const result = await findOrphanKeysForConfig({
     keysByLayer,
     // an empty scanDirs array means "not provided" (matches excludeDirs)
     ...(opts.scanDirs?.length ? { scanDirs: opts.scanDirs } : { scanPlan: buildOrphanScanPlan(config, opts.dir) }),
     excludeDirs: opts.excludeDirs || undefined,
     resolveIgnorePatterns: layerName => resolveOrphanIgnorePatterns(config, layerName),
     patterns: getPatternSet(config.localeFileFormat),
+    progress,
   })
+  await drain()
+  return result
 }
 
 /**
@@ -222,28 +274,6 @@ async function resolveOrphanScanContext(
 }
 
 /**
- * A writer for the GitLab Code Quality report, or a no-op when no path was
- * given.
- *
- * Called on every branch, findings or not: an empty array on the default branch
- * is the baseline the MR widget diffs against, and a branch that skipped the
- * write reads to the widget as "every finding is new".
- */
-function codequalityWriter(
-  config: I18nConfig,
-  dir: string,
-  localeDef: LocaleDefinition,
-  outputPath: string | undefined,
-): (orphansByLayer: Record<string, string[]>) => Promise<void> {
-  return async (orphansByLayer) => {
-    if (!outputPath) return
-    validateReportPath(dir, outputPath)
-    const anchors = referenceLocaleAnchorPaths(config, Object.keys(orphansByLayer), localeDef, dir)
-    await writeCodequalityFile(outputPath, orphanKeysToCodeQuality(orphansByLayer, anchors))
-  }
-}
-
-/**
  * Find translation keys that exist in locale files but are not referenced in source code.
  */
 export async function findOrphanKeys(opts: {
@@ -259,39 +289,27 @@ export async function findOrphanKeys(opts: {
   scanDirs?: string[]
   excludeDirs?: string[]
   projectDir?: string
-  outputFile?: string
-  /** Also write the orphan findings as a GitLab Code Quality JSON array to this path. */
-  codequalityOutput?: string
+  /** Scanning every source file of every app takes seconds — a caller that asked for progress hears about each stride of files. */
+  progressFn?: ProgressFn
+  /** Called once with the number of progress steps, before the first `progressFn` call. */
+  onProgressTotal?: (total: number) => void
 }): Promise<FindOrphanKeysResult> {
-  const { layer, locale, scanDirs, excludeDirs } = opts
+  const { layer, locale, scanDirs, excludeDirs, progressFn, onProgressTotal } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
   warnUnknownOrphanScanLayers(config)
 
-  const { layersToCheck, keysByLayer, totalKeys, localeCode, localeDef } = await resolveOrphanScanContext(config, {
+  const { layersToCheck, keysByLayer, totalKeys, localeCode } = await resolveOrphanScanContext(config, {
     layer,
     locale,
     dir,
   })
 
-  const writeCodequality = codequalityWriter(config, dir, localeDef, opts.codequalityOutput)
-
   if (totalKeys === 0) {
-    await writeCodequality({})
-    const emptyOutput = { orphanKeys: {} as Record<string, string[]>, summary: { totalKeys: 0, orphanCount: 0, filesScanned: 0, message: 'No translation keys found in locale files.' } }
-    const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
-    if (reportPath) {
-      await writeReportFile(reportPath, emptyOutput, {
-        tool: 'find_orphan_keys',
-        args: { layer, locale, scanDirs, excludeDirs },
-      })
-      return { reportFile: reportPath, summary: emptyOutput.summary }
-    }
-    return emptyOutput
+    return { orphanKeys: {}, summary: { totalKeys: 0, orphanCount: 0, filesScanned: 0, message: 'No translation keys found in locale files.' } }
   }
 
-  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir })
-  await writeCodequality(orphanResult.orphansByLayer)
+  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir, progressFn, onProgressTotal })
 
   const byLayer = orphanResult.orphansByLayer
   const allOrphanKeys: Array<{ key: string; layer: string }> = []
@@ -346,15 +364,6 @@ export async function findOrphanKeys(opts: {
       : undefined,
   }
 
-  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_orphan_keys')
-  if (reportPath) {
-    await writeReportFile(reportPath, output as unknown as Record<string, unknown>, {
-      tool: 'find_orphan_keys',
-      args: { layer, locale, scanDirs, excludeDirs },
-    })
-    return { reportFile: reportPath, summary: output.summary }
-  }
-
   return output
 }
 
@@ -366,7 +375,6 @@ export async function scanCodeUsage(opts: {
   scanDirs?: string[]
   excludeDirs?: string[]
   projectDir?: string
-  outputFile?: string
 }): Promise<CodeUsageResult> {
   const { keys, scanDirs, excludeDirs } = opts
   const dir = opts.projectDir ?? process.cwd()
@@ -432,15 +440,6 @@ export async function scanCodeUsage(opts: {
     }))
   }
 
-  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'scan_code_usage')
-  if (reportPath) {
-    await writeReportFile(reportPath, output as unknown as Record<string, unknown>, {
-      tool: 'scan_code_usage',
-      args: { keys, scanDirs, excludeDirs },
-    })
-    return { reportFile: reportPath, summary: output.summary }
-  }
-
   return output
 }
 
@@ -455,40 +454,28 @@ export async function removeOrphanKeys(opts: {
   excludeDirs?: string[]
   dryRun?: boolean
   projectDir?: string
-  outputFile?: string
-  /** Also write the orphan findings as a GitLab Code Quality JSON array to this path. */
-  codequalityOutput?: string
+  /** Same scan as {@link findOrphanKeys}, same reporting. */
+  progressFn?: ProgressFn
+  /** Called once with the number of progress steps, before the first `progressFn` call. */
+  onProgressTotal?: (total: number) => void
 }): Promise<RemoveOrphanKeysResult> {
-  const { layer, locale, scanDirs, excludeDirs } = opts
+  const { layer, locale, scanDirs, excludeDirs, progressFn, onProgressTotal } = opts
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
   warnUnknownOrphanScanLayers(config)
   const isDryRun = opts.dryRun ?? true
 
-  const { keysByLayer, totalKeys, localeDef } = await resolveOrphanScanContext(config, {
+  const { keysByLayer, totalKeys } = await resolveOrphanScanContext(config, {
     layer,
     locale,
     dir,
   })
 
-  const writeCodequality = codequalityWriter(config, dir, localeDef, opts.codequalityOutput)
-
   if (totalKeys === 0) {
-    await writeCodequality({})
-    const emptyOutput = { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
-    const emptyReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
-    if (emptyReportPath) {
-      await writeReportFile(emptyReportPath, emptyOutput as unknown as Record<string, unknown>, {
-        tool: 'remove_orphan_keys',
-        args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
-      })
-      return { reportFile: emptyReportPath, summary: emptyOutput.summary }
-    }
-    return emptyOutput
+    return { orphanKeys: {}, removed: {}, summary: { totalKeys: 0, orphanCount: 0, message: 'No translation keys found.' } }
   }
 
-  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir })
-  await writeCodequality(orphanResult.orphansByLayer)
+  const orphanResult = await runOrphanScan(config, keysByLayer, { scanDirs, excludeDirs, dir, progressFn, onProgressTotal })
   const orphansByLayer = orphanResult.orphansByLayer
   const orphanCount = orphanResult.orphanCount
   const totalFilesScanned = orphanResult.totalFilesScanned
@@ -513,14 +500,6 @@ export async function removeOrphanKeys(opts: {
       misplacedUsages,
       misplacedUsageNote,
       summary: { totalKeys, orphanCount: 0, uncertainCount: orphanResult.uncertainCount, misplacedCount, dynamicMatchedCount, ignoredCount, filesScanned: totalFilesScanned, scanScope, message: messageParts.join(' ') },
-    }
-    const zeroReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
-    if (zeroReportPath) {
-      await writeReportFile(zeroReportPath, zeroOutput as unknown as Record<string, unknown>, {
-        tool: 'remove_orphan_keys',
-        args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
-      })
-      return { reportFile: zeroReportPath, summary: zeroOutput.summary }
     }
     return zeroOutput
   }
@@ -558,14 +537,6 @@ export async function removeOrphanKeys(opts: {
         callee: w.callee,
         suggestedIgnorePattern: w.suggestedIgnorePattern,
       }))
-    }
-    const dryRunReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
-    if (dryRunReportPath) {
-      await writeReportFile(dryRunReportPath, output as unknown as Record<string, unknown>, {
-        tool: 'remove_orphan_keys',
-        args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
-      })
-      return { reportFile: dryRunReportPath, summary: output.summary }
     }
     return output
   }
@@ -612,15 +583,6 @@ export async function removeOrphanKeys(opts: {
       filesScanned: totalFilesScanned,
       scanScope,
     },
-  }
-
-  const removalReportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'remove_orphan_keys')
-  if (removalReportPath) {
-    await writeReportFile(removalReportPath, removalOutput as unknown as Record<string, unknown>, {
-      tool: 'remove_orphan_keys',
-      args: { layer, locale, scanDirs, excludeDirs, dryRun: opts.dryRun },
-    })
-    return { reportFile: removalReportPath, summary: removalOutput.summary }
   }
 
   return removalOutput

@@ -3,7 +3,8 @@
  * referenced in source code but defined in no locale file of the using
  * app's consumed layers. Covers scope-correct resolution over a multi-app
  * temp project, dynamic-usage downgrades to uncertain, ignorePatterns,
- * the no-app-info degenerate fallback, and the outputFile plumbing.
+ * the no-app-info degenerate fallback, and the reports the surface derives
+ * from the result.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
@@ -20,6 +21,9 @@ vi.mock('../../src/config/detector.js', async importOriginal =>
 
 const adminPage = join('app-admin', 'pages/index.vue')
 const { checkUndefinedKeys } = await import('../../src/core/operations.js')
+// The report files are the surface's doing, so the cases below that ask for
+// one go through the surface rather than through the operation.
+const { runOperation } = await import('../fixtures/surface.js')
 
 let projectDir: string
 let config: I18nConfig
@@ -274,7 +278,7 @@ describe('checkUndefinedKeys — scope-aware', () => {
 
   it('honors outputFile: writes the full report and returns only the summary', async () => {
     const reportPath = join(projectDir, 'undefined-report.json')
-    const result = await checkUndefinedKeys({ projectDir, outputFile: reportPath })
+    const result = await runOperation('check', { projectDir, outputFile: reportPath })
 
     expect(result).toEqual({
       reportFile: reportPath,
@@ -287,7 +291,7 @@ describe('checkUndefinedKeys — scope-aware', () => {
   })
 
   it('resolves a relative outputFile against the project dir, not the process cwd', async () => {
-    const result = await checkUndefinedKeys({ projectDir, outputFile: 'undefined-report-rel.json' })
+    const result = await runOperation('check', { projectDir, outputFile: 'undefined-report-rel.json' })
 
     const expectedPath = join(projectDir, 'undefined-report-rel.json')
     expect(result).toMatchObject({ reportFile: expectedPath })
@@ -298,14 +302,18 @@ describe('checkUndefinedKeys — scope-aware', () => {
 
   it('rejects a relative outputFile escaping the project dir', async () => {
     await expect(
-      checkUndefinedKeys({ projectDir, outputFile: '../escape.json' }),
+      runOperation('check', { projectDir, outputFile: '../escape.json' }),
     ).rejects.toThrow(/resolves outside the project directory/)
   })
 
   it('honors codequalityOutput: writes a CodeClimate array alongside the normal report', async () => {
     const reportPath = join(projectDir, 'undefined-report-cq.json')
     const cqPath = join(projectDir, 'gl-codequality.json')
-    const result = await checkUndefinedKeys({ projectDir, outputFile: reportPath, codequalityOutput: cqPath })
+    const result = await runOperation('check', {
+      projectDir,
+      outputFile: reportPath,
+      codequalityOutput: cqPath,
+    })
 
     // The flag is additive: the normal report behavior is unchanged.
     expect(result).toMatchObject({ reportFile: reportPath })

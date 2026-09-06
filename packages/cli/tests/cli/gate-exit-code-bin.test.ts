@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -59,6 +59,29 @@ describe('gate exit codes through the real binary', () => {
       summary: { totalMissingKeys: 1 },
       gatesTripped: [{ name: 'fail-on-missing', observed: 1, threshold: 0 }],
     })
+  })
+
+  // The counters are read off the whole result, before the surface writes it to
+  // a file, so the two flags CI passes together keep working together.
+  it('still exits 2 when --output-file diverts the result the gate read', async () => {
+    const { stdout, code } = await runBin(
+      ['missing', '--fail-on-missing', '--output-file', 'missing.json'],
+      projectDir,
+    )
+
+    expect(code).toBe(2)
+    const result = JSON.parse(stdout) as Record<string, unknown>
+    expect(String(result.reportFile)).toContain('missing.json')
+    expect(result).toMatchObject({
+      summary: { totalMissingKeys: 1 },
+      gatesTripped: [{ name: 'fail-on-missing', observed: 1, threshold: 0 }],
+    })
+
+    // The keys themselves went to the file rather than to stdout.
+    expect(result).not.toHaveProperty('missing')
+    const report = JSON.parse(await readFile(join(projectDir, 'missing.json'), 'utf-8')) as Record<string, unknown>
+    expect(report).toMatchObject({ tool: 'get_missing_translations' })
+    expect(report.missing).toEqual({ de: { default: ['common.farewell'] } })
   })
 
   it('exits 0 on the same project without the gate flag', async () => {

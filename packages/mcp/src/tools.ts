@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod'
-import { ToolError, toErrorMessage } from '@the-i18n-kit/cli'
+import { divertToReport, ToolError, toErrorMessage } from '@the-i18n-kit/cli'
 import type { AnyOperationDescriptor, ParamSpec, ProgressFn, TranslateFn } from '@the-i18n-kit/cli'
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
 
@@ -91,11 +91,19 @@ export function registerFromDescriptor(
     async (args: Record<string, unknown>, requestCtx: ServerContext) => {
       try {
         const { projectDir, ...rest } = args
+        const operationArgs = {
+          ...rest,
+          projectDir: (projectDir as string | undefined) ?? ctx.defaultProjectDir,
+        }
         const result = await descriptor.run(
-          { ...rest, projectDir: (projectDir as string | undefined) ?? ctx.defaultProjectDir },
+          operationArgs,
           { surface: 'mcp', translateFn: ctx.translateFn, ...progressReporter(requestCtx) },
         )
-        return jsonContent(decorate === undefined ? result : decorate(result))
+        // A result the caller asked to have written to a file leaves as the
+        // summary of one. Applied here rather than in the operation, so both
+        // surfaces divert the same way.
+        const output = await divertToReport(result, descriptor, operationArgs)
+        return jsonContent(decorate === undefined ? output : decorate(output))
       }
       catch (error) {
         return toolErrorResponse(tool.name, error)
@@ -151,13 +159,17 @@ function paramSchema(spec: ParamSpec): z.ZodType {
 /**
  * Progress notifications for the caller that asked for them.
  *
- * Wired for every tool, though only the translating one reports: an operation
- * that never calls the reporter sends nothing, and a tool that starts reporting
- * needs no change here.
+ * Wired for every tool; the ones long enough to be worth watching report
+ * (translating, orphan scans). An operation that never calls the reporter
+ * sends nothing, and a tool that starts reporting needs no change here.
  *
  * Invariant the total relies on: an operation calls onProgressTotal during its
  * pre-scan, before the first progress call, so the total is set by the time a
  * notification goes out.
+ *
+ * `progress` counts notifications rather than units of work, so an operation
+ * reporting in strides (one call per N files) announces its total in that same
+ * unit — otherwise its last notification would stop short of it.
  */
 function progressReporter(ctx: ServerContext): {
   progressFn?: ProgressFn
