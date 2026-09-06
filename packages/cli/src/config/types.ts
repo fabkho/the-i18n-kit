@@ -70,9 +70,21 @@ export interface ProjectConfig {
    * Every other property is a locale code mapped to its translated value.
    */
   examples?: Array<{ key: string, note?: string } & Record<string, string>>
+  /**
+   * Namespaces whose keys exist by contract rather than by a call site: sent by
+   * a backend over the wire, keyed by runtime data, built from a registry. The
+   * scanner cannot see them, so they are declared once — with the contract that
+   * keeps them alive — and protected in every layer.
+   */
+  declaredNamespaces?: Array<{
+    /** Key pattern the declaration covers (e.g., "views.defaults.**"). */
+    pattern: string
+    /** What keeps these keys alive (e.g., "sent by bookings-api as name_key"). */
+    reason: string
+  }>
   /** Per-layer scan directories and ignore patterns for orphan key detection. Keys are layer names. */
   orphanScan?: Record<string, {
-    /** Glob patterns for translation keys to exclude from orphan detection (e.g., "common.datetime.months.*"). */
+    /** Glob patterns for translation keys to exclude from orphan detection in this layer (e.g., "common.datetime.months.*"). */
     ignorePatterns?: string[]
   }>
   /**

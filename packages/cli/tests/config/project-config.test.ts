@@ -147,6 +147,50 @@ describe('loadProjectConfig', () => {
     }
   })
 
+  it('accepts declaredNamespaces alongside orphanScan ignorePatterns', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({
+        declaredNamespaces: [
+          { pattern: 'views.defaults.**', reason: 'sent by bookings-api as name_key' }
+        ],
+        orphanScan: { root: { ignorePatterns: ['common.datetime.**'] } }
+      }), 'utf-8')
+      const config = await loadProjectConfig(tmpDir)
+      expect(config!.declaredNamespaces).toEqual([
+        { pattern: 'views.defaults.**', reason: 'sent by bookings-api as name_key' }
+      ])
+      expect(config!.orphanScan!.root.ignorePatterns).toEqual(['common.datetime.**'])
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
+  it('throws when a declaredNamespaces entry names no reason', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({
+        declaredNamespaces: [{ pattern: 'views.defaults.**' }]
+      }), 'utf-8')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/declaredNamespaces|reason/)
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
+  it('throws when declaredNamespaces is not an array', async () => {
+    await mkdir(tmpDir, { recursive: true })
+    const configPath = resolve(tmpDir, '.i18n-mcp.json')
+    try {
+      await writeFile(configPath, JSON.stringify({ declaredNamespaces: { pattern: 'a.**' } }), 'utf-8')
+      await expect(loadProjectConfig(tmpDir)).rejects.toThrow(/declaredNamespaces/)
+    } finally {
+      if (existsSync(configPath)) await unlink(configPath)
+    }
+  })
+
   it('throws when orphanScan is not an object', async () => {
     await mkdir(tmpDir, { recursive: true })
     const configPath = resolve(tmpDir, '.i18n-mcp.json')

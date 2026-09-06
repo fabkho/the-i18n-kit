@@ -19,8 +19,11 @@ beforeAll(async () => {
   await mkdir(join(project, 'app'), { recursive: true })
   await writeFile(join(project, 'i18n-kit.config.ts'), [
     `export default {`,
+    `  declaredNamespaces: [`,
+    `    { pattern: 'views.defaults.**', reason: 'sent by bookings-api as name_key' },`,
+    `  ],`,
     `  orphanScan: {`,
-    `    root: { ignorePatterns: ['views.defaults.**'] },`,
+    `    root: { ignorePatterns: ['common.errors.**'] },`,
     `  },`,
     `}`,
   ].join('\n'))
@@ -48,9 +51,14 @@ tester.run('runtime-key-needs-declared-namespace', rule, {
     { code: bound('const key = `common.terms.unavailabilityTypes.${type}`\nt(key)'), filename: inProject },
     // …and a lookup into a same-file map of literal keys.
     { code: bound(`const LABELS = { a: 'x.a', b: 'x.b' }\nt(LABELS[state])`), filename: inProject },
-    // Annotated with a namespace the config declares: the #420 fix, linted.
+    // Annotated with a namespace declaredNamespaces holds.
     {
       code: bound(`// i18n-namespace: views.defaults.**\nt(view.name_key)`),
+      filename: inProject,
+    },
+    // A layer's ignorePatterns protect keys the same way, so they declare too.
+    {
+      code: bound(`// i18n-namespace: common.errors.**\nt(errorKeyFor(status))`),
       filename: inProject,
     },
     // Not an i18n call at all.
