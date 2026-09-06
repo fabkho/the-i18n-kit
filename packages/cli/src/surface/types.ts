@@ -222,8 +222,17 @@ export interface OperationContext {
   surface: Surface
   /** Provider-backed translation, when the surface resolved one. */
   translateFn?: TranslateFn
-  /** Progress reporting, when the caller asked for it. Only MCP does. */
+  /**
+   * Progress reporting, when the caller asked for it. Only MCP does — a
+   * terminal is left with its exit code. The operations that take long enough
+   * to report call it (translating, orphan scans); the rest never do.
+   */
   progressFn?: ProgressFn
+  /**
+   * The number of steps the operation is about to report, counted in whatever
+   * unit it reports in. Called once, before the first `progressFn` call, so a
+   * notification never goes out against an unknown total.
+   */
   onProgressTotal?: (total: number) => void
 }
 

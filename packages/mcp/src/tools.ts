@@ -159,13 +159,17 @@ function paramSchema(spec: ParamSpec): z.ZodType {
 /**
  * Progress notifications for the caller that asked for them.
  *
- * Wired for every tool, though only the translating one reports: an operation
- * that never calls the reporter sends nothing, and a tool that starts reporting
- * needs no change here.
+ * Wired for every tool; the ones long enough to be worth watching report
+ * (translating, orphan scans). An operation that never calls the reporter
+ * sends nothing, and a tool that starts reporting needs no change here.
  *
  * Invariant the total relies on: an operation calls onProgressTotal during its
  * pre-scan, before the first progress call, so the total is set by the time a
  * notification goes out.
+ *
+ * `progress` counts notifications rather than units of work, so an operation
+ * reporting in strides (one call per N files) announces its total in that same
+ * unit — otherwise its last notification would stop short of it.
  */
 function progressReporter(ctx: ServerContext): {
   progressFn?: ProgressFn

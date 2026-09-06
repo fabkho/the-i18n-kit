@@ -718,13 +718,16 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
             })),
       },
     },
-    async run(args) {
+    async run(args, ctx) {
       const { findOrphanKeys, removeOrphanKeys, scanCodeUsage } = await core()
 
       if (args.usages) {
         if (args.remove) {
           throw new Error('--usages reports where keys are used and never writes. Drop --remove, or drop --usages to delete orphans.')
         }
+        // No progress here: the usage question walks the layer root dirs
+        // directly rather than the scope-aware plan, so it is a different scan
+        // with a different file count.
         return scanCodeUsage({
           keys: args.keys,
           scanDirs: args.scanDirs,
@@ -744,6 +747,8 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
           excludeDirs: args.excludeDirs,
           dryRun: false,
           projectDir: args.projectDir,
+          progressFn: ctx.progressFn,
+          onProgressTotal: ctx.onProgressTotal,
         })
       }
 
@@ -753,6 +758,8 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         scanDirs: args.scanDirs,
         excludeDirs: args.excludeDirs,
         projectDir: args.projectDir,
+        progressFn: ctx.progressFn,
+        onProgressTotal: ctx.onProgressTotal,
       })
     },
   }),
