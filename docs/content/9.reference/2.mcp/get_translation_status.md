@@ -15,7 +15,7 @@ Translation coverage in one call: per-locale and per-layer counts of total, tran
 | --- | --- | --- | --- |
 | `layer` | `string` | no | Layer name to scope this to (e.g., "root", "app-admin"). If omitted, every layer is included. Call discover to list the layers. |
 | `referenceLocale` | `string` | no | Locale code used as the source of truth (e.g., "en", "en-US"). Defaults to the project default locale. |
-| `listEmpty` | `boolean` | no | Also list the keys whose value is an empty string, under "empty", by locale and layer — useful after a scaffold or an interrupted translation run. Default: false, which returns counts only. |
+| `listEmpty` | `boolean` | no | Also list the keys behind summary.emptyKeys under "empty" (locale → layer → keys), and keys that are empty in the reference locale itself under "emptyInReference" — useful after a scaffold or an interrupted translation run. Default: false, which returns counts only. |
 | `outputFile` | `string` | no | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/translation-status.json" |
 | `projectDir` | `string` | no | Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |
 

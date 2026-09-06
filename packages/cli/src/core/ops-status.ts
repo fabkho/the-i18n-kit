@@ -136,9 +136,7 @@ export async function getTranslationStatus(opts: {
   return {
     locales,
     layers,
-    ...(opts.listEmpty
-      ? { empty: (await collectEmptyTranslations(config, { layer: opts.layer })).emptyKeys }
-      : {}),
+    ...(opts.listEmpty ? await listEmptyKeys(config, layersToScan, refLocale, opts.layer) : {}),
     summary: {
       referenceLocale: localeRefInfo(refLocale),
       layersScanned: layersToScan.map(d => d.layer),
@@ -152,6 +150,48 @@ export async function getTranslationStatus(opts: {
       // The gate in #248 reads this counter, so the name is load-bearing.
       completionPercent: percent(overallTranslated, overallTotal),
     },
+  }
+}
+
+/**
+ * The two listings behind `--listEmpty`. `empty` holds exactly the keys
+ * `summary.emptyKeys` counts: empty in a target locale while the reference has
+ * a value. A key that is empty in the reference locale is nothing to translate
+ * from, so it is excluded from every count and listed separately — it is
+ * usually intentional, and it should not read as translation debt.
+ */
+async function listEmptyKeys(
+  config: I18nConfig,
+  layersToScan: LocaleDir[],
+  refLocale: LocaleDefinition,
+  layer: string | undefined,
+): Promise<Pick<TranslationStatusResult, 'empty' | 'emptyInReference'>> {
+  const emptyInRefByLayer = new Map<string, Set<string>>()
+  for (const localeDir of layersToScan) {
+    const refData = await readLocaleDataIfPresent(config, localeDir.layer, refLocale)
+    if (!refData) continue
+    emptyInRefByLayer.set(localeDir.layer, new Set(
+      getLeafKeys(refData).filter(k => getNestedValue(refData, k) === ''),
+    ))
+  }
+
+  const all = (await collectEmptyTranslations(config, { layer })).emptyKeys
+  const empty: Record<string, Record<string, string[]>> = {}
+  const emptyInReference: Record<string, string[]> = {}
+  for (const [locale, byLayer] of Object.entries(all)) {
+    for (const [layerName, keys] of Object.entries(byLayer)) {
+      const refEmpty = emptyInRefByLayer.get(layerName) ?? new Set<string>()
+      const counted = keys.filter(k => !refEmpty.has(k))
+      if (locale === refLocale.code) {
+        if (keys.length > 0) emptyInReference[layerName] = keys
+        continue
+      }
+      if (counted.length > 0) (empty[locale] ??= {})[layerName] = counted
+    }
+  }
+  return {
+    empty,
+    ...(Object.keys(emptyInReference).length > 0 ? { emptyInReference } : {}),
   }
 }
 

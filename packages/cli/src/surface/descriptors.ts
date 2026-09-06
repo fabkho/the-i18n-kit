@@ -323,7 +323,7 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       listEmpty: {
         type: 'boolean',
         default: false,
-        description: 'Also list the keys whose value is an empty string, under "empty", by locale and layer — useful after a scaffold or an interrupted translation run. Default: false, which returns counts only.',
+        description: 'Also list the keys behind summary.emptyKeys under "empty" (locale → layer → keys), and keys that are empty in the reference locale itself under "emptyInReference" — useful after a scaffold or an interrupted translation run. Default: false, which returns counts only.',
       },
       failUnder: {
         type: 'number',

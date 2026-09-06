@@ -299,6 +299,33 @@ describe('edge cases', () => {
     expect(result.summary.completionPercent).toBe(100)
   })
 
+  // The listing must be the count, key for key: a key blank in the reference
+  // locale is excluded from the count, so it cannot appear under `empty`.
+  it('lists exactly the counted empty keys, and reference blanks separately', async () => {
+    await project({
+      locales: ['en', 'de'],
+      layers: { root: { en: { a: '1', b: '', c: '3' }, de: { a: '', b: '', c: '3' } } },
+    })
+
+    const result = await getTranslationStatus({ projectDir: dir, listEmpty: true })
+
+    expect(result.summary.emptyKeys).toBe(1)
+    expect(result.empty).toEqual({ de: { root: ['a'] } })
+    expect(result.emptyInReference).toEqual({ root: ['b'] })
+  })
+
+  it('omits emptyInReference when the reference has no blanks', async () => {
+    await project({
+      locales: ['en', 'de'],
+      layers: { root: { en: { a: '1' }, de: { a: '' } } },
+    })
+
+    const result = await getTranslationStatus({ projectDir: dir, listEmpty: true })
+
+    expect(result.empty).toEqual({ de: { root: ['a'] } })
+    expect(result).not.toHaveProperty('emptyInReference')
+  })
+
   it('treats a locale with no file as entirely missing, not an error', async () => {
     await project({ locales: ['en', 'de'], layers: { root: { en: { a: '1', b: '2' } } } })
 

@@ -242,12 +242,19 @@ export interface TranslationStatusResult {
   locales: LocaleStatus[]
   layers: LayerStatus[]
   /**
-   * Locale → layer → the keys whose value is an empty string. Present only when
-   * the caller asked to list them; `summary.emptyKeys` counts them either way.
-   * Added to the result rather than replacing it, so asking which keys are
-   * empty still answers the coverage question that prompted it.
+   * Locale → layer → the keys `summary.emptyKeys` counts: empty in that target
+   * locale while the reference locale has a value. Present only when the caller
+   * asked to list them. Added to the result rather than replacing it, so asking
+   * which keys are empty still answers the coverage question that prompted it.
    */
   empty?: Record<string, Record<string, string[]>>
+  /**
+   * Layer → keys whose value is empty in the reference locale itself. Nothing
+   * to translate from, so excluded from every count; listed so a deliberate
+   * blank and a forgotten one can be told apart. Present only with `empty`,
+   * and only when there are any.
+   */
+  emptyInReference?: Record<string, string[]>
   summary: TranslationStatusSummary
 }
 
