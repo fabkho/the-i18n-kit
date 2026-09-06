@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import type { I18nConfig, LocaleDefinition } from '../config/types'
 import type { ScaffoldLocaleFileInfo } from '../core/types'
 import { readLocaleData, resolveLocaleEntries } from '../io/locale-data'
 import { readLocale, writeLocale } from '../io/locale-io'
+import { getFormat } from '../io/formats'
 import { getLeafKeys } from '../io/key-operations'
 import { ToolError } from '../utils/errors'
 
@@ -80,18 +81,21 @@ export async function scaffoldLocale(
   const created: ScaffoldLocaleFileInfo[] = []
   const skipped: ScaffoldLocaleFileInfo[] = []
 
+  const format = getFormat(config.localeFileFormat)
+
   for (const dir of layers) {
-    if (config.localeFileFormat === 'php-array') {
-      await scaffoldPhpLayer(config, dir, refLocale, targetLocales, dryRun, created, skipped)
+    if (format.defaultLayout === 'namespaced') {
+      await scaffoldNamespacedLayer(config, dir, refLocale, targetLocales, dryRun, created, skipped)
     } else {
-      await scaffoldJsonLayer(config, dir, refLocale, targetLocales, dryRun, created, skipped)
+      await scaffoldFlatLayer(config, dir, refLocale, targetLocales, dryRun, created, skipped)
     }
   }
 
   return { created, skipped }
 }
 
-async function scaffoldJsonLayer(
+/** One file per locale, named by the locale definition. */
+async function scaffoldFlatLayer(
   config: I18nConfig,
   dir: I18nConfig['localeDirs'][0],
   refLocale: LocaleDefinition,
@@ -111,9 +115,11 @@ async function scaffoldJsonLayer(
   const emptyData = buildEmptyStructure(refData)
   const keyCount = getLeafKeys(refData).length
 
+  const defaultExt = getFormat(config.localeFileFormat).extensions[0]!
+
   for (const target of targets) {
     const entries = await resolveLocaleEntries(config, dir.layer, target)
-    const targetPath = entries[0]?.path ?? join(dir.path, target.file ?? `${target.code}.json`)
+    const targetPath = entries[0]?.path ?? join(dir.path, target.file ?? `${target.code}${defaultExt}`)
 
     if (existsSync(targetPath)) {
       skipped.push({ locale: target.code, layer: dir.layer, file: targetPath, keys: keyCount })
@@ -127,7 +133,8 @@ async function scaffoldJsonLayer(
   }
 }
 
-async function scaffoldPhpLayer(
+/** One directory per locale, one file per namespace, copied from the reference. */
+async function scaffoldNamespacedLayer(
   config: I18nConfig,
   dir: I18nConfig['localeDirs'][0],
   refLocale: LocaleDefinition,
@@ -150,7 +157,7 @@ async function scaffoldPhpLayer(
 
     for (const refEntry of refEntries) {
       const fileName = basename(refEntry.path)
-      const namespace = fileName.replace(/\.php$/, '')
+      const namespace = basename(fileName, extname(fileName))
       const targetPath = join(targetDir, fileName)
 
       if (dirExists && existsSync(targetPath)) {
@@ -173,7 +180,9 @@ async function scaffoldPhpLayer(
 }
 
 function findNewLocales(config: I18nConfig, layers: I18nConfig['localeDirs']): LocaleDefinition[] {
-  if (config.localeFileFormat === 'php-array') {
+  const format = getFormat(config.localeFileFormat)
+
+  if (format.defaultLayout === 'namespaced') {
     return config.locales.filter((locale) => {
       return layers.some((dir) => {
         return !existsSync(join(dir.path, locale.code))
@@ -183,7 +192,7 @@ function findNewLocales(config: I18nConfig, layers: I18nConfig['localeDirs']): L
 
   return config.locales.filter((locale) => {
     return layers.some((dir) => {
-      const filePath = join(dir.path, locale.file ?? `${locale.code}.json`)
+      const filePath = join(dir.path, locale.file ?? `${locale.code}${format.extensions[0]!}`)
       return !existsSync(filePath)
     })
   })
