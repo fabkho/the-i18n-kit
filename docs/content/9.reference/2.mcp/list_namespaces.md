@@ -16,5 +16,3 @@ List the translation key tree grouped by namespace prefix. Returns a hierarchica
 | `layer` | `string` | no | Layer name to filter by (e.g., "root", "app-admin"). If omitted or "*", scans all layers. Call discover to discover available layers. |
 | `locale` | `string` | no | Locale to read keys from (e.g., "en"). Defaults to the project default locale. Keys are the same across locales — only one is needed. |
 | `projectDir` | `string` | no | Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |
-
-Every tool is advertised by `the-i18n-mcp` and listed on the [MCP tools overview](/reference/mcp).

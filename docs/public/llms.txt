@@ -1,0 +1,78 @@
+# the-i18n-kit — agent contract
+
+Everything a pipeline or an agent branches on when driving `@the-i18n-kit/cli`
+or `@the-i18n-kit/mcp`. Which tool pairs with which command is on
+<https://fabkho.github.io/the-i18n-kit/introduction/architecture#command-and-tool-names>.
+
+## Output and Errors
+
+stdout carries the result, as JSON whenever stdout is not a terminal. Pass
+`--json` to force JSON in a terminal. Logs go to stderr. A failed run still
+prints JSON:
+
+```json
+{ "error": { "code": "CONFIG_ERROR", "message": "…" } }
+```
+
+## Exit Codes
+
+| Code | Means |
+|---|---|
+| `0` | The run succeeded and no gate tripped |
+| `1` | The run itself failed; its counters say nothing about your project |
+| `2` | The run succeeded and a gate tripped; the findings are real |
+
+A failed run outranks a tripped gate; gates go unevaluated then.
+
+## Gates
+
+| Flag | Exits `2` when |
+|---|---|
+| `--fail-on-missing` | any key is missing |
+| `--fail-on-orphans` | any orphan key was found |
+| `--fail-on-failed` | any key failed to translate |
+| `--fail-under <n>` | overall completion is below `n` percent |
+
+Gates are opt-in, with one exception: `check` always exits `2` on keys that code
+calls and no layer defines. Which command takes which flag:
+[CLI reference](https://fabkho.github.io/the-i18n-kit/reference/cli#ci-gates). A tripped gate adds a `gatesTripped`
+array naming the gate, its counter, its threshold and the observed value.
+
+## Diverting a Large Result
+
+Pass `--output-file <path>`, or `outputFile` from a tool: the full JSON goes to
+that file and the caller receives `{ reportFile, summary }`. The
+[CLI](https://fabkho.github.io/the-i18n-kit/reference/cli) and [MCP](https://fabkho.github.io/the-i18n-kit/reference/mcp) references list which commands and
+tools accept it. Relative paths resolve against the project directory and may not
+escape it. `reportOutput: true` in your kit config diverts every diagnostic run to
+`.i18n-reports/<tool>.json` with no flag.
+
+## Translate Results
+
+Per locale, `missing = translated + wouldTranslate + failed + skipped`. A run
+that lost keys cannot balance. Both reason sets are closed — branch on the value:
+
+- `failed`: `provider-error`, `omitted-by-model`, `placeholder-mismatch`,
+  `plural-mismatch`, `write-error`, `truncated`
+- `skipped`: `no-provider`, `already-translated`, `protected-locale`
+
+See [translation modes](https://fabkho.github.io/the-i18n-kit/concepts/translation-modes).
+
+## Safety Defaults
+
+- The orphan scan reports. Nothing is deleted unless you pass `--remove`, or
+  `remove: true` from a tool.
+- Keys with ambiguous evidence, and keys used only from apps that do not consume
+  their layer, are never deleted — even then.
+
+## Environment Variables
+
+| Variable | Read by | Sets |
+|---|---|---|
+| `I18N_PROJECT_DIR` | MCP server | Default project directory for every tool |
+| `I18N_PROVIDER` | MCP server | `openai`, `anthropic` or `google` |
+| `I18N_MODEL` | MCP server | The model name |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | both | The key for the matching provider |
+| `I18N_BASE_URL` | both | Endpoint override for any provider (OpenAI-compatible gateways, proxies) |
+
+The CLI takes the first three as flags: `--projectDir`, `--provider`, `--model`.

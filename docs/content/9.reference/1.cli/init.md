@@ -21,5 +21,3 @@ the-i18n-cli init
 | --- | --- | --- | --- | --- |
 | `--force` | `boolean` | no | `false` | Overwrite an existing .i18n-mcp.json |
 | `--dryRun` | `boolean` | no | `false` | Report the config that would be written without touching disk |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.
