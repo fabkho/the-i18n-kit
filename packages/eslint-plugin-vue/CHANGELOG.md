@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-eslint-plugin-vue-0.1.2...the-i18n-kit-eslint-plugin-vue-0.2.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* the-i18n-cli and the-i18n-mcp on npm receive no further releases. Install @the-i18n-kit/cli and @the-i18n-kit/mcp.
+
+### Features
+
+* finish the rename to @the-i18n-kit/cli and @the-i18n-kit/mcp ([5b4eae6](https://github.com/fabkho/the-i18n-kit/commit/5b4eae6df31eb246b45280e61115be1dbb00fb49))
+
 ## [0.1.2](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-eslint-plugin-vue-0.1.1...the-i18n-kit-eslint-plugin-vue-0.1.2) (2026-08-24)
 
 

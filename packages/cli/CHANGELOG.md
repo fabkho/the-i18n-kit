@@ -1,5 +1,21 @@
 # Changelog
 
+## [6.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-cli-5.0.0...the-i18n-kit-cli-6.0.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* the-i18n-cli and the-i18n-mcp on npm receive no further releases. Install @the-i18n-kit/cli and @the-i18n-kit/mcp.
+
+### Features
+
+* finish the rename to @the-i18n-kit/cli and @the-i18n-kit/mcp ([5b4eae6](https://github.com/fabkho/the-i18n-kit/commit/5b4eae6df31eb246b45280e61115be1dbb00fb49))
+
+
+### Bug Fixes
+
+* **cli:** expose detect, list-dirs and empty; correct the docs that described them ([25c7531](https://github.com/fabkho/the-i18n-kit/commit/25c75310a24f3ec06c208f1eb345ad3c329b8322))
+
 ## [5.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-cli-4.10.1...the-i18n-cli-5.0.0) (2026-08-23)
 
 
