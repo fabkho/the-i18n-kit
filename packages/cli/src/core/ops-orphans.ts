@@ -316,7 +316,9 @@ export async function findOrphanKeys(opts: {
   for (const [layerName, keys] of Object.entries(byLayer)) {
     for (const key of keys) allOrphanKeys.push({ key, layer: layerName })
   }
-  allOrphanKeys.sort((a, b) => a.layer.localeCompare(b.layer) || a.key.localeCompare(b.key))
+  // Code-point order, not localeCompare: the report is diffed in CI, and ICU
+  // collation differs between machines and treats "." as ignorable.
+  allOrphanKeys.sort((a, b) => byCodePoint(a.layer, b.layer) || byCodePoint(a.key, b.key))
   const sortedByLayer: Record<string, string[]> = {}
   for (const { key, layer: keyLayer } of allOrphanKeys) {
     if (!sortedByLayer[keyLayer]) sortedByLayer[keyLayer] = []
@@ -409,7 +411,7 @@ export async function scanCodeUsage(opts: {
   }
 
   const sortedByKey: Record<string, Array<{ file: string; line: number; callee: string }>> = {}
-  for (const [key, locations] of Object.entries(byKey).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+  for (const [key, locations] of Object.entries(byKey).sort(([a], [b]) => byCodePoint(a, b))) {
     sortedByKey[key] = locations
   }
 
@@ -586,4 +588,8 @@ export async function removeOrphanKeys(opts: {
   }
 
   return removalOutput
+}
+
+function byCodePoint(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
 }
