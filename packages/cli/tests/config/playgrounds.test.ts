@@ -27,10 +27,10 @@ describe('playground/react', () => {
 })
 
 describe('playground/vue', () => {
-  it('finds locale files in a directory no candidate list contains', async () => {
+  it('resolves through the generic adapter, from the directory the config names', async () => {
     const config = await detectI18nConfig(resolve(playgroundsDir, 'vue'))
 
-    expect(config.framework).toBe('vue')
+    expect(config.framework).toBe('generic')
     expect(config.localeDirs.map(d => d.path)).toEqual([
       resolve(playgroundsDir, 'vue/src/translations'),
     ])

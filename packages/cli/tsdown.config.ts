@@ -6,9 +6,8 @@ export default defineConfig({
     'src/bin.ts',
     'src/define-config.ts',
     // Its own entry because it is never imported — it is aliased to by path
-    // while reading a project's vite.config, so it has to survive bundling as
-    // a file. See config/framework/stubs/unplugin-vue-i18n.ts.
-    'src/config/framework/stubs/unplugin-vue-i18n.ts',
+    // while reading a project's next.config, so it has to survive bundling as
+    // a file. See config/framework/stubs/next-intl-routing.ts.
     'src/config/framework/stubs/next-intl-routing.ts',
   ],
   // Never bundle the parser: it loads a platform-specific native binding at

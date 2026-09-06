@@ -13,6 +13,27 @@ export function resetRegistry(): void {
 }
 
 /**
+ * Names that no longer have an adapter of their own, mapped to the one that
+ * resolves those projects now. Kept so a config written against a retired
+ * adapter keeps validating and resolving instead of failing on an unknown
+ * hint, and warned about because the replacement needs more from the config
+ * than the retired adapter did.
+ */
+const RETIRED_HINTS: Record<string, { replacement: string, warning: string }> = {
+  vue: {
+    replacement: 'generic',
+    warning: 'vue projects resolve through the generic adapter; declare localeDirs',
+  },
+}
+
+function resolveHint(hint: string): string {
+  const retired = RETIRED_HINTS[hint]
+  if (!retired) return hint
+  log.warn(`framework: "${hint}" — ${retired.warning}`)
+  return retired.replacement
+}
+
+/**
  * The names of every registered adapter, in registration order. The published
  * JSON Schema advertises these as `framework` suggestions, so an adapter added
  * later shows up in editors without anyone editing a list by hand.
@@ -44,7 +65,10 @@ export async function detectFrameworkMatch(
   }
 
   if (hint) {
-    const match = adapters.find(a => a.name === hint)
+    // Resolved once, not inside the predicate: the predicate runs per adapter,
+    // and the retirement warning is about the hint, not about the search.
+    const name = resolveHint(hint)
+    const match = adapters.find(a => a.name === name)
     if (!match) return undefined
     return { adapter: match, confidence: 0, runnersUp: [] }
   }
@@ -87,6 +111,7 @@ export async function detectFramework(
   }
   throw new ConfigError(
     `No framework detected for ${projectDir}. `
-    + `Registered adapters: ${adapters.map(a => a.name).join(', ')}`,
+    + `Registered adapters: ${adapters.map(a => a.name).join(', ')}. `
+    + 'Declare localeDirs and defaultLocale to resolve the project through the generic adapter.',
   )
 }

@@ -92,6 +92,33 @@ describe('GenericAdapter.detect', () => {
     expect(await adapter.detect(tempDir)).toBe(0)
   })
 
+  it('returns 1 for a conventional locale directory and no config at all', async () => {
+    mkdirSync(join(tempDir, 'src/locales'), { recursive: true })
+    writeFileSync(join(tempDir, 'src/locales/en.json'), '{}')
+
+    const adapter = new GenericAdapter()
+    expect(await adapter.detect(tempDir)).toBe(1)
+  })
+
+  // A directory that exists and holds nothing resolvable must not claim the
+  // project: resolve would then fail on a project another adapter could have
+  // taken.
+  it('returns 0 for a conventional directory with no locale files in it', async () => {
+    mkdirSync(join(tempDir, 'src/locales'), { recursive: true })
+    writeFileSync(join(tempDir, 'src/locales/README.md'), '# not a locale')
+
+    const adapter = new GenericAdapter()
+    expect(await adapter.detect(tempDir)).toBe(0)
+  })
+
+  it('returns 0 for a directory outside the conventional set', async () => {
+    mkdirSync(join(tempDir, 'src/translations'), { recursive: true })
+    writeFileSync(join(tempDir, 'src/translations/en.json'), '{}')
+
+    const adapter = new GenericAdapter()
+    expect(await adapter.detect(tempDir)).toBe(0)
+  })
+
   it('returns 0 when localeDirs is empty', async () => {
     writeFileSync(join(tempDir, '.i18n-mcp.json'), JSON.stringify({ localeDirs: [], defaultLocale: 'en' }))
     const adapter = new GenericAdapter()
@@ -188,6 +215,32 @@ describe('GenericAdapter.resolve', () => {
     const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeDirs[0].layer).toBe('default')
+  })
+
+  it('resolves a conventional directory with nothing declared', async () => {
+    mkdirSync(join(tempDir, 'src/locales'), { recursive: true })
+    writeFileSync(join(tempDir, 'src/locales/en.json'), JSON.stringify({ hello: 'world' }))
+    writeFileSync(join(tempDir, 'src/locales/de.json'), JSON.stringify({ hello: 'welt' }))
+
+    const adapter = new GenericAdapter()
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
+
+    expect(config.localeDirs.map(d => d.path)).toEqual([join(tempDir, 'src/locales')])
+    expect(config.localeDirs[0].layer).toBe('default')
+    expect(config.locales.map(l => l.code)).toEqual(['de', 'en'])
+    // Nothing declares the default locale, so the first discovered code stands in.
+    expect(config.defaultLocale).toBe('de')
+  })
+
+  it('prefers the declared directory over a conventional one', async () => {
+    createGenericProject(tempDir, { localeDirs: ['translations'], localeNames: ['en'] })
+    mkdirSync(join(tempDir, 'src/locales'), { recursive: true })
+    writeFileSync(join(tempDir, 'src/locales/fr.json'), '{}')
+
+    const adapter = new GenericAdapter()
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
+
+    expect(config.localeDirs.map(d => d.path)).toEqual([join(tempDir, 'translations')])
   })
 
   it('throws when locale directory does not exist', async () => {

@@ -53,7 +53,7 @@ describe('packages/mcp/schema.json', () => {
   //
   // Adapters are a runtime registry, so zod leaves `framework` a plain string.
   // The hand-written schema hard-coded enum: ["nuxt", "laravel", "generic"],
-  // which flagged "vue" and "react" as invalid even though both adapters ship.
+  // which flagged "react" as invalid even though that adapter ships.
 
   it('suggests every registered adapter for framework without constraining it', async () => {
     const { doc } = await loadPublishedSchema()
@@ -61,7 +61,17 @@ describe('packages/mcp/schema.json', () => {
 
     expect(framework.enum).toBeUndefined()
     expect(framework.examples).toEqual(listAdapterNames())
-    expect(framework.examples).toEqual(expect.arrayContaining(['nuxt', 'laravel', 'generic', 'vue', 'react']))
+    expect(framework.examples).toEqual(expect.arrayContaining(['nuxt', 'laravel', 'generic', 'react']))
+  })
+
+  // "vue" is no longer an adapter, so it is no longer suggested — but a config
+  // carrying it still has to validate, or every Vue project written against an
+  // earlier release fails to load rather than resolving through generic.
+  it('leaves the retired "vue" name valid without suggesting it', async () => {
+    const { doc } = await loadPublishedSchema()
+
+    expect(doc.properties.framework.examples).not.toContain('vue')
+    expect(projectConfigSchema.safeParse({ framework: 'vue' }).success).toBe(true)
   })
 
   it('validates framework set to any registered adapter, and to an unlisted value', () => {

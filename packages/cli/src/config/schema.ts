@@ -51,7 +51,9 @@ export const projectConfigSchema = z.object({
     .describe(
       'Force framework detection instead of auto-detecting from project structure. '
       + 'Any registered adapter name is accepted — the suggestions are the adapters '
-      + 'that ship today, not the only permitted values.',
+      + 'that ship today, not the only permitted values. \'vue\' is accepted as an '
+      + 'alias for \'generic\', which resolves Vue projects: declare localeDirs when '
+      + 'the locale files are not in a conventional directory.',
     )
     .optional(),
   context: z.string()

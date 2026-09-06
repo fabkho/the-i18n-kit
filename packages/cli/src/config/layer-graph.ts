@@ -19,7 +19,7 @@ import type { I18nConfig, LocaleDir } from './types'
  *   `layersOfApp` return `[]`, and `sharedLayers` conservatively contains
  *   *every* canonical layer — with no ownership information, every
  *   layer's keys must be treated as globally visible.
- * - **Single-app config** (generic/Laravel/Vue/React adapters, or a Nuxt
+ * - **Single-app config** (generic/Laravel/React adapters, or a Nuxt
  *   project with one app): the strict definition applies, so
  *   `sharedLayers` is empty (no layer is consumed by more than one app)
  *   and `appsUsingLayer` returns that one app for the layers it consumes.

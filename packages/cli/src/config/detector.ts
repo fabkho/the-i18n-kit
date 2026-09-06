@@ -3,7 +3,6 @@ import { registerAdapter, detectFramework } from '../adapters/registry'
 import { NuxtAdapter } from '../adapters/nuxt/index'
 import { LaravelAdapter } from '../adapters/laravel/index'
 import { GenericAdapter } from '../adapters/generic/index'
-import { VueAdapter } from '../adapters/vue/index'
 import { ReactAdapter } from '../adapters/react/index'
 import { loadProjectConfig } from './project-config'
 import { log } from '../utils/logger'
@@ -23,7 +22,6 @@ export { clearConfigCache, getCachedConfig } from './cache'
 registerAdapter(new NuxtAdapter())
 registerAdapter(new LaravelAdapter())
 registerAdapter(new GenericAdapter())
-registerAdapter(new VueAdapter())
 registerAdapter(new ReactAdapter())
 
 export async function detectI18nConfig(projectDir: string): Promise<I18nConfig> {
