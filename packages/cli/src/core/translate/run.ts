@@ -18,13 +18,13 @@ import { ToolError, toErrorMessage } from '../../utils/errors.js'
 
 import type {
   TranslateFn,
-  ProgressFn,
   TranslateLayerTotals,
   TranslateMode,
   TranslateFailReason,
-  TranslateSkipReason,
   TranslateKeyLocaleIssue,
+  TranslateKeySkip,
   TranslateMissingLocaleResult,
+  TranslateMissingOptions,
   PlaceholderValidationResult,
   TranslateKeyResult,
   TranslateMissingResult,
@@ -37,6 +37,7 @@ import { resolveTranslateTargets, collectProtectedLocaleResults, partitionTransl
 import { validatePlaceholders, mergePlaceholderValidation, failReasonForIssue } from './placeholders.js'
 import { buildTranslationSystemPrompt, buildTranslationUserMessage, buildFallbackContext } from './prompts.js'
 import { extractJsonFromResponse } from './json-salvage.js'
+import { openTranslationMemory } from './memory.js'
 import { requestWithRetry } from './retry.js'
 import type { TranslateRunState } from './retry.js'
 
@@ -66,21 +67,7 @@ export function computeProgressTotal(missingKeyCounts: number[], maxBatch: numbe
  * When `layer` is omitted, every canonical locale-backed layer is translated
  * in one run and the results are aggregated (see translateMissingAllLayers).
  */
-export async function translateMissing(opts: {
-  layer?: string
-  referenceLocale?: string
-  targetLocales?: string[]
-  locales?: string[]
-  keys?: string[]
-  batchSize?: number
-  dryRun?: boolean
-  compact?: boolean
-  projectDir?: string
-  translateFn?: TranslateFn
-  progressFn?: ProgressFn
-  /** Called once after the pre-scan with the computed total number of progress steps. */
-  onProgressTotal?: (total: number) => void
-}): Promise<TranslateMissingOutcome> {
+export async function translateMissing(opts: TranslateMissingOptions): Promise<TranslateMissingOutcome> {
   if (opts.layer === undefined) return translateMissingAllLayers(opts)
   const layer = opts.layer
   const dir = opts.projectDir ?? process.cwd()
@@ -111,17 +98,43 @@ export async function translateMissing(opts: {
   const mode: TranslateMode = isDryRun ? 'dry-run' : opts.translateFn ? 'provider' : 'agent'
   const reportProgress = opts.progressFn ?? (async () => {})
 
+  // Null unless the project opted into the lockfile; every use below is
+  // guarded, so the operation behaves exactly as before when it is off.
+  const memory = await openTranslationMemory({
+    config,
+    projectDir: dir,
+    sourceLocale: refLocale.code,
+    dryRun: isDryRun,
+  })
+  const overwriteStale = opts.overwriteStale ?? false
+
   function isKeyMissingIn(data: Record<string, unknown>, k: string): boolean {
     const v = getNestedValue(data, k)
     return v === undefined || v === '' || v === null
   }
 
+  /** The keys in scope for this run: every reference key, or the requested subset. */
+  function scopedRefKeys(): string[] {
+    return opts.keys ? opts.keys.filter(k => allRefKeys.includes(k)) : allRefKeys
+  }
+
   /** The keys missing in a target locale's data (scoped to opts.keys when given). */
   function missingKeysIn(data: Record<string, unknown>): string[] {
-    const isMissing = (k: string) => isKeyMissingIn(data, k)
-    return opts.keys
-      ? opts.keys.filter(k => isMissing(k) && allRefKeys.includes(k))
-      : allRefKeys.filter(k => isMissing(k))
+    return scopedRefKeys().filter(k => isKeyMissingIn(data, k))
+  }
+
+  /**
+   * Keys this locale already has a value for, written from source text that has
+   * changed since. Empty without a translation memory: state alone cannot tell
+   * an outdated translation from a current one.
+   */
+  function staleKeysIn(data: Record<string, unknown>, localeCode: string): string[] {
+    if (!memory) return []
+    return scopedRefKeys().filter((k) => {
+      if (isKeyMissingIn(data, k)) return false
+      const source = getNestedValue(refData, k)
+      return typeof source === 'string' && memory.isStale(layer, k, localeCode, source)
+    })
   }
 
   // Pre-scan: count missing keys per target to compute progressTotal
@@ -132,7 +145,8 @@ export async function translateMissing(opts: {
       try {
         scanData = await readLocaleData(config, layer, target)
       } catch {}
-      preScanCounts.push(missingKeysIn(scanData).length)
+      preScanCounts.push(missingKeysIn(scanData).length
+        + (overwriteStale ? staleKeysIn(scanData, target.code).length : 0))
     }
     // In dry-run or agent mode, only 2 steps per locale (start + complete),
     // no batch steps. Full batching only in provider mode.
@@ -168,15 +182,23 @@ export async function translateMissing(opts: {
     targetData: Record<string, unknown>,
   ): Promise<{ result: TranslateMissingLocaleResult, fallbackContext?: Record<string, unknown> }> {
     const missingKeys = missingKeysIn(targetData)
+    const staleKeys = staleKeysIn(targetData, target.code)
+    // Stale keys are candidates only when asked for: the documented contract is
+    // that this operation fills gaps and never overwrites an existing value.
+    // Untouched, they are reported instead of translated.
+    const candidateKeys = overwriteStale ? [...missingKeys, ...staleKeys] : missingKeys
+    const untouchedStale = overwriteStale ? [] : staleKeys
+    const withStale = (result: TranslateMissingLocaleResult): TranslateMissingLocaleResult =>
+      (untouchedStale.length > 0 ? { ...result, stale: untouchedStale } : result)
 
-    if (missingKeys.length === 0) {
-      return { result: { mode, missing: 0, translated: [], failed: [], skipped: [] } }
+    if (candidateKeys.length === 0) {
+      return { result: withStale({ mode, missing: 0, translated: [], failed: [], skipped: [] }) }
     }
 
-    await reportProgress(`Starting ${target.code}: ${missingKeys.length} missing keys`)
+    await reportProgress(`Starting ${target.code}: ${candidateKeys.length} missing keys`)
 
     const keysAndValues: Record<string, string> = {}
-    for (const key of missingKeys) {
+    for (const key of candidateKeys) {
       const value = getNestedValue(refData, key)
       if (typeof value === 'string') {
         keysAndValues[key] = value
@@ -186,7 +208,7 @@ export async function translateMissing(opts: {
 
     if (isDryRun) {
       await reportProgress(`Complete ${target.code} (dry run)`)
-      return { result: { mode: 'dry-run', missing, translated: [], wouldTranslate: Object.keys(keysAndValues), failed: [], skipped: [] } }
+      return { result: withStale({ mode: 'dry-run', missing, translated: [], wouldTranslate: Object.keys(keysAndValues), failed: [], skipped: [] }) }
     }
 
     if (opts.translateFn) {
@@ -297,12 +319,18 @@ export async function translateMissing(opts: {
           for (const key of translated) {
             failed.push({ key, reason: 'write-error' })
           }
-          return { result: { mode: 'provider', missing, translated: [], failed, skipped: [], batches: totalBatches, model, writeError: toErrorMessage(error) } }
+          return { result: withStale({ mode: 'provider', missing, translated: [], failed, skipped: [], batches: totalBatches, model, writeError: toErrorMessage(error) }) }
+        }
+        // Written, so remember what each value was translated from — whether or
+        // not this run was allowed to overwrite stale ones.
+        for (const key of Object.keys(allTranslations)) {
+          const source = keysAndValues[key]
+          if (source !== undefined) memory?.record(layer, key, target.code, source)
         }
       }
 
       await reportProgress(`Complete ${target.code}`)
-      return { result: { mode: 'provider', missing, translated, failed, skipped: [], batches: totalBatches, model, ...(placeholderValidation ? { placeholderValidation } : {}) } }
+      return { result: withStale({ mode: 'provider', missing, translated, failed, skipped: [], batches: totalBatches, model, ...(placeholderValidation ? { placeholderValidation } : {}) }) }
     } else {
       // Agent mode: return context for the host agent to translate inline
       const fallbackContext = buildFallbackContext(
@@ -313,13 +341,13 @@ export async function translateMissing(opts: {
       )
       await reportProgress(`Complete ${target.code}`)
       return {
-        result: {
+        result: withStale({
           mode: 'agent',
           missing,
           translated: [],
           failed: [],
           skipped: Object.keys(keysAndValues).map(key => ({ key, reason: 'no-provider' as const })),
-        },
+        }),
         fallbackContext,
       }
     }
@@ -342,10 +370,13 @@ export async function translateMissing(opts: {
 
   Object.assign(results, await collectProtectedLocaleResults(config, layer, mode, protectedDefaults, missingKeysIn))
 
+  await memory?.flush()
+
   const totalTranslated = Object.values(results).reduce((sum, r) => sum + r.translated.length, 0)
   const totalFailed = Object.values(results).reduce((sum, r) => sum + r.failed.length, 0)
   const totalSkipped = Object.values(results).reduce((sum, r) => sum + r.skipped.length, 0)
   const totalWouldTranslate = Object.values(results).reduce((sum, r) => sum + (r.wouldTranslate?.length ?? 0), 0)
+  const staleCount = Object.values(results).reduce((sum, r) => sum + (r.stale?.length ?? 0), 0)
 
   const summary: TranslateMissingResult['summary'] = {
     mode,
@@ -353,6 +384,9 @@ export async function translateMissing(opts: {
     totalFailed,
     totalSkipped,
     ...(isDryRun ? { totalWouldTranslate } : {}),
+    // Omitted rather than zero, so a project without a translation memory sees
+    // the result it has always seen.
+    ...(staleCount > 0 ? { staleCount } : {}),
     layer,
     referenceLocale: localeRefInfo(refLocale),
     targetLocales: targets.map(localeRefInfo),
@@ -369,13 +403,14 @@ export async function translateMissing(opts: {
       // Reduce per-key arrays to counts; drop per-key placeholder detail;
       // keep every other per-locale field (mode, missing, batches, model,
       // writeError, …).
-      const { translated, failed, skipped, wouldTranslate, placeholderValidation: _placeholderValidation, ...rest } = r
+      const { translated, failed, skipped, wouldTranslate, stale, placeholderValidation: _placeholderValidation, ...rest } = r
       return {
         locale: code,
         translated: translated.length,
         failed: failed.length,
         skipped: skipped.length,
         ...(wouldTranslate ? { wouldTranslate: wouldTranslate.length } : {}),
+        ...(stale ? { stale: stale.length } : {}),
         ...rest,
       }
     })
@@ -402,7 +437,7 @@ export async function translateMissing(opts: {
  * additive.
  */
 async function translateMissingAllLayers(
-  opts: Omit<Parameters<typeof translateMissing>[0], 'layer'>,
+  opts: Omit<TranslateMissingOptions, 'layer'>,
 ): Promise<TranslateAllLayersResult> {
   const config = await detectI18nConfig(opts.projectDir ?? process.cwd())
   const layerNames = collectTranslatableLayers(config)
@@ -433,7 +468,7 @@ function collectTranslatableLayers(config: I18nConfig): string[] {
 
 async function runLayerTranslations(
   layerNames: string[],
-  opts: Omit<Parameters<typeof translateMissing>[0], 'layer'>,
+  opts: Omit<TranslateMissingOptions, 'layer'>,
 ): Promise<{ layers: Record<string, TranslateMissingResult>, byLayer: TranslateLayerTotals[] }> {
   const layers: Record<string, TranslateMissingResult> = {}
   const byLayer: TranslateLayerTotals[] = []
@@ -477,11 +512,14 @@ function layerTotals(layerName: string, layerResult: TranslateMissingResult): Tr
 function buildAllLayersSummary(
   layers: Record<string, TranslateMissingResult>,
   byLayer: TranslateLayerTotals[],
-  opts: Omit<Parameters<typeof translateMissing>[0], 'layer'>,
+  opts: Omit<TranslateMissingOptions, 'layer'>,
 ): TranslateAllLayersSummary {
   const isDryRun = opts.dryRun ?? false
   const total = (pick: (l: TranslateLayerTotals) => number): number =>
     byLayer.reduce((sum, l) => sum + pick(l), 0)
+  // Read off the layer summaries rather than byLayer: stale keys are not one of
+  // the reconciling totals, so they are not part of the per-layer breakdown.
+  const staleCount = Object.values(layers).reduce((sum, l) => sum + (l.summary.staleCount ?? 0), 0)
   // Locales are project-global, so mode, reference locale, and target set are
   // identical across layers — hoist them from the first translated layer.
   const first = Object.values(layers)[0]?.summary
@@ -491,6 +529,7 @@ function buildAllLayersSummary(
     totalFailed: total(l => l.totalFailed),
     totalSkipped: total(l => l.totalSkipped),
     ...(isDryRun ? { totalWouldTranslate: total(l => l.totalWouldTranslate) } : {}),
+    ...(staleCount > 0 ? { staleCount } : {}),
     layers: byLayer.map(l => l.layer),
     byLayer,
     dryRun: isDryRun,
@@ -537,6 +576,15 @@ export async function translateKey(opts: {
     throw new ToolError(`Source value for key "${opts.key}" not found in locale "${opts.sourceLocale}". Provide sourceValue or add the key first.`, 'SOURCE_KEY_NOT_FOUND')
   }
 
+  // Null unless the project opted in; a changed source value needs no entry of
+  // its own, since it is what the recorded target hashes are compared against.
+  const memory = await openTranslationMemory({
+    config,
+    projectDir: dir,
+    sourceLocale: sourceLocale.code,
+    dryRun: isDryRun,
+  })
+
   const preview: Record<string, string> = {}
   let filesWritten = 0
   let updatedSource = false
@@ -566,11 +614,18 @@ export async function translateKey(opts: {
   const targetsToTranslate = existingTargets.filter(({ existingValue }) => {
     return overwrite || existingValue === undefined || existingValue === '' || existingValue === null
   })
-  const skipped: Array<{ locale: string, reason: TranslateSkipReason }> = [
+  const skipped: TranslateKeySkip[] = [
     ...protectedSkipped,
     ...existingTargets
       .filter(({ existingValue }) => !overwrite && existingValue !== undefined && existingValue !== '' && existingValue !== null)
-      .map(({ locale }) => ({ locale: locale.code, reason: 'already-translated' as const })),
+      // 'already-translated' says a value is there; `stale` says whether it
+      // still answers the source text, which is a different question and so a
+      // separate field rather than a fourth skip reason.
+      .map(({ locale }) => ({
+        locale: locale.code,
+        reason: 'already-translated' as const,
+        ...(memory ? { stale: memory.isStale(opts.layer, opts.key, locale.code, sourceValue) } : {}),
+      })),
   ]
 
   const basePlaceholderValidation = validatePlaceholders(opts.key, sourceValue, [{ locale: sourceLocale.code, value: sourceValue }], config.localeFileFormat)
@@ -686,10 +741,13 @@ export async function translateKey(opts: {
       })
       filesWritten += written.size
       translated.push(locale.code)
+      memory?.record(opts.layer, opts.key, locale.code, sourceValue)
     } catch (error) {
       failed.push({ locale: locale.code, reason: 'write-error', detail: toErrorMessage(error) })
     }
   }
+
+  await memory?.flush()
 
   return {
     key: opts.key,

@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
 import type { I18nConfig, LocaleDefinition, LocaleDir, ProjectConfig } from '../../config/types'
 import { loadProjectConfig } from '../../config/project-config'
+import { detectFormatInDir, getFormat } from '../../io/formats'
 import { log } from '../../utils/logger'
 import { ConfigError } from '../../utils/errors'
 
@@ -55,7 +56,7 @@ export class GenericAdapter implements FrameworkAdapter {
     }
 
     // localeDirs mirrors projectConfig.localeDirs, whose emptiness is guarded above
-    const detectedFormat = await detectFileFormat(localeDirs[0]!.path)
+    const detectedFormat = await detectFormatInDir(localeDirs[0]!.path) ?? 'json'
     const discoveredLocales = projectConfig.locales ?? await discoverLocales(localeDirs, detectedFormat)
 
     if (discoveredLocales.length === 0) {
@@ -101,40 +102,12 @@ async function flatFileFor(
   code: string,
   format: LocaleFileFormat,
 ): Promise<{ file?: string }> {
-  const ext = format === 'php-array' ? '.php' : '.json'
-  for (const dir of localeDirs) {
-    if (existsSync(join(dir.path, `${code}${ext}`))) return { file: `${code}${ext}` }
+  for (const ext of getFormat(format).extensions) {
+    for (const dir of localeDirs) {
+      if (existsSync(join(dir.path, `${code}${ext}`))) return { file: `${code}${ext}` }
+    }
   }
   return {}
-}
-
-async function detectFileFormat(localeDir: string): Promise<LocaleFileFormat> {
-  let entries: import('node:fs').Dirent[]
-  try {
-    entries = await readdir(localeDir, { withFileTypes: true })
-  }
-  catch {
-    return 'json'
-  }
-
-  // Flat files: en.json, de.json — or en.php, de.php for a PHP project that
-  // does not use Laravel's directory-per-locale layout.
-  if (entries.some(e => e.isFile() && e.name.endsWith('.json'))) {
-    return 'json'
-  }
-  if (entries.some(e => e.isFile() && e.name.endsWith('.php'))) {
-    return 'php-array'
-  }
-
-  // Directory-per-locale: en/, de/ — check contents
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const subFiles = await readdir(join(localeDir, entry.name)).catch(() => [] as string[])
-    if (subFiles.some(f => f.endsWith('.php'))) return 'php-array'
-    if (subFiles.some(f => f.endsWith('.json'))) return 'json'
-  }
-
-  return 'json'
 }
 
 const NON_LOCALE_NAMES = new Set([
@@ -153,11 +126,13 @@ async function discoverLocales(localeDirs: LocaleDir[], format: LocaleFileFormat
       continue
     }
 
+    const extensions = getFormat(format).extensions
+
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue
 
-      const flatExt = format === 'php-array' ? '.php' : '.json'
-      if (entry.isFile() && entry.name.endsWith(flatExt)) {
+      const flatExt = extensions.find(ext => entry.name.toLowerCase().endsWith(ext))
+      if (entry.isFile() && flatExt) {
         const code = entry.name.slice(0, -flatExt.length)
         if (!NON_LOCALE_NAMES.has(code.toLowerCase())) {
           codes.add(code)
@@ -165,8 +140,7 @@ async function discoverLocales(localeDirs: LocaleDir[], format: LocaleFileFormat
       }
       else if (entry.isDirectory() && !NON_LOCALE_NAMES.has(entry.name.toLowerCase())) {
         const subFiles = await readdir(join(dir.path, entry.name)).catch(() => [] as string[])
-        const ext = format === 'php-array' ? '.php' : '.json'
-        if (subFiles.some(f => f.endsWith(ext))) {
+        if (subFiles.some(f => extensions.some(ext => f.toLowerCase().endsWith(ext)))) {
           codes.add(entry.name)
         }
       }

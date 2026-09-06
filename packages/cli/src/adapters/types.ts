@@ -1,6 +1,6 @@
 import type { I18nConfig, ProjectConfig } from '../config/types'
 
-export type LocaleFileFormat = 'json' | 'php-array'
+export type LocaleFileFormat = 'json' | 'php-array' | 'yaml'
 
 export interface FrameworkAdapter {
   readonly name: string

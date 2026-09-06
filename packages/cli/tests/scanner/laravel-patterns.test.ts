@@ -241,6 +241,13 @@ describe('getPatternSet', () => {
     const patterns = getPatternSet(undefined)
     expect(patterns.label).toBe('Vue / Nuxt')
   })
+
+  // YAML locale files come with a JS/TS/Vue frontend as often as JSON does
+  // (vue-i18n, Nuxt), so they scan the same sources.
+  it('returns Vue/Nuxt patterns for yaml format', () => {
+    const patterns = getPatternSet('yaml')
+    expect(patterns).toBe(getPatternSet('json'))
+  })
 })
 
 describe('Laravel scanSourceFiles', () => {

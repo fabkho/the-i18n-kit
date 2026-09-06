@@ -53,9 +53,9 @@ No install needed — your MCP host runs the server with `npx`.
 |---|---|
 | [Set up the server](https://fabkho.github.io/the-i18n-kit/getting-started/agent-setup) | Every host, and how to check it is working |
 | [Tools](https://fabkho.github.io/the-i18n-kit/reference/mcp) | Generated from the listing a host receives |
-| [Built for agents](https://fabkho.github.io/the-i18n-kit/introduction/built-for-agents) | Context discipline, classified failures, safe defaults |
+| [Agent contract](https://fabkho.github.io/the-i18n-kit/getting-started/agent-contract) | Exit codes, gates, failure reasons, output diversion, env vars |
 | [Configuration](https://fabkho.github.io/the-i18n-kit/configuration/where-config-lives) | Glossary, tone, protected locales — [every field](https://fabkho.github.io/the-i18n-kit/configuration/reference) |
-| [Monorepos and layers](https://fabkho.github.io/the-i18n-kit/monorepos/layers) | What the agent needs to know before deleting a key |
+| [Monorepos and layers](https://fabkho.github.io/the-i18n-kit/monorepos/layers-and-consumer-graph) | What the agent needs to know before deleting a key |
 
 [Translation modes](https://fabkho.github.io/the-i18n-kit/concepts/translation-modes)
 covers what happens with and without a provider configured — including that this

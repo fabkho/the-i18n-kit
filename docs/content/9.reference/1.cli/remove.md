@@ -22,5 +22,3 @@ the-i18n-cli remove --layer <layer> --keys <keys>
 | `--layer` | `string` | yes | — | Layer name from discover (e.g., "root", "app-admin"). The keys are removed from ALL locale files in this layer. |
 | `--keys` | `string` | yes | — | Dot-separated key paths to remove from every locale file in the layer. Example: ["common.actions.delete", "auth.errors.expired"]. Comma-separated. |
 | `--dryRun` | `boolean` | no | `false` | Return a preview of what would be removed without writing any files. Default: false. |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

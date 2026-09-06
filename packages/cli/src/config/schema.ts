@@ -36,6 +36,13 @@ const localeDirEntrySchema = z.union([
   }),
 ])
 
+const appEntrySchema = z.object({
+  name: nonEmptyString
+    .describe('App name, as it appears in orphan and status reports (e.g., \'shop\', \'@acme/admin\').'),
+  layers: z.array(nonEmptyString)
+    .describe('Layer names this app can render — its own layer plus every shared layer it consumes.'),
+})
+
 export const projectConfigSchema = z.object({
   $schema: z.string()
     .describe('Path or URL to the JSON schema for IDE autocompletion.')
@@ -121,6 +128,20 @@ export const projectConfigSchema = z.object({
   defaultLocale: nonEmptyString
     .describe('Default locale code. Required for generic adapter activation.')
     .optional(),
+  apps: z.array(appEntrySchema)
+    .describe(
+      'Which app consumes which layers — the consumer graph behind app-scoped orphan detection, '
+      + 'misplaced-usage reports and unconsumed-layer warnings. Declaring it overrides both framework '
+      + 'discovery and workspace inference.',
+    )
+    .optional(),
+  consumerGraph: z.enum(['auto', 'off'])
+    .describe(
+      'Whether to infer the consumer graph from the package manager workspace and package.json '
+      + 'dependencies when the framework provides no app information: \'auto\' (default) infers it, '
+      + '\'off\' keeps every layer in one app.',
+    )
+    .optional(),
   locales: z.array(nonEmptyString)
     .describe(
       'Explicit list of locale codes to operate on. If absent, locales are auto-discovered '
@@ -148,18 +169,25 @@ export const projectConfigSchema = z.object({
       + 'for the default \'.i18n-reports/\' directory, or a string for a custom path.',
     )
     .optional(),
-  localeFileFormat: z.enum(['json', 'php-array'])
+  localeFileFormat: z.enum(['json', 'php-array', 'yaml'])
     .describe(
-      'Override the auto-detected locale file format. Useful when both formats exist or '
-      + 'auto-detection picks wrong.',
+      'Override the auto-detected locale file format. \'yaml\' covers both .yaml and .yml files. '
+      + 'Useful when several formats exist in one project or auto-detection picks wrong.',
+    )
+    .optional(),
+  translationMemory: z.boolean()
+    .describe(
+      'Write a translation memory to \'.i18n-kit.lock.json\' at the project root, recording per '
+      + 'layer, key and target locale a hash of the source text each translation was made from, so '
+      + 'later runs can tell targets that are still current from ones whose source has changed since. '
+      + 'Off by default; no file is created until you enable it.',
     )
     .optional(),
   providerBaseUrl: nonEmptyString
     .describe(
       'Base URL for the LLM provider — gateways, self-hosted model servers and corporate proxies '
       + 'that speak the provider\'s own protocol. Overrides the endpoint only, not the request shape '
-      + 'or auth header. Overridden by the I18N_BASE_URL environment variable and by --baseUrl. '
-      + 'Honoured by every provider: each one is called over plain HTTP against this base.',
+      + 'or auth header. Overridden by the I18N_BASE_URL environment variable and by --baseUrl.',
     )
     .optional(),
   // Deprecated with the removal of MCP sampling: accepted so existing config

@@ -22,5 +22,3 @@ the-i18n-cli check
 | `--locale` | `string` | no | — | Reference locale to resolve key definitions in (e.g., "en", "en-US"). Defaults to the project default locale. |
 | `--outputFile` | `string` | no | — | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/undefined-keys.json" |
 | `--codequalityOutput` | `string` | no | — | Also write the findings as a GitLab Code Quality (CodeClimate) JSON report to this file path. |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

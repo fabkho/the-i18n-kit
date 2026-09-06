@@ -23,5 +23,3 @@ the-i18n-cli write --layer <layer> --translations <translations>
 | `--translations` | `string` | yes | — | Map of dot-path keys to locale-value pairs. IMPORTANT: values must be locale maps, NOT plain strings. Locale refs may be a code ("en-us"), a language ("en-US") or a file ("en-US.json"). Wrong: { "auth.failed": "Login failed" }. Correct: { "auth.failed": { "en-US": "Login failed", "de-DE": "Anmeldung fehlgeschlagen" } } Pass it as JSON. |
 | `--mode=<add\|update\|upsert>` | `string` | no | `"upsert"` | Write mode. "upsert": add-or-update (never fails). "add": only new keys. "update": only existing keys. Default: "upsert". |
 | `--dryRun` | `boolean` | no | `false` | Return a preview of what would be written without writing any files. Default: false. |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

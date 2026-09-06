@@ -22,5 +22,3 @@ the-i18n-cli scaffold
 | `--locales` | `string` | no | — | Locale codes to scaffold empty files for (e.g., ["sv", "ja", "pt-BR"]). If omitted, auto-detects the locales the config declares but has no files for. Comma-separated. |
 | `--layer` | `string` | no | — | Layer to scaffold in (e.g., "root", "app-admin"). If omitted, scaffolds across every layer. |
 | `--dryRun` | `boolean` | no | `false` | Report the files that would be created without writing them. Default: false. |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

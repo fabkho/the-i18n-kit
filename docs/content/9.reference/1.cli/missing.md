@@ -24,5 +24,3 @@ the-i18n-cli missing
 | `--targetLocales`, `--targets` | `string` | no | — | Locale codes to check for missing keys (e.g., ["de", "fr", "es"]). Defaults to all locales except the reference. Comma-separated. |
 | `--outputFile` | `string` | no | — | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/missing-translations.json" |
 | `--failOnMissing` | `boolean` | no | `false` | Exit 2 when any key is missing (CI gate). |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

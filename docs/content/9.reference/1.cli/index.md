@@ -9,9 +9,7 @@ seo:
 
 # CLI Commands
 
-Every command `@the-i18n-kit/cli` registers is listed below and documented on its own page. This page carries what is true of all of them: the flags they share, the exit code each one sets, and the gates that make one fail a build on findings.
-
-The command pages are generated from the command definitions, so a flag that no longer exists cannot appear on one.
+Every command `@the-i18n-kit/cli` registers is listed below and documented on its own page. Every one of them accepts the [shared flags](#shared-flags) and sets one of the [exit codes](#exit-codes) below, so the command pages carry only what is distinctive about each.
 
 ## Commands
 
@@ -34,8 +32,6 @@ The command pages are generated from the command definitions, so a flag that no 
 | [`scaffold`](/reference/cli/scaffold) | Create empty locale files for new languages, copying the key structure of the default locale with every value set to an empty string. |
 
 ## Shared Flags
-
-The shared command factory merges these into every command, so they are documented once here rather than repeated on every command page.
 
 | Flag | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |

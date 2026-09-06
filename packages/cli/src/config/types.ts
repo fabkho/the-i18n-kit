@@ -35,6 +35,12 @@ export interface AppInfo {
   rootDir: string
   /** Layer names this app consumes (from _layers) */
   layers: string[]
+  /**
+   * Where the consumption edges came from, when it was not the framework
+   * adapter: 'workspace' for package.json dependency inference, 'declared'
+   * for an `apps` list in the project config. Absent means the adapter.
+   */
+  source?: 'workspace' | 'declared'
 }
 
 /**
@@ -77,6 +83,10 @@ export interface ProjectConfig {
   reportOutput?: string | true
   /** Locale directories for the generic adapter. Each entry is a path string (layer="default") or { path, layer } object. */
   localeDirs?: Array<string | { path: string; layer: string }>
+  /** Declared consumer graph: which app consumes which layers. Overrides both adapter discovery and workspace inference. */
+  apps?: Array<{ name: string; layers: string[] }>
+  /** Whether the consumer graph may be inferred from the workspace when the adapter has no app information ('auto', the default) or not ('off'). */
+  consumerGraph?: 'auto' | 'off'
   /** Default locale code (required for generic adapter activation). */
   defaultLocale?: string
   /** Explicit list of locale codes. If set, overrides framework auto-detection (all adapters). Auto-discovered when absent. */
@@ -89,8 +99,16 @@ export interface ProjectConfig {
    * protection (with a warning).
    */
   protectedLocales?: string[]
-  /** Override the auto-detected locale file format. E.g., "json" or "php-array". Useful when both formats exist or auto-detection picks wrong. */
+  /** Override the auto-detected locale file format. E.g., "json", "php-array" or "yaml". Useful when several formats exist or auto-detection picks wrong. */
   localeFileFormat?: LocaleFileFormat
+  /**
+   * Write a translation memory to `.i18n-kit.lock.json` at the project root:
+   * per layer, key and target locale, a hash of the source text the translation
+   * was made from. That is what lets a later run tell a current translation from
+   * one whose source has changed since — state alone cannot, because a target
+   * value exists either way. Off by default; no file is created until enabled.
+   */
+  translationMemory?: boolean
   /**
    * Base URL for the LLM provider — gateways, self-hosted model servers and
    * corporate proxies that speak the provider's own protocol. Overrides the

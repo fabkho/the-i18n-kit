@@ -30,5 +30,3 @@ the-i18n-cli translate
 | `--apiKey` | `string` | no | — | API key. Falls back to the OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY environment variables. |
 | `--baseUrl` | `string` | no | — | Provider base URL for gateways, self-hosted models and proxies speaking the provider's protocol. Falls back to I18N_BASE_URL, then to providerBaseUrl in .i18n-mcp.json. |
 | `--failOnFailed` | `boolean` | no | `false` | Exit 2 when any key failed to translate (CI gate). |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

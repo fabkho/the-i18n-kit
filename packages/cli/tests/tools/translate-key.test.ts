@@ -74,6 +74,22 @@ describe('translate_key', () => {
       { locale: 'fr', reason: 'already-translated' },
     ])
   })
+
+  it('says nothing about staleness without a translation memory', async () => {
+    const result = await translateKey({
+      projectDir: appAdminDir,
+      layer: 'root',
+      key: 'admin.dashboard.title',
+      sourceLocale: 'en-US',
+      targetLocales: ['de-DE'],
+      overwrite: false,
+      dryRun: true,
+    })
+
+    // Whether an existing value still matches its source is unknowable without
+    // recorded source hashes, so the field is absent rather than guessed at.
+    expect(result.skipped[0]).not.toHaveProperty('stale')
+  })
 })
 
 describe('placeholder validation', () => {

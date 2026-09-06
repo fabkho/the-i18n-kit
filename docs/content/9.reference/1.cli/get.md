@@ -22,5 +22,3 @@ the-i18n-cli get --layer <layer> --locale <locale> --keys <keys>
 | `--layer` | `string` | yes | — | Layer name from discover (e.g., "root", "app-admin"). |
 | `--locale` | `string` | yes | — | Locale code, locale file name, or "*" to read all locales. Examples: "en", "en-US", "en-US.json", "*". |
 | `--keys` | `string` | yes | — | Dot-separated key paths to read. Example: ["common.actions.save", "auth.login.title"]. Comma-separated. |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

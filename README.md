@@ -58,7 +58,7 @@ cannot drift from it.
 | | |
 |---|---|
 | [Why this toolkit](https://fabkho.github.io/the-i18n-kit/introduction/why) | Who it is for, and who it is not |
-| [Monorepos and layers](https://fabkho.github.io/the-i18n-kit/monorepos/layers) | The consumer graph, shared libraries, misplaced usages |
+| [Monorepos and layers](https://fabkho.github.io/the-i18n-kit/monorepos/layers-and-consumer-graph) | The consumer graph, shared libraries, misplaced usages |
 | [Frameworks](https://fabkho.github.io/the-i18n-kit/frameworks/detection) | Nuxt, Laravel, Vue, React/Next, generic |
 | [Configuration](https://fabkho.github.io/the-i18n-kit/configuration/where-config-lives) | Where it lives, precedence, every field |
 | [CI/CD](https://fabkho.github.io/the-i18n-kit/ci-cd/github-actions) | The Action and the GitLab template |

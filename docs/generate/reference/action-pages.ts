@@ -29,7 +29,7 @@ function renderPage(source: ActionSource): string {
     }),
     GENERATED_NOTICE,
     prose(source.description),
-    `The action installs ${code(CLI_PACKAGE)} and the SDK matching the chosen provider, runs the [${code('translate')} command](${CLI_ROUTE}/translate), and opens a pull request with what it wrote. The command owns the pass/fail decision and reports it as an [exit code](${CLI_ROUTE}#exit-codes); the action reads counts for its outputs and the log only.`,
+    `The action installs ${code(CLI_PACKAGE)}, runs the [${code('translate')} command](${CLI_ROUTE}/translate), and opens a pull request with what it wrote. The command owns the pass/fail decision and reports it as an [exit code](${CLI_ROUTE}#exit-codes); the action reads counts for its outputs and the log only.`,
     `Inputs and outputs below are generated from ${code('action.yml')}, so a workflow that sets an input listed here is a workflow GitHub accepts.`,
     '## Inputs',
     inputTable(source.inputs),

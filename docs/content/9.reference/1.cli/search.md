@@ -23,5 +23,3 @@ the-i18n-cli search --query <query>
 | `--searchIn=<keys\|values\|both>`, `--in` | `string` | no | `"both"` | Whether to search translation keys, values, or both. Default: "both". |
 | `--layer` | `string` | no | — | Layer name to search in (e.g., "root", "app-admin"), or "*" for all layers. If omitted, searches every layer. |
 | `--locale` | `string` | no | — | Locale code to search in (e.g., "en", "de"). If omitted, searches every locale. |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

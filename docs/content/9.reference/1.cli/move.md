@@ -24,5 +24,3 @@ the-i18n-cli move --layer <layer> --key <key>
 | `--toLayer` | `string` | no | — | Layer to move it to, from discover. Example: "root". Omit (or repeat layer) to rename the key within its current layer, which then requires newKey. |
 | `--newKey` | `string` | no | — | Key path to give it. Example: "common.actions.save". Omit to keep the current path, which then requires toLayer. |
 | `--dryRun` | `boolean` | no | `false` | Return the plan without writing any files. Default: false. |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

@@ -23,5 +23,3 @@ the-i18n-cli find-duplicates
 | `--byValue` | `boolean` | no | `false` | Also group different keys carrying the same value — e.g. common.actions.save and calendar.views.save both "Speichern". Each group says what to do about it: "reuse" (a shared layer already has it — delete the app copies and repoint the call sites), "promote" (move one to a shared layer) or "consolidate" (duplication inside one layer). Default: false. |
 | `--minValueLength` | `string` | no | — | Shortest value worth grouping when byValue is set. Default: 4 — below that, values like "OK" repeat across unrelated namespaces legitimately. |
 | `--outputFile` | `string` | no | — | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/duplicate-keys.json" |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

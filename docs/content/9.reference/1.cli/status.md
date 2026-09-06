@@ -24,5 +24,3 @@ the-i18n-cli status
 | `--listEmpty` | `boolean` | no | `false` | Also list the keys whose value is an empty string, under "empty", by locale and layer — useful after a scaffold or an interrupted translation run. Default: false, which returns counts only. |
 | `--outputFile` | `string` | no | — | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/translation-status.json" |
 | `--failUnder` | `string` | no | — | Exit 2 when overall completion is below this percentage (CI gate). |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.
