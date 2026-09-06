@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { scanSourceFiles, findOrphanKeysForConfig } from '../../src/scanner/code-scanner.js'
 
 /**
- * The flip (#402): the syntax frontend is the default scanner, patterns read
- * only what it declines, and I18N_SCANNER=regex is a one-release escape hatch.
- * Tests assert scan conclusions, never which parser produced them.
+ * The syntax frontend is the only scanner: it reads every file it can, and
+ * patterns read only what it declines. Tests assert scan conclusions, never
+ * which parser produced them.
  */
 
 const tmpDir = join(dirname(fileURLToPath(import.meta.url)), '../../.tmp-test/ast-default')
@@ -21,12 +21,8 @@ afterAll(async () => {
   await rm(tmpDir, { recursive: true, force: true })
 })
 
-afterEach(() => {
-  delete process.env.I18N_SCANNER
-})
-
-describe('the syntax frontend is the default', () => {
-  it('resolves what t is bound to without any flag', async () => {
+describe('the syntax frontend is the only scanner', () => {
+  it('resolves what t is bound to', async () => {
     await writeFile(join(tmpDir, 'resolved.ts'), [
       `import { useI18n } from 'vue-i18n'`,
       `const { t } = useI18n()`,
@@ -52,16 +48,6 @@ describe('the syntax frontend is the default', () => {
 
     expect(result.declinedFiles).toEqual(['NotAnSfc.vue'])
     expect(result.uniqueKeys.has('fallback.read')).toBe(true)
-  })
-
-  it('I18N_SCANNER=regex restores the pattern scanner', async () => {
-    process.env.I18N_SCANNER = 'regex'
-
-    const result = await scanSourceFiles(tmpDir)
-
-    // The regex cannot place a bare dotless t('save'); it stays a candidate.
-    expect(result.uniqueKeys.has('save')).toBe(false)
-    expect(result.bareStringCandidates.has('save')).toBe(true)
   })
 })
 
