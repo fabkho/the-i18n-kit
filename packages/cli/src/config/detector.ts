@@ -8,8 +8,14 @@ import { ReactAdapter } from '../adapters/react/index'
 import { loadProjectConfig } from './project-config'
 import { log } from '../utils/logger'
 import { canonicalPath } from './discovery'
+import { cacheConfig, getCachedConfigFor } from './cache'
 
 export { discoverNuxtApps } from './discovery'
+
+// The cache itself lives in ./cache, which owns every memo that has to be
+// forgotten together. Re-exported here because this has been its import path
+// since before there was more than one thing to clear.
+export { clearConfigCache, getCachedConfig } from './cache'
 
 registerAdapter(new NuxtAdapter())
 registerAdapter(new LaravelAdapter())
@@ -17,13 +23,9 @@ registerAdapter(new GenericAdapter())
 registerAdapter(new VueAdapter())
 registerAdapter(new ReactAdapter())
 
-const configCache = new Map<string, I18nConfig>()
-
-let lastConfig: I18nConfig | null = null
-
 export async function detectI18nConfig(projectDir: string): Promise<I18nConfig> {
   const canonDir = canonicalPath(projectDir)
-  const cached = configCache.get(canonDir)
+  const cached = getCachedConfigFor(canonDir)
   if (cached) {
     log.debug('Using cached i18n config')
     return cached
@@ -39,19 +41,8 @@ export async function detectI18nConfig(projectDir: string): Promise<I18nConfig> 
 
   const config = await adapter.resolve(projectDir)
   config.framework = adapter.name
-  configCache.set(canonDir, config)
-  lastConfig = config
+  cacheConfig(canonDir, config)
 
   log.info(`Detected ${config.locales.length} locales, ${config.localeDirs.length} locale directories`)
   return config
-}
-
-export function clearConfigCache(): void {
-  configCache.clear()
-  lastConfig = null
-  log.debug('Config cache cleared')
-}
-
-export function getCachedConfig(): I18nConfig | null {
-  return lastConfig
 }

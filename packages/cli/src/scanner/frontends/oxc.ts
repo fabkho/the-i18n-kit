@@ -108,6 +108,9 @@ type ParseSync = typeof import('oxc-parser').parseSync
  * Loaded on first use rather than at import, so a command that never scans does
  * not pay for a native binary it will not touch. Cached including the failure,
  * so a broken install is reported once and then falls back quietly.
+ *
+ * Not registered with the config cache: this is a module load, not anything
+ * read out of the project, so clearing it could only reload the same binary.
  */
 let parserPromise: Promise<ParseSync | null> | undefined
 

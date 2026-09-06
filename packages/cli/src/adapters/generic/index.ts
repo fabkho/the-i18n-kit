@@ -12,19 +12,12 @@ export class GenericAdapter implements FrameworkAdapter {
   readonly label = 'Generic'
   readonly localeFileFormat: LocaleFileFormat = 'json'
 
-  private cachedConfig: { projectDir: string; config: import('../../config/types').ProjectConfig | null } | null = null
-
-  private async getProjectConfig(projectDir: string) {
-    if (this.cachedConfig?.projectDir === projectDir) {
-      return this.cachedConfig.config
-    }
-    const config = await loadProjectConfig(projectDir)
-    this.cachedConfig = { projectDir, config }
-    return config
-  }
-
+  // No memo of its own: the adapter is registered once for the life of the
+  // process, so anything remembered here would outlive a cache clear and keep
+  // reporting a config the user has already edited. Loading it is two file
+  // reads.
   async detect(projectDir: string): Promise<number> {
-    const config = await this.getProjectConfig(projectDir)
+    const config = await loadProjectConfig(projectDir)
     if (!config) return 0
     if (config.localeDirs && config.localeDirs.length > 0 && config.defaultLocale) {
       return 10
@@ -33,7 +26,7 @@ export class GenericAdapter implements FrameworkAdapter {
   }
 
   async resolve(projectDir: string): Promise<I18nConfig> {
-    const projectConfig = await this.getProjectConfig(projectDir)
+    const projectConfig = await loadProjectConfig(projectDir)
     if (!projectConfig?.localeDirs || projectConfig.localeDirs.length === 0 || !projectConfig.defaultLocale) {
       throw new ConfigError(
         'GenericAdapter requires both "localeDirs" and "defaultLocale" in .i18n-mcp.json',
