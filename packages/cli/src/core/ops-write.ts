@@ -34,6 +34,7 @@ import type {
 import { findWritableLayerOrThrow, findLocaleImpl, findLocaleSuggestion, resolveLocaleRef } from './shared.js'
 import type { LocaleRefAmbiguity } from './shared.js'
 import { validatePlaceholders, mergePlaceholderValidation } from './ops-translate.js'
+import { recordWrittenTranslations } from './translate/memory.js'
 
 /**
  * Shared logic for write_translations (supports add, update, and upsert modes).
@@ -45,8 +46,9 @@ async function applyTranslations(
   mode: 'add' | 'update' | 'upsert',
   findLocale: (config: I18nConfig, ref: string) => LocaleDefinition | undefined,
   dryRun = false,
-): Promise<MutationResult> {
+): Promise<MutationResult & { writes: AppliedWrite[] }> {
   const applied: string[] = []
+  const writes: AppliedWrite[] = []
   const skipped: string[] = []
   const warnings: string[] = []
   const unresolved = new Map<string, UnresolvedLocaleRef>()
@@ -137,6 +139,7 @@ async function applyTranslations(
           } else {
             setNestedValue(data, key, value)
             applied.push(key)
+            writes.push({ locale: locale.code, key })
           }
         }
       })
@@ -161,11 +164,12 @@ async function applyTranslations(
     )
   }
 
-  const result: MutationResult = {
+  const result: MutationResult & { writes: AppliedWrite[] } = {
     applied: [...new Set(applied)],
     skipped: [...new Set(skipped)],
     warnings,
     filesWritten: filesWritten.size,
+    writes,
   }
 
   if (unresolved.size > 0) {
@@ -185,6 +189,12 @@ async function applyTranslations(
   }
 
   return result
+}
+
+/** One locale/key pair a write actually put on disk. */
+interface AppliedWrite {
+  locale: string
+  key: string
 }
 
 /** The optional diagnostics every mutation result carries. */
@@ -251,6 +261,12 @@ export async function writeTranslations(opts: {
     if (skipped.length > 0) { result.skippedKeys = skipped }
     return attachDiagnostics(result, mutation)
   }
+
+  // Post-write hook: a hand-written target value counts as translated from the
+  // source text now on disk, so the translation memory records it as such and
+  // does not report the key as outdated afterwards. No-op unless the project
+  // enabled the memory.
+  await recordWrittenTranslations({ config, projectDir: dir, layer, writes: mutation.writes })
 
   return attachDiagnostics({
     written: applied,

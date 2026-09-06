@@ -92,6 +92,14 @@ export interface ProjectConfig {
   /** Override the auto-detected locale file format. E.g., "json" or "php-array". Useful when both formats exist or auto-detection picks wrong. */
   localeFileFormat?: LocaleFileFormat
   /**
+   * Write a translation memory to `.i18n-kit.lock.json` at the project root:
+   * per layer, key and target locale, a hash of the source text the translation
+   * was made from. That is what lets a later run tell a current translation from
+   * one whose source has changed since — state alone cannot, because a target
+   * value exists either way. Off by default; no file is created until enabled.
+   */
+  translationMemory?: boolean
+  /**
    * Base URL for the LLM provider — gateways, self-hosted model servers and
    * corporate proxies that speak the provider's own protocol. Overrides the
    * endpoint only, not the request shape or auth header. Overridden by the

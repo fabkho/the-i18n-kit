@@ -154,6 +154,14 @@ export const projectConfigSchema = z.object({
       + 'auto-detection picks wrong.',
     )
     .optional(),
+  translationMemory: z.boolean()
+    .describe(
+      'Write a translation memory to \'.i18n-kit.lock.json\' at the project root, recording per '
+      + 'layer, key and target locale a hash of the source text each translation was made from, so '
+      + 'later runs can tell targets that are still current from ones whose source has changed since. '
+      + 'Off by default; no file is created until you enable it.',
+    )
+    .optional(),
   providerBaseUrl: nonEmptyString
     .describe(
       'Base URL for the LLM provider — gateways, self-hosted model servers and corporate proxies '
