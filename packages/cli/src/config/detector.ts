@@ -7,9 +7,17 @@ import { VueAdapter } from '../adapters/vue/index'
 import { ReactAdapter } from '../adapters/react/index'
 import { loadProjectConfig } from './project-config'
 import { log } from '../utils/logger'
-import { canonicalPath } from './discovery'
+import { canonicalPath } from './paths'
+import { cacheConfig, getCachedConfigFor } from './cache'
 
-export { discoverNuxtApps } from './discovery'
+// Discovery moved to the Nuxt adapter, where the rest of the Nuxt knowledge
+// lives; re-exported here because this is where callers import it from.
+export { discoverNuxtApps } from '../adapters/nuxt/discovery'
+
+// The cache itself lives in ./cache, which owns every memo that has to be
+// forgotten together. Re-exported here because this has been its import path
+// since before there was more than one thing to clear.
+export { clearConfigCache, getCachedConfig } from './cache'
 
 registerAdapter(new NuxtAdapter())
 registerAdapter(new LaravelAdapter())
@@ -17,13 +25,9 @@ registerAdapter(new GenericAdapter())
 registerAdapter(new VueAdapter())
 registerAdapter(new ReactAdapter())
 
-const configCache = new Map<string, I18nConfig>()
-
-let lastConfig: I18nConfig | null = null
-
 export async function detectI18nConfig(projectDir: string): Promise<I18nConfig> {
   const canonDir = canonicalPath(projectDir)
-  const cached = configCache.get(canonDir)
+  const cached = getCachedConfigFor(canonDir)
   if (cached) {
     log.debug('Using cached i18n config')
     return cached
@@ -31,27 +35,18 @@ export async function detectI18nConfig(projectDir: string): Promise<I18nConfig> 
 
   log.info(`Detecting i18n config from: ${projectDir}`)
 
+  // Read once for the whole detection and handed to the adapter, which is what
+  // makes the deprecated-key warning fire once rather than once per app.
   const projectConfig = await loadProjectConfig(projectDir)
   const hint = projectConfig?.framework
 
   const adapter = await detectFramework(projectDir, hint)
   log.info(`Detected framework: ${adapter.label}`)
 
-  const config = await adapter.resolve(projectDir)
+  const config = await adapter.resolve(projectDir, projectConfig)
   config.framework = adapter.name
-  configCache.set(canonDir, config)
-  lastConfig = config
+  cacheConfig(canonDir, config)
 
   log.info(`Detected ${config.locales.length} locales, ${config.localeDirs.length} locale directories`)
   return config
-}
-
-export function clearConfigCache(): void {
-  configCache.clear()
-  lastConfig = null
-  log.debug('Config cache cleared')
-}
-
-export function getCachedConfig(): I18nConfig | null {
-  return lastConfig
 }

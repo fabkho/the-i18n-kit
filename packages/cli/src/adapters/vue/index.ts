@@ -2,8 +2,7 @@ import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import type { FrameworkAdapter, LocaleFileFormat } from '../types'
-import type { I18nConfig, LocaleDefinition } from '../../config/types'
-import { loadProjectConfig } from '../../config/project-config'
+import type { I18nConfig, LocaleDefinition, ProjectConfig } from '../../config/types'
 import { readVueI18nLocaleDirs } from '../../config/framework/vue'
 import { applyLocaleOverride } from '../../config/locale-override'
 import { ConfigError } from '../../utils/errors'
@@ -50,9 +49,7 @@ export class VueAdapter implements FrameworkAdapter {
     return computeScore(projectDir, allDeps)
   }
 
-  async resolve(projectDir: string): Promise<I18nConfig> {
-    const projectConfig = await loadProjectConfig(projectDir)
-
+  async resolve(projectDir: string, projectConfig: ProjectConfig | null): Promise<I18nConfig> {
     const dirs = await resolveLocaleDirs(projectDir)
     const discovered = await requireLocales(dirs)
     const locales = applyLocaleOverride(discovered, projectConfig?.locales)

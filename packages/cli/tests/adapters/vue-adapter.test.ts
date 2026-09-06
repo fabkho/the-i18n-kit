@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { VueAdapter } from '../../src/adapters/vue/index'
 import { registerAdapter, resetRegistry, detectFramework } from '../../src/adapters/registry'
 import { NuxtAdapter } from '../../src/adapters/nuxt/index'
+import { loadProjectConfig } from '../../src/config/project-config'
 
 function createVueProject(root: string, opts: {
   locales?: string[]
@@ -155,7 +156,7 @@ describe('VueAdapter.resolve', () => {
     createVueProject(tempDir)
 
     const adapter = new VueAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.rootDir).toBe(tempDir)
     expect(config.defaultLocale).toBe('de')
@@ -174,7 +175,7 @@ describe('VueAdapter.resolve', () => {
     createVueProject(tempDir, { localeDir: 'locales', locales: ['en', 'fr', 'ja'] })
 
     const adapter = new VueAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales).toHaveLength(3)
     expect(config.locales.map(l => l.code)).toEqual(['en', 'fr', 'ja'])
@@ -185,7 +186,7 @@ describe('VueAdapter.resolve', () => {
     createVueProject(tempDir, { localeDir: 'src/i18n/locales', locales: ['en'] })
 
     const adapter = new VueAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeDirs[0].path).toBe(join(tempDir, 'src/i18n/locales'))
   })
@@ -204,7 +205,7 @@ describe('VueAdapter.resolve', () => {
     writeFileSync(join(tempDir, configFile), `const i18n = createI18n({ localeDir: 'my-locales', legacy: false })`)
 
     const adapter = new VueAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeDirs[0].path).toBe(customDir)
   })
@@ -213,7 +214,7 @@ describe('VueAdapter.resolve', () => {
     createVueProject(tempDir, { locales: ['en', 'de', 'fr'] })
 
     const adapter = new VueAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.defaultLocale).toBe('de')
   })
@@ -224,7 +225,7 @@ describe('VueAdapter.resolve', () => {
     }))
 
     const adapter = new VueAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('No locale directory found')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('No locale directory found')
   })
 
   it('throws ConfigError when locale dir has no JSON files', async () => {
@@ -234,7 +235,7 @@ describe('VueAdapter.resolve', () => {
     mkdirSync(join(tempDir, 'src/locales'), { recursive: true })
 
     const adapter = new VueAdapter()
-    await expect(adapter.resolve(tempDir)).rejects.toThrow('No JSON locale files found')
+    await expect(adapter.resolve(tempDir, await loadProjectConfig(tempDir))).rejects.toThrow('No JSON locale files found')
   })
 
   it('honors locales override from .i18n-mcp.json', async () => {
@@ -245,7 +246,7 @@ describe('VueAdapter.resolve', () => {
     )
 
     const adapter = new VueAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['en', 'de'])
   })
@@ -254,7 +255,7 @@ describe('VueAdapter.resolve', () => {
     createVueProject(tempDir, { locales: ['fr', 'en', 'de', 'zh'] })
 
     const adapter = new VueAdapter()
-    const config = await adapter.resolve(tempDir)
+    const config = await adapter.resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.locales.map(l => l.code)).toEqual(['de', 'en', 'fr', 'zh'])
   })
@@ -335,7 +336,7 @@ describe('VueAdapter with several unplugin-vue-i18n include roots', () => {
   })
 
   it('keeps every include root, each as its own layer', async () => {
-    const config = await new VueAdapter().resolve(tempDir)
+    const config = await new VueAdapter().resolve(tempDir, await loadProjectConfig(tempDir))
 
     expect(config.localeDirs.map(d => d.path)).toEqual([
       join(tempDir, 'src/messages'),
@@ -347,7 +348,7 @@ describe('VueAdapter with several unplugin-vue-i18n include roots', () => {
   })
 
   it('unions the locales across the roots', async () => {
-    const config = await new VueAdapter().resolve(tempDir)
+    const config = await new VueAdapter().resolve(tempDir, await loadProjectConfig(tempDir))
     expect(config.locales.map(l => l.code).sort()).toEqual(['de', 'en'])
   })
 })

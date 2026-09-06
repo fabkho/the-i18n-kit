@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { artifactToConfig, readArtifact } from '../../src/config/artifact.js'
-import type { I18nKitArtifact } from '../../src/config/artifact.js'
+import { artifactToConfig, readArtifact } from '../../src/adapters/nuxt/artifact.js'
+import type { I18nKitArtifact } from '../../src/adapters/nuxt/artifact.js'
 
 /**
  * The artifact is additive: it is preferred when trustworthy and ignored

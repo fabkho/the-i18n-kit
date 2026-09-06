@@ -3,6 +3,7 @@ import { relative as relativePath, resolve } from 'node:path'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { readNextI18n } from '../../src/config/framework/next.js'
 import { readVueI18nLocaleDirs } from '../../src/config/framework/vue.js'
+import { clearConfigCache } from '../../src/config/cache.js'
 import { tmpProject } from './tmp-project.js'
 
 const project = tmpProject('framework-config')
@@ -226,6 +227,26 @@ describe('readVueI18nLocaleDirs', () => {
 
     expect(first).toEqual([resolve(project.dir, 'src/translations')])
     expect(second).toEqual(first)
+  })
+
+  it('reads the config again once the cache is cleared', async () => {
+    // What a long-running server does after the user edits a config. The memo
+    // that keeps repeat reads consistent must not outlive that.
+    await mkdir(resolve(project.dir, 'locales'), { recursive: true })
+    await mkdir(resolve(project.dir, 'src/translations'), { recursive: true })
+    await write('vite.config.ts', `
+      import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
+      export default { plugins: [VueI18nPlugin({ include: ['./locales/**'] })] }
+    `)
+    expect(await readVueI18nLocaleDirs(project.dir)).toEqual([resolve(project.dir, 'locales')])
+
+    await write('vite.config.ts', `
+      import VueI18nPlugin from '@intlify/unplugin-vue-i18n/vite'
+      export default { plugins: [VueI18nPlugin({ include: ['./src/translations/**'] })] }
+    `)
+    clearConfigCache()
+
+    expect(await readVueI18nLocaleDirs(project.dir)).toEqual([resolve(project.dir, 'src/translations')])
   })
 
   it('does not leak a recorded include into the next project read', async () => {
