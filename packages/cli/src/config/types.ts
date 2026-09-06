@@ -113,7 +113,8 @@ export interface ProjectConfig {
    * Base URL for the LLM provider — gateways, self-hosted model servers and
    * corporate proxies that speak the provider's own protocol. Overrides the
    * endpoint only, not the request shape or auth header. Overridden by the
-   * I18N_BASE_URL env var and by --baseUrl. Not supported by "google".
+   * I18N_BASE_URL env var and by --baseUrl. Honoured by every provider, each
+   * of which is called over plain HTTP against this base.
    */
   providerBaseUrl?: string
 }

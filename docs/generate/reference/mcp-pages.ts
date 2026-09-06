@@ -85,7 +85,8 @@ function pairingSection(tools: ToolDoc[]): string[] {
 
   return [
     '## Paired CLI Commands',
-    `Both paths call the same ${code(CLI_PACKAGE)} functions, so a tool and the command it pairs with read the same project and return the same result. Parameters and flags are named for their surface — a tool takes ${code('targetLocales')}, the command takes ${code('--targets')} — so the [command pages](${CLI_ROUTE}) document the flags.`,
+    `${code(PACKAGE)} depends on ${code(CLI_PACKAGE)} and calls the same functions the commands call, so a tool and the command it pairs with read the same project and return the same result. Where you run an operation from is a matter of who is driving.`,
+    `A tool parameter and the flag that reaches it carry one name — ${code('targetLocales')} is ${code('--targetLocales')}, with the shorter spelling the CLI used before kept as an alias — so the [command pages](${CLI_ROUTE}) document the flags rather than these pages restating them.`,
     table(['Tool', 'Command'], rows),
   ]
 }

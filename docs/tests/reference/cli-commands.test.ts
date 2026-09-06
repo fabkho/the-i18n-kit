@@ -61,7 +61,12 @@ describe('the CLI reference against the command registry', () => {
     const shared = new Set(model.sharedArgs.map(arg => arg.name))
 
     for (const command of model.commands) {
-      const expected = command.args.map(arg => arg.name).filter(name => !shared.has(name))
+      // Long aliases count as documented flags: a flag renamed to match its MCP
+      // parameter keeps its previous spelling, and a reader has to be told
+      // which one they can type.
+      const expected = command.args
+        .filter(arg => !shared.has(arg.name))
+        .flatMap(arg => [arg.name, ...arg.alias.filter(alias => alias.length > 1)])
       const documented = documentedFlags(commandPage(output, command.name))
       expect([...documented].sort()).toEqual([...expected].sort())
     }

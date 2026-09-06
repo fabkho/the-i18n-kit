@@ -38,11 +38,10 @@ export async function loadCliSource(): Promise<CliSource> {
 
 /** Resolve every lazy loader in the registry, preserving registry order. */
 async function resolveEntries(): Promise<CliCommandEntry[]> {
-  const names = Object.keys(commands) as (keyof typeof commands)[]
   return Promise.all(
-    names.map(async name => ({
-      name: name as string,
-      def: (await commands[name].load()) as CommandDefLike,
+    Object.entries(commands).map(async ([name, entry]) => ({
+      name,
+      def: (await entry.load()) as CommandDefLike,
     })),
   )
 }
