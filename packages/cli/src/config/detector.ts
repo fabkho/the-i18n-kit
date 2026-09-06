@@ -7,10 +7,12 @@ import { VueAdapter } from '../adapters/vue/index'
 import { ReactAdapter } from '../adapters/react/index'
 import { loadProjectConfig } from './project-config'
 import { log } from '../utils/logger'
-import { canonicalPath } from './discovery'
+import { canonicalPath } from './paths'
 import { cacheConfig, getCachedConfigFor } from './cache'
 
-export { discoverNuxtApps } from './discovery'
+// Discovery moved to the Nuxt adapter, where the rest of the Nuxt knowledge
+// lives; re-exported here because this is where callers import it from.
+export { discoverNuxtApps } from '../adapters/nuxt/discovery'
 
 // The cache itself lives in ./cache, which owns every memo that has to be
 // forgotten together. Re-exported here because this has been its import path

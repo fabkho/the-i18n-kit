@@ -1,6 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import type { AppInfo, I18nConfig, LocaleDefinition, LocaleDir } from '../../config/types'
-import { deriveLayerName } from '../../config/discovery'
+import { deriveLayerName } from '../../config/paths'
 import { claimLocaleDir } from './layer-dedup'
 
 /**

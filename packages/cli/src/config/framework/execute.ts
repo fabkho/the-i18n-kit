@@ -10,8 +10,8 @@
  * `next.config.js` is wrapped in `withNextIntl(...)` or `withSentryConfig(...)`
  * and throws without the right env or plugins installed. A file we cannot run
  * means falling back to the heuristics that were the only behaviour until now,
- * with a warning — never a failed command. This is the rule `config/artifact.ts`
- * already follows for the Nuxt artifact, for the same reason.
+ * with a warning — never a failed command. It is the rule the Nuxt adapter's
+ * artifact reader already follows, for the same reason.
  */
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'

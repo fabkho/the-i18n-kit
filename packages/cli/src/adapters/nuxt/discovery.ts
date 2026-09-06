@@ -1,4 +1,4 @@
-import { existsSync, statSync, realpathSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { resolve, relative } from 'node:path'
 
@@ -9,15 +9,6 @@ const SKIP_DIRS = new Set([
 ])
 
 const MAX_DISCOVERY_DEPTH = 4
-
-export function canonicalPath(dir: string): string {
-  try {
-    return realpathSync(resolve(dir))
-  }
-  catch {
-    return resolve(dir)
-  }
-}
 
 export function findNuxtConfig(dir: string): string | null {
   for (const name of NUXT_CONFIG_FILES) {
@@ -87,50 +78,4 @@ async function scanForApps(dir: string, depth: number, results: string[], isRoot
     }
     await scanForApps(childDir, depth + 1, results)
   }
-}
-
-/**
- * Derive a human-friendly layer name from its root directory.
- * Uses the discovery root as the reference point for naming.
- *
- * When `usedNames` is provided, disambiguates collisions by progressively
- * including parent path segments (e.g., `admin` → `apps/admin`).
- */
-export function deriveLayerName(
-  layerRootDir: string,
-  discoveryRoot: string,
-  usedNames?: Set<string>,
-): string {
-  const rel = relative(discoveryRoot, layerRootDir)
-  if (rel === '' || rel === '.') {
-    return 'root'
-  }
-
-  const posixRel = rel.replace(/\\/g, '/')
-
-  if (!posixRel.startsWith('..')) {
-    const segments = posixRel.split('/')
-    let candidate = segments.pop() ?? posixRel
-
-    if (usedNames) {
-      for (let i = segments.length - 1; i >= 0; i--) {
-        if (!usedNames.has(candidate)) break
-        candidate = `${segments[i]}/${candidate}`
-      }
-    }
-
-    return candidate
-  }
-
-  const parts = layerRootDir.replace(/\\/g, '/').split('/')
-  let candidate = parts.pop() ?? layerRootDir
-
-  if (usedNames) {
-    for (let i = parts.length - 1; i >= 0; i--) {
-      if (!usedNames.has(candidate)) break
-      candidate = `${parts[i]}/${candidate}`
-    }
-  }
-
-  return candidate
 }
