@@ -11,6 +11,7 @@ import { serializeLayerGraph } from '../config/layer-graph.js'
 import type { I18nConfig } from '../config/types.js'
 import { writeReportFile } from '../io/json-writer.js'
 import { readLocaleData, readLocaleDataIfPresent, resolveLocaleEntries } from '../io/locale-data.js'
+import { getFormat } from '../io/formats.js'
 import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { ToolError } from '../utils/errors.js'
 
@@ -61,6 +62,7 @@ export async function detectConfig(projectDir?: string): Promise<I18nConfig> {
 export async function listLocaleDirs(projectDir?: string): Promise<LocaleDirInfo[]> {
   const dir = projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
+  const format = getFormat(config.localeFileFormat)
 
   const results: LocaleDirInfo[] = []
 
@@ -76,7 +78,9 @@ export async function listLocaleDirs(projectDir?: string): Promise<LocaleDirInfo
       continue
     }
 
-    if (config.localeFileFormat === 'php-array') {
+    // A namespaced layout counts directories and reports the namespaces in
+    // one; a flat one counts locale files and reports the keys in one.
+    if (format.defaultLayout === 'namespaced') {
       let subDirs: string[] = []
       try { subDirs = await readdir(localeDir.path) } catch {}
 
@@ -97,11 +101,11 @@ export async function listLocaleDirs(projectDir?: string): Promise<LocaleDirInfo
       })
     } else {
       const files = await readdir(localeDir.path)
-      const jsonFiles = files.filter(f => f.endsWith('.json'))
+      const localeFiles = files.filter(f => format.extensions.some(ext => f.toLowerCase().endsWith(ext)))
 
       let topLevelKeys: string[] = []
       const sampleLocale = config.locales[0]
-      if (sampleLocale !== undefined && jsonFiles.length > 0) {
+      if (sampleLocale !== undefined && localeFiles.length > 0) {
         try {
           const data = await readLocaleData(config, localeDir.layer, sampleLocale)
           topLevelKeys = Object.keys(data)
@@ -111,7 +115,7 @@ export async function listLocaleDirs(projectDir?: string): Promise<LocaleDirInfo
       results.push({
         layer: localeDir.layer,
         path: localeDir.path,
-        fileCount: jsonFiles.length,
+        fileCount: localeFiles.length,
         topLevelKeys,
       })
     }

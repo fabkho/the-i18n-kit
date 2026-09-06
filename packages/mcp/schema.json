@@ -227,9 +227,10 @@
       "type": "string",
       "enum": [
         "json",
-        "php-array"
+        "php-array",
+        "yaml"
       ],
-      "description": "Override the auto-detected locale file format. Useful when both formats exist or auto-detection picks wrong."
+      "description": "Override the auto-detected locale file format. 'yaml' covers both .yaml and .yml files. Useful when several formats exist in one project or auto-detection picks wrong."
     },
     "translationMemory": {
       "type": "boolean",

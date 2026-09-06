@@ -2,8 +2,8 @@ import { join, extname } from 'node:path'
 import { readdir, mkdir, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { readLocale, writeLocale, mutateLocale } from './locale-io'
-import { clearFileCacheEntry } from './json-reader'
-import { clearPhpFileCacheEntry } from './php-reader'
+import { formatForFile, getFormat } from './formats'
+import type { LocaleFormat } from './formats'
 import type { I18nConfig, LocaleDefinition } from '../config/types'
 import { log } from '../utils/logger'
 import { FileIOError } from '../utils/errors'
@@ -38,34 +38,35 @@ export async function resolveLocaleEntries(
   const localeDir = resolveLayerDir(config, layer)
   if (!localeDir) return []
 
-  if (config.localeFileFormat === 'php-array') {
-    // Laravel: lang/<locale>/<namespace>.php
-    const namespaced = await resolveNamespacedEntries(localeDir, locale.code, '.php')
-    if (namespaced.length > 0) return namespaced
+  const format = getFormat(config.localeFileFormat)
 
+  // Namespaced: Laravel's lang/<locale>/<namespace>.php, Next.js/React's
+  // messages/en/common.json.
+  const namespaced = await resolveNamespacedEntries(localeDir, locale.code, format.extensions)
+  if (namespaced.length > 0) return namespaced
+
+  const defaultExt = format.extensions[0]!
+
+  if (format.flatFileFromDisk) {
     // Flat: lang/<locale>.php. Not Laravel's layout, but a legitimate one that
     // the generic adapter meets in the wild (#308), and indistinguishable from
     // namespaced by format alone — only the directory says which it is.
-    const flat = locale.file ?? `${locale.code}.php`
+    const flat = locale.file ?? `${locale.code}${defaultExt}`
     return existsSync(join(localeDir, flat)) ? [{ path: join(localeDir, flat), namespace: null }] : []
   }
 
-  // Namespaced JSON (Next.js/React: messages/en/common.json)
-  const jsonEntries = await resolveNamespacedEntries(localeDir, locale.code, '.json')
-  if (jsonEntries.length > 0) return jsonEntries
-
-  // Flat JSON (Nuxt: i18n/en-US.json)
+  // Flat and declared (Nuxt: i18n/en-US.json)
   if (!locale.file) {
     // A flat-layout locale without a `file` cannot be resolved at all — reads
     // would silently report {} and writes would vanish. If a matching flat
     // file exists on disk, this is a misconfiguration (e.g. an adapter that
     // forgot to set `file`): fail loudly instead of silently returning [].
-    const flatCandidate = join(localeDir, `${locale.code}.json`)
+    const flatCandidate = join(localeDir, `${locale.code}${defaultExt}`)
     if (existsSync(flatCandidate)) {
       log.warn(
-        `Locale '${locale.code}' (layer '${layer}') uses a flat JSON layout but has no 'file' set — `
+        `Locale '${locale.code}' (layer '${layer}') uses a flat layout but has no 'file' set — `
         + `${flatCandidate} exists yet cannot be resolved. Reads will return no keys and writes will be no-ops. `
-        + `Set 'file' on the locale definition (e.g. '${locale.code}.json').`,
+        + `Set 'file' on the locale definition (e.g. '${locale.code}${defaultExt}').`,
       )
     }
     return []
@@ -159,6 +160,7 @@ export async function mutateLocaleData(
   const filesWritten = new Set<string>()
 
   const entries = await resolveLocaleEntries(config, layer, locale)
+  const format = getFormat(config.localeFileFormat)
   // What is on disk decides, not the declared format: a PHP project may be
   // namespaced (Laravel) or flat (#308), and writing one as the other would
   // restructure someone's locale files rather than edit them. The format is
@@ -166,18 +168,18 @@ export async function mutateLocaleData(
   // to observe — scaffolding a new Laravel locale, for instance.
   const isNamespaced = entries.length > 0
     ? entries.some(e => e.namespace !== null)
-    : config.localeFileFormat === 'php-array' || await hasNamespacedJsonLayout(config, layer)
+    : format.defaultLayout === 'namespaced' || await hasNamespacedLayout(config, layer, format)
 
   if (isNamespaced) {
-    // Per-namespace write (PHP arrays or namespaced JSON)
+    // Per-namespace write (PHP arrays, namespaced JSON, …)
     const localeDir = resolveLayerDir(config, layer)
     if (!localeDir) return filesWritten
 
     const localePath = join(localeDir, locale.code)
     const firstEntry = entries[0]
     const fileExt = firstEntry
-      ? extname(firstEntry.path) // '.php' or '.json'
-      : config.localeFileFormat === 'php-array' ? '.php' : '.json'
+      ? extname(firstEntry.path) // the extension the locale already uses
+      : format.extensions[0]!
 
     const preSnapshots = new Map<string, string>()
     for (const [ns, nsData] of Object.entries(data)) {
@@ -271,19 +273,18 @@ async function deleteRemovedNamespaceFiles(
         filePath,
       )
     }
-    if (fileExt === '.php') clearPhpFileCacheEntry(filePath)
-    else clearFileCacheEntry(filePath)
+    formatForFile(filePath).clearCacheEntry(filePath)
   }
 }
 
 /**
  * Write mutated locale data to a single file.
  *
- * Existing files go through the format-preserving mutate path
- * (mutateLocaleFile / mutatePhpLocaleFile): indentation, trailing newline and
- * PHP quote style are detected from the file on disk, existing keys keep
- * their on-disk order, and new keys are inserted in sorted position among
- * their siblings. The mutate path re-reads the file with metadata (bypassing
+ * Existing files go through their format's format-preserving mutate path:
+ * indentation, trailing newline and PHP quote style are detected from the file
+ * on disk, existing keys keep their on-disk order, and new keys are inserted
+ * in sorted position among their siblings. The mutate path re-reads the file
+ * with metadata (bypassing
  * the mtime read cache by design) and the write clears the cache entry, so
  * cached readers stay consistent.
  *
@@ -317,7 +318,7 @@ function resolveLayerDir(config: I18nConfig, layer: string): string | null {
   return dir.path
 }
 
-async function hasNamespacedJsonLayout(config: I18nConfig, layer: string): Promise<boolean> {
+async function hasNamespacedLayout(config: I18nConfig, layer: string, format: LocaleFormat): Promise<boolean> {
   const localeDir = resolveLayerDir(config, layer)
   if (!localeDir) return false
 
@@ -328,7 +329,7 @@ async function hasNamespacedJsonLayout(config: I18nConfig, layer: string): Promi
       try {
         if (existsSync(subPath)) {
           const subFiles = await readdir(subPath)
-          if (subFiles.some(f => f.endsWith('.json'))) return true
+          if (subFiles.some(f => matchExtension(f, format.extensions))) return true
         }
       }
       catch { /* skip unreadable dirs */ }
@@ -339,7 +340,12 @@ async function hasNamespacedJsonLayout(config: I18nConfig, layer: string): Promi
   return false
 }
 
-async function resolveNamespacedEntries(localeDir: string, localeCode: string, extension: '.json' | '.php'): Promise<LocaleEntry[]> {
+/** The extension a file name ends with, out of the ones given. */
+function matchExtension(fileName: string, extensions: readonly string[]): string | undefined {
+  return extensions.find(ext => fileName.toLowerCase().endsWith(ext))
+}
+
+async function resolveNamespacedEntries(localeDir: string, localeCode: string, extensions: readonly string[]): Promise<LocaleEntry[]> {
   const localePath = join(localeDir, localeCode)
 
   if (!existsSync(localePath)) return []
@@ -354,10 +360,13 @@ async function resolveNamespacedEntries(localeDir: string, localeCode: string, e
   }
 
   return files
-    .filter(f => f.endsWith(extension))
-    .sort()
-    .map(f => ({
-      path: join(localePath, f),
-      namespace: f.slice(0, -extension.length),
+    .flatMap((f) => {
+      const extension = matchExtension(f, extensions)
+      return extension ? [{ file: f, extension }] : []
+    })
+    .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0))
+    .map(({ file, extension }) => ({
+      path: join(localePath, file),
+      namespace: file.slice(0, -extension.length),
     }))
 }
