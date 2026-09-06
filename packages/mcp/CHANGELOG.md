@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-mcp-8.0.0...the-i18n-kit-mcp-9.0.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** `vite.config.ts` is no longer read. A Vue project whose locale files are not in `locales`, `src/locales`, `i18n/locales`, `src/i18n/locales` or `src/i18n` must declare `localeDirs` (and `defaultLocale`) in `i18n-kit.config.ts` or `.i18n-mcp.json`; run `the-i18n-cli init` to write them. Several locale directories are declared as `localeDirs: [{ path, layer }]` rather than derived from the plugin's `include`. A probed single directory is the layer `default`, where the Vue adapter named it `root`. `framework: "vue"` still validates and resolves, through the generic adapter, with a warning.
+* CLI commands `add`, `update`, `empty`, `rename`, `detect`, `list-dirs`, `scan`, `remove-orphans` and the `translate-missing` alias are removed; `orphans` and `discover` replace them where they had a job. MCP tools `find_empty_translations`, `rename_translation_key` and `remove_orphan_keys` are removed, folded into `get_translation_status`, `move_translation_key` and `find_orphan_keys`. `moveTranslationKey` takes `layer` and an optional `toLayer` in place of `fromLayer`/`toLayer`; the `@deprecated` core functions `addTranslations` and `updateTranslations`, and the `AddTranslationsResult`/`UpdateTranslationsResult` types, are removed in favour of `writeTranslations` with `mode`.
+
+### Features
+
+* **cli:** remember source hashes so translate can tell stale targets from current ones ([#444](https://github.com/fabkho/the-i18n-kit/issues/444)) ([d9b8629](https://github.com/fabkho/the-i18n-kit/commit/d9b86290229e04d493e512154abc404fb54e7c9d))
+* **config:** infer the consumer graph from workspace dependencies ([#442](https://github.com/fabkho/the-i18n-kit/issues/442)) ([8c92636](https://github.com/fabkho/the-i18n-kit/commit/8c92636b513c677674571059398b7893bf7b1fb5))
+* **io:** YAML locale files, behind a format registry ([#445](https://github.com/fabkho/the-i18n-kit/issues/445)) ([d104bb9](https://github.com/fabkho/the-i18n-kit/commit/d104bb91f39f7410dcdb28f5a325aab5e98aaa86))
+* **mcp:** progress notifications for orphan scans ([#450](https://github.com/fabkho/the-i18n-kit/issues/450)) ([11a5558](https://github.com/fabkho/the-i18n-kit/commit/11a5558fd636591bb88adb851e28cdb75b81262b))
+* prune the command and tool surface ([#440](https://github.com/fabkho/the-i18n-kit/issues/440)) ([f78d0cd](https://github.com/fabkho/the-i18n-kit/commit/f78d0cd0c14296863784fb47633a1222e08a05ed))
+
+
+### Bug Fixes
+
+* **cli:** drop the stale claim that google rejects a base URL ([1e9c374](https://github.com/fabkho/the-i18n-kit/commit/1e9c374747e38c6eca5355f5d93ef1aafaa8534e))
+
+
+### Code Refactoring
+
+* **cli:** resolve Vue projects through the generic adapter ([#452](https://github.com/fabkho/the-i18n-kit/issues/452)) ([ff22200](https://github.com/fabkho/the-i18n-kit/commit/ff2220040963f818005af42b79d479b43adc774a))
+
 ## [8.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-mcp-7.5.0...the-i18n-kit-mcp-8.0.0) (2026-09-06)
 
 

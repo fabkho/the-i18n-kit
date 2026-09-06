@@ -1,5 +1,43 @@
 # Changelog
 
+## [7.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-cli-6.0.0...the-i18n-kit-cli-7.0.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** `vite.config.ts` is no longer read. A Vue project whose locale files are not in `locales`, `src/locales`, `i18n/locales`, `src/i18n/locales` or `src/i18n` must declare `localeDirs` (and `defaultLocale`) in `i18n-kit.config.ts` or `.i18n-mcp.json`; run `the-i18n-cli init` to write them. Several locale directories are declared as `localeDirs: [{ path, layer }]` rather than derived from the plugin's `include`. A probed single directory is the layer `default`, where the Vue adapter named it `root`. `framework: "vue"` still validates and resolves, through the generic adapter, with a warning.
+* **ci:** the action no longer commits or opens a pull request, so these inputs and outputs are removed: inputs `create_pr`, `pr_branch`, `pr_title`, `commit_message`, `base_branch`, `github_token`; outputs `gate_tripped`, `pr_url`. Add a commit step to the workflow instead, as shown on the GitHub Actions docs page, and guard it with `if: ${{ !cancelled() }}` so a tripped gate keeps what the run wrote. The GitLab variable `I18N_AUTOCOMMIT_SKIP_CI` is removed: put `[skip ci]` in `I18N_COMMIT_MESSAGE` instead.
+* CLI commands `add`, `update`, `empty`, `rename`, `detect`, `list-dirs`, `scan`, `remove-orphans` and the `translate-missing` alias are removed; `orphans` and `discover` replace them where they had a job. MCP tools `find_empty_translations`, `rename_translation_key` and `remove_orphan_keys` are removed, folded into `get_translation_status`, `move_translation_key` and `find_orphan_keys`. `moveTranslationKey` takes `layer` and an optional `toLayer` in place of `fromLayer`/`toLayer`; the `@deprecated` core functions `addTranslations` and `updateTranslations`, and the `AddTranslationsResult`/`UpdateTranslationsResult` types, are removed in favour of `writeTranslations` with `mode`.
+
+### Features
+
+* **cli:** call LLM providers over fetch, drop the SDK peer dependencies ([#436](https://github.com/fabkho/the-i18n-kit/issues/436)) ([86b8fea](https://github.com/fabkho/the-i18n-kit/commit/86b8fea8f375a70166fe1ab2e365041a40cf4534))
+* **cli:** check --write, Code Quality for missing/status/duplicates, overwriteStale on translate ([#451](https://github.com/fabkho/the-i18n-kit/issues/451)) ([63b5760](https://github.com/fabkho/the-i18n-kit/commit/63b5760aad56b4fd891e8f067b1f659c38b2b99f))
+* **cli:** remember source hashes so translate can tell stale targets from current ones ([#444](https://github.com/fabkho/the-i18n-kit/issues/444)) ([d9b8629](https://github.com/fabkho/the-i18n-kit/commit/d9b86290229e04d493e512154abc404fb54e7c9d))
+* **cli:** validate ICU MessageFormat structure before writing a translation ([#443](https://github.com/fabkho/the-i18n-kit/issues/443)) ([b08090e](https://github.com/fabkho/the-i18n-kit/commit/b08090e2504e365eaae032990d1a02a82e0f0d06))
+* **config:** infer the consumer graph from workspace dependencies ([#442](https://github.com/fabkho/the-i18n-kit/issues/442)) ([8c92636](https://github.com/fabkho/the-i18n-kit/commit/8c92636b513c677674571059398b7893bf7b1fb5))
+* **io:** YAML locale files, behind a format registry ([#445](https://github.com/fabkho/the-i18n-kit/issues/445)) ([d104bb9](https://github.com/fabkho/the-i18n-kit/commit/d104bb91f39f7410dcdb28f5a325aab5e98aaa86))
+* **mcp:** progress notifications for orphan scans ([#450](https://github.com/fabkho/the-i18n-kit/issues/450)) ([11a5558](https://github.com/fabkho/the-i18n-kit/commit/11a5558fd636591bb88adb851e28cdb75b81262b))
+* prune the command and tool surface ([#440](https://github.com/fabkho/the-i18n-kit/issues/440)) ([f78d0cd](https://github.com/fabkho/the-i18n-kit/commit/f78d0cd0c14296863784fb47633a1222e08a05ed))
+
+
+### Bug Fixes
+
+* **cli:** drop the stale claim that google rejects a base URL ([1e9c374](https://github.com/fabkho/the-i18n-kit/commit/1e9c374747e38c6eca5355f5d93ef1aafaa8534e))
+* **cli:** sort orphan keys by code point so reports diff the same on every machine ([a69af23](https://github.com/fabkho/the-i18n-kit/commit/a69af23ceeb632d3aebfbd95e91f15d2f8765bc0))
+* **cli:** status --listEmpty lists exactly the counted keys ([6d348d4](https://github.com/fabkho/the-i18n-kit/commit/6d348d452f42f199ed6509122fbf776b8c2b6016))
+
+
+### Performance Improvements
+
+* **scanner:** bounded-concurrency reads; status reports unconsumed layers ([#437](https://github.com/fabkho/the-i18n-kit/issues/437)) ([ff2951b](https://github.com/fabkho/the-i18n-kit/commit/ff2951b4341242b7cc92482b0cbedcfc0698a7d2))
+
+
+### Code Refactoring
+
+* **ci:** thin the GitHub Action and GitLab template to what only they can do ([#448](https://github.com/fabkho/the-i18n-kit/issues/448)) ([60f7c53](https://github.com/fabkho/the-i18n-kit/commit/60f7c53d9fb41a5070aba61bafbe90aa0e84d6f7))
+* **cli:** resolve Vue projects through the generic adapter ([#452](https://github.com/fabkho/the-i18n-kit/issues/452)) ([ff22200](https://github.com/fabkho/the-i18n-kit/commit/ff2220040963f818005af42b79d479b43adc774a))
+
 ## [6.0.0](https://github.com/fabkho/the-i18n-kit/compare/the-i18n-kit-cli-5.0.0...the-i18n-kit-cli-6.0.0) (2026-09-06)
 
 
