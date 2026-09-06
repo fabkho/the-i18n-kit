@@ -329,6 +329,21 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json?.layers).toBeDefined()
   })
 
+  // The diversion is the registrar's, not the operation's: the tool handler
+  // applies it to whatever the operation returned.
+  it('get_missing_translations writes the full result to outputFile and returns the summary', async () => {
+    const outputFile = join(projectDir, 'missing.json')
+    const { json } = await callTool('get_missing_translations', { projectDir, outputFile })
+
+    expect(Object.keys(json ?? {}).sort()).toEqual(['reportFile', 'summary'])
+    expect(json?.reportFile).toBe(outputFile)
+    expect(json?.summary.totalMissingKeys).toBeGreaterThan(0)
+
+    const report = JSON.parse(await readFile(outputFile, 'utf-8')) as Record<string, unknown>
+    expect(report.tool).toBe('get_missing_translations')
+    expect(report.missing).toBeDefined()
+  })
+
   it('get_translation_status marks protected locales as excluded', async () => {
     const dir = await makeProject({ protectedLocales: ['en'] })
     const { json } = await callTool('get_translation_status', { projectDir: dir })

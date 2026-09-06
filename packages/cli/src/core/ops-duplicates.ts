@@ -6,7 +6,6 @@
 import { detectI18nConfig } from '../config/detector.js'
 import { buildLayerGraph } from '../config/layer-graph.js'
 import type { I18nConfig, LocaleDefinition, LocaleDir } from '../config/types.js'
-import { writeReportFile } from '../io/json-writer.js'
 import { readLocaleData } from '../io/locale-data.js'
 import { getNestedValue, getLeafKeys } from '../io/key-operations.js'
 import { buildIgnorePatternRegexes } from '../scanner/code-scanner.js'
@@ -14,7 +13,6 @@ import { ToolError } from '../utils/errors.js'
 
 import { findLocaleImpl, findLocaleOrThrow } from './shared.js'
 import { resolveOrphanIgnorePatterns } from './ops-orphans.js'
-import { resolveOutputFile, resolveReportFilePath } from './report.js'
 
 export interface DuplicateKeyCollision {
   key: string
@@ -317,7 +315,6 @@ async function findCollisions(
 export async function findDuplicateKeys(opts: {
   locale?: string
   projectDir?: string
-  outputFile?: string
   /**
    * Also group keys by the value they carry. Off by default: it reads every
    * canonical layer rather than only the paired ones, and the existing result
@@ -326,7 +323,7 @@ export async function findDuplicateKeys(opts: {
   byValue?: boolean
   /** Shortest value worth grouping. Below it, repetition is usually legitimate. */
   minValueLength?: number
-} = {}): Promise<FindDuplicateKeysResult | { reportFile: string; summary: FindDuplicateKeysSummary }> {
+} = {}): Promise<FindDuplicateKeysResult> {
   const dir = opts.projectDir ?? process.cwd()
   const config = await detectI18nConfig(dir)
 
@@ -382,21 +379,10 @@ export async function findDuplicateKeys(opts: {
     ...(pairs.length === 0 ? { message: emptyPairsMessage(config) } : {}),
   }
 
-  const output: FindDuplicateKeysResult = {
+  return {
     collisions,
     ...(valueDuplicates ? { valueDuplicates } : {}),
     guidance: valueDuplicates ? `${DUPLICATE_GUIDANCE}\n\n${VALUE_DUPLICATE_GUIDANCE}` : DUPLICATE_GUIDANCE,
     summary,
   }
-
-  const reportPath = resolveOutputFile(dir, opts.outputFile) ?? resolveReportFilePath(config, dir, 'find_duplicate_keys')
-  if (reportPath) {
-    await writeReportFile(reportPath, output as unknown as Record<string, unknown>, {
-      tool: 'find_duplicate_keys',
-      args: { locale: opts.locale, byValue: opts.byValue, minValueLength: opts.minValueLength },
-    })
-    return { reportFile: reportPath, summary }
-  }
-
-  return output
 }

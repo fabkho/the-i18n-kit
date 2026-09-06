@@ -43,6 +43,7 @@ vi.mock('../../src/config/detector.js', async () => {
 })
 
 const { getTranslationStatus } = await import('../../src/core/operations.js')
+const { runOperation } = await import('../fixtures/surface.js')
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'i18n-status-'))
@@ -251,6 +252,8 @@ describe('layer consumption', () => {
   })
 })
 
+// The file is the surface's doing — the operation always returns everything —
+// so this asks for one the way a surface does.
 describe('output size', () => {
   it('returns only the summary when outputFile is given', async () => {
     await project({
@@ -258,11 +261,13 @@ describe('output size', () => {
       layers: { root: { en: { a: '1' }, de: {} } },
     })
 
-    const result = await getTranslationStatus({ projectDir: dir, outputFile: 'status.json' })
+    const result = await runOperation<{ reportFile: string; summary: { completionPercent: number } }>(
+      'status',
+      { projectDir: dir, outputFile: 'status.json' },
+    )
 
     expect(result.reportFile).toContain('status.json')
-    expect(result.locales).toBeUndefined()
-    expect(result.layers).toBeUndefined()
+    expect(Object.keys(result).sort()).toEqual(['reportFile', 'summary'])
     expect(result.summary.completionPercent).toBe(0)
 
     // The breakdown is not lost, just moved.

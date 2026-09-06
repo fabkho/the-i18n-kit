@@ -13,6 +13,22 @@
  */
 
 import { BASE_URL_ENV } from '../llm/providers.js'
+// The two mappings a report can carry. Imported outright rather than per run
+// like the operations below: they are pure transforms over a result, with
+// nothing behind them but a hash and a path join.
+import { orphanResultToCodeQuality, undefinedKeysToCodeQuality } from '../core/codequality.js'
+// The result types the report builders below are written against. Type-only,
+// so the core barrel is still not loaded to print usage text.
+import type { CheckUndefinedKeysResult } from '../core/ops-check.js'
+import type { FindDuplicateKeysResult } from '../core/ops-duplicates.js'
+import type {
+  CodeUsageResult,
+  FindOrphanKeysResult,
+  MissingTranslationsResult,
+  RemoveOrphanKeysResult,
+  SearchTranslationsResult,
+  TranslationStatusResult,
+} from '../core/types.js'
 import { defineOperation } from './types.js'
 import type { AnyOperationDescriptor, ParamSpec, Params } from './types.js'
 import {
@@ -21,6 +37,9 @@ import {
 } from './guidance.js'
 
 const core = () => import('../core/operations.js')
+
+/** What the orphans command answers with, whichever of its three questions was asked. */
+type OrphanCommandResult = FindOrphanKeysResult | RemoveOrphanKeysResult | CodeUsageResult
 
 // ─── Shared parameter fragments ──────────────────────────────────
 // One concept, one description. These used to be fifteen hand-written
@@ -53,19 +72,6 @@ const dryRun = (description: string) => ({
   type: 'boolean',
   default: false,
   description,
-} as const satisfies ParamSpec)
-
-const outputFile = (example: string) => ({
-  type: 'string',
-  description: `Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "${example}"`,
-} as const satisfies ParamSpec)
-
-const codequalityOutput = (findings: string) => ({
-  type: 'string',
-  description: `Also write the ${findings} as a GitLab Code Quality (CodeClimate) JSON report to this file path.`,
-  // A pipeline artifact means nothing to an MCP host, which reads the result it
-  // is handed rather than a file a runner collects afterwards.
-  mcp: { hidden: true },
 } as const satisfies ParamSpec)
 
 const scanDirs = {
@@ -267,7 +273,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         // `--targets` was the CLI spelling before the two surfaces agreed.
         cli: { alias: 'targets' },
       },
-      outputFile: outputFile('/tmp/missing-translations.json'),
       failOnMissing: {
         type: 'boolean',
         default: false,
@@ -277,6 +282,11 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       },
     },
     gates: [{ flag: 'failOnMissing', counter: 'totalMissingKeys', threshold: 0 }],
+    report: {
+      name: 'get_missing_translations',
+      outputFile: { example: '/tmp/missing-translations.json' },
+      summary: (result: MissingTranslationsResult) => result.summary,
+    },
     async run(args) {
       const { getMissingTranslations } = await core()
       return getMissingTranslations({
@@ -284,7 +294,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         referenceLocale: args.referenceLocale,
         targetLocales: args.targetLocales,
         projectDir: args.projectDir,
-        outputFile: args.outputFile,
       })
     },
   }),
@@ -303,7 +312,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         default: false,
         description: 'Also list the keys whose value is an empty string, under "empty", by locale and layer — useful after a scaffold or an interrupted translation run. Default: false, which returns counts only.',
       },
-      outputFile: outputFile('/tmp/translation-status.json'),
       failUnder: {
         type: 'number',
         description: 'Exit 2 when overall completion is below this percentage (CI gate).',
@@ -313,6 +321,13 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
     // The threshold comes from the flag's own value; `direction: below` is what
     // makes this a floor rather than a ceiling (see resolveExitCode).
     gates: [{ flag: 'failUnder', counter: 'completionPercent', direction: 'below' }],
+    report: {
+      name: 'get_translation_status',
+      outputFile: { example: '/tmp/translation-status.json' },
+      // Summary only: the per-locale and per-layer arrays grow with the
+      // project, and a health check must never flood a caller's context.
+      summary: (result: TranslationStatusResult) => result.summary,
+    },
     async run(args) {
       const { getTranslationStatus } = await core()
       return getTranslationStatus({
@@ -320,7 +335,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         referenceLocale: args.referenceLocale,
         listEmpty: args.listEmpty,
         projectDir: args.projectDir,
-        outputFile: args.outputFile,
       })
     },
   }),
@@ -353,12 +367,18 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         type: 'string',
         description: 'Locale code to search in (e.g., "en", "de"). If omitted, searches every locale.',
       },
+    },
+    report: {
+      name: 'search_translations',
       outputFile: {
-        ...outputFile('/tmp/search-results.json'),
+        example: '/tmp/search-results.json',
         // The only read operation the CLI never gave a report path to. Left as
         // it was rather than quietly growing the command's surface.
         cli: { hidden: true },
       },
+      // The one operation whose result carries no summary of its own: the match
+      // count is what is left of it once the matches are on disk.
+      summary: (result: SearchTranslationsResult) => ({ totalMatches: result.totalMatches }),
     },
     async run(args) {
       const { searchTranslations } = await core()
@@ -368,7 +388,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         layer: args.layer,
         locale: args.locale,
         projectDir: args.projectDir,
-        outputFile: args.outputFile,
       })
     },
   }),
@@ -601,8 +620,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       },
       scanDirs,
       excludeDirs,
-      outputFile: outputFile('/tmp/undefined-keys.json'),
-      codequalityOutput: codequalityOutput('findings'),
     },
     /**
      * Always on, and a gate rather than a run failure. A key that renders raw in
@@ -610,10 +627,20 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
      * but it is still a finding, and reporting it as exit 1 left the caller
      * unable to tell an undefined key from a scan that fell over.
      *
-     * Reads summary.undefinedCount, so it trips on inline results and on the
-     * { reportFile, summary } shape alike. Uncertain findings never trip it.
+     * Reads summary.undefinedCount, which the result carries whether or not it
+     * was diverted to a file. Uncertain findings never trip it.
      */
     gates: [{ name: 'undefined-keys', counter: 'undefinedCount', threshold: 0 }],
+    report: {
+      name: 'find_undefined_keys',
+      outputFile: { example: '/tmp/undefined-keys.json' },
+      summary: (result: CheckUndefinedKeysResult) => result.summary,
+      codequality: {
+        findings: 'findings',
+        // Uncertain findings are deliberately not mapped; see codequality.ts.
+        issues: (result: CheckUndefinedKeysResult) => undefinedKeysToCodeQuality(result.undefinedKeys),
+      },
+    },
     async run(args) {
       const { checkUndefinedKeys } = await core()
       return checkUndefinedKeys({
@@ -621,8 +648,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         scanDirs: args.scanDirs,
         excludeDirs: args.excludeDirs,
         projectDir: args.projectDir,
-        outputFile: args.outputFile,
-        codequalityOutput: args.codequalityOutput,
       })
     },
   }),
@@ -665,8 +690,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       },
       scanDirs,
       excludeDirs,
-      outputFile: outputFile('/tmp/orphan-keys.json'),
-      codequalityOutput: codequalityOutput('orphan findings'),
       failOnOrphans: {
         type: 'boolean',
         default: false,
@@ -675,6 +698,26 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       },
     },
     gates: [{ flag: 'failOnOrphans', counter: 'orphanCount', threshold: 0 }],
+    report: {
+      // Three questions, three report names — the paths pipelines archive.
+      name: args => (args.usages === true
+        ? 'scan_code_usage'
+        : args.remove === true ? 'remove_orphan_keys' : 'find_orphan_keys'),
+      outputFile: { example: '/tmp/orphan-keys.json' },
+      summary: (result: OrphanCommandResult) => result.summary,
+      codequality: {
+        findings: 'orphan findings',
+        // A result carrying usages answers where keys are referenced, which is
+        // not a finding — nothing to write, not even the empty baseline.
+        issues: (result: OrphanCommandResult, ctx) => ('usages' in result
+          ? undefined
+          : orphanResultToCodeQuality(result, {
+              config: ctx.config,
+              projectDir: ctx.projectDir,
+              locale: ctx.args.locale,
+            })),
+      },
+    },
     async run(args) {
       const { findOrphanKeys, removeOrphanKeys, scanCodeUsage } = await core()
 
@@ -687,7 +730,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
           scanDirs: args.scanDirs,
           excludeDirs: args.excludeDirs,
           projectDir: args.projectDir,
-          outputFile: args.outputFile,
         })
       }
 
@@ -702,8 +744,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
           excludeDirs: args.excludeDirs,
           dryRun: false,
           projectDir: args.projectDir,
-          outputFile: args.outputFile,
-          codequalityOutput: args.codequalityOutput,
         })
       }
 
@@ -713,8 +753,6 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         scanDirs: args.scanDirs,
         excludeDirs: args.excludeDirs,
         projectDir: args.projectDir,
-        outputFile: args.outputFile,
-        codequalityOutput: args.codequalityOutput,
       })
     },
   }),
@@ -741,14 +779,17 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         min: 1,
         description: 'Shortest value worth grouping when byValue is set. Default: 4 — below that, values like "OK" repeat across unrelated namespaces legitimately.',
       },
-      outputFile: outputFile('/tmp/duplicate-keys.json'),
+    },
+    report: {
+      name: 'find_duplicate_keys',
+      outputFile: { example: '/tmp/duplicate-keys.json' },
+      summary: (result: FindDuplicateKeysResult) => result.summary,
     },
     async run(args) {
       const { findDuplicateKeys } = await core()
       return findDuplicateKeys({
         locale: args.locale,
         projectDir: args.projectDir,
-        outputFile: args.outputFile,
         byValue: args.byValue,
         minValueLength: args.minValueLength,
       })

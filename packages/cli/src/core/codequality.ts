@@ -17,6 +17,7 @@ import { join, relative } from 'node:path'
 import type { I18nConfig, LocaleDefinition } from '../config/types.js'
 
 import type { UndefinedKeyFinding } from './ops-check.js'
+import { resolveReferenceLocale } from './shared.js'
 
 export interface CodeQualityIssue {
   description: string
@@ -98,6 +99,27 @@ export function orphanKeysToCodeQuality(
     }
   }
   return issues
+}
+
+/**
+ * The orphan findings of a result — whatever the run was asked to do with
+ * them — mapped and anchored in one call.
+ *
+ * Takes the result rather than the scan internals, which is what lets the
+ * mapping run where the result is handed over instead of inside the operation.
+ * A removal run reports what it deleted; either way the keys are the same set
+ * the scan found, and nothing else in the result is a finding.
+ */
+export function orphanResultToCodeQuality(
+  result: { orphanKeys?: Record<string, string[]>; removed?: Record<string, string[]> },
+  ctx: { config: I18nConfig; projectDir: string; locale?: string },
+): CodeQualityIssue[] {
+  const orphansByLayer = result.orphanKeys ?? result.removed ?? {}
+  const { localeDef } = resolveReferenceLocale(ctx.config, ctx.locale)
+  return orphanKeysToCodeQuality(
+    orphansByLayer,
+    referenceLocaleAnchorPaths(ctx.config, Object.keys(orphansByLayer), localeDef, ctx.projectDir),
+  )
 }
 
 /**

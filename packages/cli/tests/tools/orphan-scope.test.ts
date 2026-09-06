@@ -16,6 +16,9 @@ vi.mock('../../src/config/detector.js', async importOriginal =>
   (await import('../fixtures/holder-detector.js')).holderDetectorMock(holder, importOriginal))
 
 const { findOrphanKeys, removeOrphanKeys } = await import('../../src/core/operations.js')
+// The Code Quality report is derived from the result by the surface, so the
+// case that asks for one runs the operation the way a surface does.
+const { runOperation } = await import('../fixtures/surface.js')
 
 let projectDir: string
 let adminDir: string
@@ -141,9 +144,12 @@ describe('removeOrphanKeys — scope-aware', () => {
 
   it('codequalityOutput writes orphan issues anchored at each layer\'s reference-locale file', async () => {
     const cqPath = join(projectDir, 'gl-codequality.json')
-    const result = await removeOrphanKeys({ projectDir, codequalityOutput: cqPath })
+    const result = await runOperation<{ orphanKeys: Record<string, string[]> }>('orphans', {
+      projectDir,
+      codequalityOutput: cqPath,
+    })
 
-    // The flag is additive: the normal dry-run result is unchanged.
+    // The flag is additive: the normal report result is unchanged.
     expect(result.orphanKeys).toEqual(expectedOrphans)
 
     const issues = JSON.parse(await readFile(cqPath, 'utf-8')) as Array<Record<string, any>>

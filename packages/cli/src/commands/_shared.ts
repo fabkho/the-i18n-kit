@@ -7,6 +7,7 @@ import { createTranslateFn, resolveProviderBaseUrl, BASE_URL_ENV } from '../llm/
 import type { LlmProvider } from '../llm/providers.js'
 import type { TranslateFn } from '../core/types.js'
 import { loadProjectConfig } from '../config/project-config.js'
+import { divertToReport } from '../surface/report.js'
 import type {
   AnyOperationDescriptor,
   FlaggedGateSpec,
@@ -48,6 +49,14 @@ export function createCommand(opts: {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
   run: (args: any) => Promise<unknown>
+  /**
+   * Applied to the result after the gates have been evaluated. That order is
+   * the point: a run that writes its result to a file still exits on the
+   * counters that result carried, so `--output-file` and a gate flag combine
+   * the way a pipeline expects.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- as above
+  divert?: (result: unknown, args: any) => Promise<unknown>
 }): CommandDef {
   // Retained on the definition, not only consumed here: the generated CLI
   // reference has to state which commands fail a build on findings, and a gate
@@ -59,7 +68,8 @@ export function createCommand(opts: {
       try {
         const result = await opts.run(args)
         const decision = resolveExitCode(result, requestedGates(opts.gates ?? [], args), isTotalFailure(result))
-        outputResult(withGateReport(result, decision.tripped), args)
+        const output = opts.divert === undefined ? result : await opts.divert(result, args)
+        outputResult(withGateReport(output, decision.tripped), args)
         // Assign only on a non-zero decision: a clean run must leave the exit
         // code exactly as it found it, as it did before gates existed.
         if (decision.code !== EXIT_SUCCESS) process.exitCode = decision.code
@@ -136,8 +146,9 @@ export function resolveExitCode(
 }
 
 /**
- * Read a gate's counter off result.summary. Works on inline results and on
- * the { reportFile, summary } shape alike, since both carry the summary.
+ * Read a gate's counter off result.summary. Gates are evaluated before a result
+ * is diverted to a file, so this sees the whole result — and it still reads the
+ * { reportFile, summary } shape, which carries the same summary.
  * A missing or non-numeric counter yields undefined and never trips a gate.
  */
 function observedValue(result: unknown, counter: string): number | undefined {
@@ -305,6 +316,8 @@ export function commandFromDescriptor(descriptor: AnyOperationDescriptor): Comma
         ? await resolveProviderTranslateFn(args)
         : undefined,
     }),
+    divert: async (result, args) =>
+      divertToReport(result, descriptor, operationArgs(descriptor.params, args)),
   })
 }
 

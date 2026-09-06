@@ -181,16 +181,13 @@ export interface InitProjectConfigResult {
 // ─── get_missing_translations ────────────────────────────────────
 
 export interface MissingTranslationsResult {
-  /** Absent when the full report went to `reportFile` instead. */
-  missing?: Record<string, Record<string, string[]>>
+  missing: Record<string, Record<string, string[]>>
   summary: {
     referenceLocale: string | LocaleRefInfo
     targetLocales: Array<string | LocaleRefInfo>
     layersScanned: string[]
     totalMissingKeys: number
   }
-  /** Present when reportOutput is configured */
-  reportFile?: string
 }
 
 // ─── status ──────────────────────────────────────────────────────
@@ -242,8 +239,8 @@ export interface TranslationStatusSummary {
 }
 
 export interface TranslationStatusResult {
-  locales?: LocaleStatus[]
-  layers?: LayerStatus[]
+  locales: LocaleStatus[]
+  layers: LayerStatus[]
   /**
    * Locale → layer → the keys whose value is an empty string. Present only when
    * the caller asked to list them; `summary.emptyKeys` counts them either way.
@@ -252,22 +249,17 @@ export interface TranslationStatusResult {
    */
   empty?: Record<string, Record<string, string[]>>
   summary: TranslationStatusSummary
-  /** Present when the full breakdown went to a file instead. */
-  reportFile?: string
 }
 
 // ─── empty translations ────────────────────────────────────────────
 
 export interface EmptyTranslationsResult {
-  /** Absent when the full report went to `reportFile` instead. */
-  emptyKeys?: Record<string, Record<string, string[]>>
+  emptyKeys: Record<string, Record<string, string[]>>
   summary: {
     totalEmpty: number
     localesChecked: string[]
     layersChecked: string[]
   }
-  /** Present when reportOutput is configured */
-  reportFile?: string
 }
 
 // ─── search_translations ─────────────────────────────────────────
@@ -594,8 +586,7 @@ export interface UnresolvedKeyWarningRef {
 }
 
 export interface FindOrphanKeysResult {
-  /** Absent when the full report went to `reportFile` instead. */
-  orphanKeys?: Record<string, string[]>
+  orphanKeys: Record<string, string[]>
   uncertainKeys?: Record<string, string[]>
   /**
    * Keys kept alive solely by the bare-candidate net — nothing a frontend
@@ -629,16 +620,13 @@ export interface FindOrphanKeysResult {
   dynamicKeyWarning?: string
   dynamicKeys?: DynamicKeyRef[]
   unresolvedKeyWarnings?: UnresolvedKeyWarningRef[]
-  /** Present when reportOutput is configured */
-  reportFile?: string
 }
 
 // ─── scan_code_usage ─────────────────────────────────────────────
 
 /** Where each requested key is referenced in source. */
 export interface CodeUsageResult {
-  /** Absent when the full report went to `reportFile` instead. */
-  usages?: Record<string, CodeUsageRef[]>
+  usages: Record<string, CodeUsageRef[]>
   /** Requested keys with no reference anywhere in the scanned source. */
   notFoundInCode?: string[]
   /** Dynamic expressions that could reach the requested keys. */
@@ -652,8 +640,6 @@ export interface CodeUsageResult {
     dirsScanned?: string[]
     message?: string
   }
-  /** Present when the full report went to a file instead. */
-  reportFile?: string
 }
 
 export interface CodeUsageRef {
@@ -674,8 +660,6 @@ export interface ScanCodeUsageResult {
   }
   notFoundInCode?: string[]
   dynamicKeys?: DynamicKeyRef[]
-  /** Present when reportOutput is configured */
-  reportFile?: string
 }
 
 // ─── remove_orphan_keys ─────────────────────────────────
@@ -708,8 +692,6 @@ export interface RemoveOrphanKeysResult {
   dynamicKeyWarning?: string
   dynamicKeys?: DynamicKeyRef[]
   unresolvedKeyWarnings?: UnresolvedKeyWarningRef[]
-  /** Present when reportOutput is configured */
-  reportFile?: string
 }
 
 // ─── scaffold_locale ─────────────────────────────────────────────
