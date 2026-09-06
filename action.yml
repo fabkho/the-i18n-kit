@@ -47,7 +47,7 @@ inputs:
   cli_version:
     description: '@the-i18n-kit/cli version to install (npm dist-tag or version). Use "skip" if the CLI is already installed (e.g. a local build).'
     required: false
-    default: 'latest'
+    default: '7'
 
 outputs:
   translated_count:
