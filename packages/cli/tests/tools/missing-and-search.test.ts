@@ -1,14 +1,18 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { resolve, join } from 'node:path'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { readLocaleFile } from '../../src/io/json-reader.js'
 import { getLeafKeys, getNestedValue } from '../../src/io/key-operations.js'
 import type { I18nConfig } from '../../src/config/types.js'
-import { registerDetectorMock, playgroundDir, appAdminDir } from '../fixtures/mock-detector.js'
+import type { SearchKeyMatch, SearchMatch } from '../../src/core/types.js'
+import { registerDetectorMock, registerFixtureConfig, playgroundDir, appAdminDir } from '../fixtures/mock-detector.js'
 
 // Register the shared detector mock (vi.mock is hoisted by Vitest)
 registerDetectorMock()
 
 const { detectI18nConfig, clearConfigCache } = await import('../../src/config/detector.js')
+const { searchTranslations } = await import('../../src/core/operations.js')
 
 describe('get_missing_translations logic', () => {
   describe('app-admin', () => {
@@ -347,6 +351,169 @@ describe('search_translations logic', () => {
       expect(allMatches.some(m => m.includes('common.actions.save'))).toBe(true)
       expect(allMatches.some(m => m.includes('admin.dashboard.title'))).toBe(true)
     })
+  })
+})
+
+/**
+ * Two layers that both define common.actions.save, in two locales: the smallest
+ * project in which grouping the matches by key has something to collapse.
+ */
+async function makeSearchProject(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'i18n-search-'))
+  const rootLocales = join(dir, 'i18n', 'locales')
+  const shopLocales = join(dir, 'app-shop', 'i18n', 'locales')
+  await mkdir(rootLocales, { recursive: true })
+  await mkdir(shopLocales, { recursive: true })
+
+  await writeFile(join(rootLocales, 'en.json'), JSON.stringify({
+    common: { actions: { save: 'Save changes', cancel: 'Cancel' } },
+    messages: { welcome: 'Welcome, {name}!' },
+  }))
+  await writeFile(join(rootLocales, 'de.json'), JSON.stringify({
+    common: { actions: { save: 'Änderungen speichern', cancel: 'Abbrechen' } },
+    messages: { welcome: 'Willkommen, {name}!' },
+  }))
+  // app-shop duplicates the root key, which is what `layers` is there to show.
+  await writeFile(join(shopLocales, 'en.json'), JSON.stringify({
+    common: { actions: { save: 'Save changes' } },
+    shop: { checkout: 'Checkout' },
+  }))
+  await writeFile(join(shopLocales, 'de.json'), JSON.stringify({
+    common: { actions: { save: 'Änderungen speichern' } },
+    shop: { checkout: 'Zur Kasse' },
+  }))
+
+  registerFixtureConfig(dir, {
+    rootDir: dir,
+    defaultLocale: 'en',
+    fallbackLocale: { default: ['en'] },
+    locales: [
+      { code: 'en', language: 'en-US', file: 'en.json' },
+      { code: 'de', language: 'de-DE', file: 'de.json' },
+    ],
+    localeDirs: [
+      { path: rootLocales, layer: 'root', layerRootDir: dir },
+      { path: shopLocales, layer: 'app-shop', layerRootDir: join(dir, 'app-shop') },
+    ],
+    layerRootDirs: [dir, join(dir, 'app-shop')],
+    apps: [{ name: 'app-shop', rootDir: join(dir, 'app-shop'), layers: ['app-shop', 'root'] }],
+  })
+  return dir
+}
+
+/**
+ * The result shape, driven through the operation rather than replicated: how
+ * many rows a caller pays for is the contract these assert.
+ */
+describe('searchTranslations result shape', () => {
+  const SAVED_KEY: SearchKeyMatch = {
+    key: 'common.actions.save',
+    layers: ['root', 'app-shop'],
+    value: 'Save changes',
+    locale: 'en',
+    localeCount: 2,
+  }
+
+  let searchDir: string
+
+  beforeAll(async () => {
+    searchDir = await makeSearchProject()
+  })
+
+  afterAll(async () => {
+    await rm(searchDir, { recursive: true, force: true })
+    clearConfigCache()
+  })
+
+  it('returns one row per key, however many locales and layers define it', async () => {
+    const result = await searchTranslations({
+      projectDir: searchDir,
+      query: 'save',
+      searchIn: 'values',
+    })
+
+    expect(result.matches).toEqual([SAVED_KEY])
+    expect(result.totalMatches).toBe(1)
+  })
+
+  it('returns one row per key and locale when includeLocales asks for them', async () => {
+    const result = await searchTranslations({
+      projectDir: searchDir,
+      query: 'save',
+      searchIn: 'values',
+      includeLocales: true,
+    })
+
+    const detail: SearchMatch[] = [
+      { layer: 'root', locale: 'en', key: 'common.actions.save', value: 'Save changes' },
+      { layer: 'app-shop', locale: 'en', key: 'common.actions.save', value: 'Save changes' },
+    ]
+    expect(result.matches).toEqual(detail)
+    expect(result.totalMatches).toBe(2)
+  })
+
+  it('lists every layer that defines the key, not only the ones that matched', async () => {
+    // Matches the German value in both layers, and answers with the reference
+    // locale's value and both layers.
+    const shared = await searchTranslations({
+      projectDir: searchDir,
+      query: 'speichern',
+      searchIn: 'values',
+    })
+
+    expect(shared.matches).toEqual([SAVED_KEY])
+
+    const appOnly = await searchTranslations({
+      projectDir: searchDir,
+      query: 'checkout',
+      searchIn: 'both',
+    })
+
+    expect(appOnly.matches).toEqual([{
+      key: 'shop.checkout',
+      layers: ['app-shop'],
+      value: 'Checkout',
+      locale: 'en',
+      localeCount: 2,
+    }])
+  })
+
+  it('finds a value whose case, punctuation and spacing differ, in fuzzy mode', async () => {
+    const args = { projectDir: searchDir, query: '  SAVE,  CHANGES! ', searchIn: 'values' } as const
+
+    // The default is still a substring match, so the same query finds nothing.
+    expect((await searchTranslations(args)).totalMatches).toBe(0)
+
+    const fuzzy = await searchTranslations({ ...args, matchMode: 'fuzzy' })
+    expect(fuzzy.matches).toEqual([SAVED_KEY])
+  })
+
+  it('leaves unrelated values alone in fuzzy mode', async () => {
+    const result = await searchTranslations({
+      projectDir: searchDir,
+      query: 'delete the whole account',
+      searchIn: 'values',
+      matchMode: 'fuzzy',
+    })
+
+    expect(result.matches).toEqual([])
+    expect(result.totalMatches).toBe(0)
+  })
+
+  it('compares a normalized query against the reference locale unless a locale is named', async () => {
+    const args = { projectDir: searchDir, query: 'anderungen speichern', searchIn: 'values', matchMode: 'exact' } as const
+
+    // English is the reference locale here, and no English value says this.
+    expect((await searchTranslations(args)).totalMatches).toBe(0)
+
+    const german = await searchTranslations({ ...args, locale: 'de' })
+    expect(german.matches).toEqual([{
+      key: 'common.actions.save',
+      layers: ['root', 'app-shop'],
+      value: 'Änderungen speichern',
+      locale: 'de',
+      localeCount: 1,
+    }])
   })
 })
 

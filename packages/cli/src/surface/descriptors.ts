@@ -366,13 +366,13 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
     id: 'search',
     cli: { name: 'search' },
     mcp: { name: 'search_translations', title: 'Search Translations' },
-    description: 'Search translation files by key path or value. A case-insensitive substring match — not fuzzy, not a regular expression.',
-    longDescription: 'Useful for finding an existing translation before adding a duplicate of it.',
+    description: 'Search translation files by key path or value, one compact row per matching key rather than one per key and locale.',
+    longDescription: 'Useful for finding an existing translation before adding a duplicate of it. A key that seven layers and thirty locales define comes back as a single row: layers names every layer that defines it, which is what tells reuse from duplication, and value is the one the reference locale holds. Pass includeLocales for the detail rows — one per key and locale — when what each locale holds is the question. Matching is a case-insensitive substring unless matchMode says otherwise.',
     params: {
       query: {
         type: 'string',
         required: true,
-        description: 'Substring to search for, matched against keys and/or values. Case-insensitive. Example: "save" matches the key "common.actions.save" and the value "Save changes".',
+        description: 'Text to search for, matched against keys and/or values. Compared as a case-insensitive substring unless matchMode says otherwise. Example: "save" matches the key "common.actions.save" and the value "Save changes".',
       },
       searchIn: {
         type: 'string',
@@ -382,6 +382,12 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
         // `--in` was the CLI spelling before the two surfaces agreed.
         cli: { alias: 'in' },
       },
+      matchMode: {
+        type: 'string',
+        enum: ['contains', 'exact', 'fuzzy'],
+        default: 'contains',
+        description: 'How query is compared. "contains" is a case-insensitive substring, over every locale searched. "exact" is the whole string, and "fuzzy" also accepts near-misses in wording, both ignoring case, accents, punctuation and whitespace and both comparing against one locale only — locale when given, otherwise the project default. Default: "contains".',
+      },
       layer: {
         ...layerFilter,
         description: 'Layer name to search in (e.g., "root", "app-admin"), or "*" for all layers. If omitted, searches every layer.',
@@ -389,6 +395,11 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       locale: {
         type: 'string',
         description: 'Locale code to search in (e.g., "en", "de"). If omitted, searches every locale.',
+      },
+      includeLocales: {
+        type: 'boolean',
+        default: false,
+        description: 'Return one row per key and locale — layer, locale, key, value — instead of one row per key. Several times the output for the same findings, so ask for it when the per-locale values are what you are after. Default: false.',
       },
     },
     report: {
@@ -408,6 +419,8 @@ export const descriptors: readonly AnyOperationDescriptor[] = [
       return searchTranslations({
         query: args.query,
         searchIn: args.searchIn,
+        matchMode: args.matchMode,
+        includeLocales: args.includeLocales,
         layer: args.layer,
         locale: args.locale,
         projectDir: args.projectDir,

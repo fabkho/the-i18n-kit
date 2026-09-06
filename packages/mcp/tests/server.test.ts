@@ -214,6 +214,46 @@ describe('the-i18n-mcp server over in-memory transport', () => {
     expect(json).not.toHaveProperty('empty')
   })
 
+  // One row per key, however many locales and layers hold it: the per-locale
+  // rows are most of what an agent spent its context on when all it asked was
+  // whether a translation for this text already exists.
+  it('search_translations answers with one row per key, and per-locale rows on request', async () => {
+    const grouped = await callTool('search_translations', {
+      projectDir,
+      query: 'Speichern',
+      searchIn: 'values',
+    })
+
+    expect(grouped.json?.matches).toEqual([
+      { key: 'actions.save', layers: ['root'], value: 'Speichern', locale: 'de', localeCount: 1 },
+    ])
+    expect(grouped.json?.totalMatches).toBe(1)
+
+    const detailed = await callTool('search_translations', {
+      projectDir,
+      query: 'Speichern',
+      searchIn: 'values',
+      includeLocales: true,
+    })
+
+    expect(detailed.json?.matches).toEqual([
+      { layer: 'root', locale: 'de', key: 'actions.save', value: 'Speichern' },
+    ])
+  })
+
+  it('search_translations matches a value past its case and punctuation in fuzzy mode', async () => {
+    const args = { projectDir, query: '  speichern! ', searchIn: 'values' }
+
+    // Unchanged by default: the substring is not in the value as written.
+    expect((await callTool('search_translations', args)).json?.totalMatches).toBe(0)
+
+    const { json } = await callTool('search_translations', { ...args, matchMode: 'fuzzy' })
+
+    expect(json?.matches).toEqual([
+      { key: 'actions.save', layers: ['root'], value: 'Speichern', locale: 'de', localeCount: 1 },
+    ])
+  })
+
   it('discover returns the project configuration and the agent translation mode', async () => {
     const { json } = await callTool('discover', { projectDir })
 

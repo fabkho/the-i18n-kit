@@ -21,7 +21,7 @@ Every command `@the-i18n-kit/cli` registers is listed below and documented on it
 | [`write`](/reference/cli/write) | Write translation key-value pairs to a layer. Keys are inserted in alphabetical order. |
 | [`missing`](/reference/cli/missing) | Find translation keys that exist in the reference locale but are missing in other locales. Scans a specific layer or all layers. |
 | [`status`](/reference/cli/status) | Translation coverage in one call: per-locale and per-layer counts of total, translated, missing and empty keys, plus an overall completion percentage. |
-| [`search`](/reference/cli/search) | Search translation files by key path or value. A case-insensitive substring match — not fuzzy, not a regular expression. |
+| [`search`](/reference/cli/search) | Search translation files by key path or value, one compact row per matching key rather than one per key and locale. |
 | [`remove`](/reference/cli/remove) | Remove one or more translation keys from ALL locale files in the given layer. |
 | [`move`](/reference/cli/move) | Move a translation key to another layer, to another key path, or both, carrying every locale that defines it. |
 | [`translate`](/reference/cli/translate) | Find the keys missing in the target locales and translate them. Without a translation backend nothing is written: the result carries per-locale fallback contexts to translate by hand instead. |

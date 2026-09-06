@@ -212,9 +212,26 @@ describe('search, whose outputFile only the server offers', () => {
       outputFile,
     })
 
-    expect(result).toEqual({ reportFile: outputFile, summary: { totalMatches: 2 } })
+    // One row: both locales define common.greeting, and the default result is
+    // one row per key.
+    expect(result).toEqual({ reportFile: outputFile, summary: { totalMatches: 1 } })
     const report = JSON.parse(await readFile(outputFile, 'utf-8')) as Record<string, unknown>
     expect(report.tool).toBe('search_translations')
+    expect(report.matches).toHaveLength(1)
+  })
+
+  it('writes the per-locale rows when the caller asks for them', async () => {
+    const outputFile = join(projectDir, 'search-locales-report.json')
+
+    const result = await runOperation<{ reportFile: string; summary: unknown }>('search', {
+      projectDir,
+      query: 'greeting',
+      includeLocales: true,
+      outputFile,
+    })
+
+    expect(result).toEqual({ reportFile: outputFile, summary: { totalMatches: 2 } })
+    const report = JSON.parse(await readFile(outputFile, 'utf-8')) as Record<string, unknown>
     expect(report.matches).toHaveLength(2)
   })
 })
