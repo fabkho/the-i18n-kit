@@ -56,6 +56,11 @@ that lost keys cannot balance. Both reason sets are closed — branch on the val
   `plural-mismatch`, `write-error`, `truncated`
 - `skipped`: `no-provider`, `already-translated`, `protected-locale`
 
+`stale` is a fifth bucket, present only with `translationMemory` enabled: keys
+whose target was written from source text that has changed since. They are
+translated, so they stay outside the invariant above; `summary.staleCount` totals
+them across locales and layers.
+
 See [translation modes](https://fabkho.github.io/the-i18n-kit/concepts/translation-modes).
 
 ## Safety Defaults

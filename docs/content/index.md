@@ -81,6 +81,6 @@ Find missing keys, remove dead ones, and rename across every locale at once.
   Reads your setup
 
   #description
-  Nuxt, Laravel, Vue, React and Next, or any JSON or PHP locale files.
+  Nuxt, Laravel, Vue, React and Next, or any JSON, YAML or PHP locale files.
   :::
 ::

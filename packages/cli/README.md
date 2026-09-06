@@ -5,7 +5,7 @@
 
 Find missing translation keys, remove dead ones, and rename across every locale
 and layer at once. Supports Nuxt, Laravel, Vue, React/Next.js, and any project
-with JSON or PHP locale files.
+with JSON, YAML or PHP locale files.
 
 Part of [the-i18n-kit](https://github.com/fabkho/the-i18n-kit).
 
