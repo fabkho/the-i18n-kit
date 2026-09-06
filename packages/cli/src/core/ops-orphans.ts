@@ -176,7 +176,7 @@ export function resolveOrphanIgnorePatterns(
  */
 async function resolveOrphanScanContext(
   config: I18nConfig,
-  opts: { layer?: string; locale?: string; dir: string; toolName: string },
+  opts: { layer?: string; locale?: string; dir: string },
 ): Promise<{
   layersToCheck: LocaleDir[]
   keysByLayer: Map<string, { keys: string[]; localeDir: LocaleDir }>
@@ -248,7 +248,6 @@ export async function findOrphanKeys(opts: {
     layer,
     locale,
     dir,
-    toolName: 'find_orphan_keys',
   })
 
   if (totalKeys === 0) {
@@ -442,7 +441,6 @@ export async function removeOrphanKeys(opts: {
     layer,
     locale,
     dir,
-    toolName: 'remove_orphan_keys',
   })
 
   // Written in every branch, even without findings: an empty array on the
