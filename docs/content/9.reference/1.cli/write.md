@@ -23,5 +23,3 @@ the-i18n-cli write --layer <layer> --translations <translations>
 | `--translations` | `string` | yes | — | JSON: { "key": { "en": "val", "de": "val" } } |
 | `--mode` | `string` | no | `"upsert"` | Write mode: add \| update \| upsert (default: upsert) |
 | `--dryRun` | `boolean` | no | `false` | Preview changes without writing |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.

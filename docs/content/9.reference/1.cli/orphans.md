@@ -27,5 +27,3 @@ the-i18n-cli orphans
 | `--outputFile` | `string` | no | — | Write full output to this file path and return only a summary (useful for large outputs) |
 | `--codequalityOutput` | `string` | no | — | Also write the orphan findings as a GitLab Code Quality (CodeClimate) JSON report to this file path |
 | `--failOnOrphans` | `boolean` | no | `false` | Exit 2 when any orphan key is found (CI gate) |
-
-Every command accepts the [shared flags](/reference/cli#shared-flags) and sets one of the [exit codes](/reference/cli#exit-codes) documented on the overview.
