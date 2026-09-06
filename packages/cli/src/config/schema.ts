@@ -159,7 +159,7 @@ export const projectConfigSchema = z.object({
       'Base URL for the LLM provider — gateways, self-hosted model servers and corporate proxies '
       + 'that speak the provider\'s own protocol. Overrides the endpoint only, not the request shape '
       + 'or auth header. Overridden by the I18N_BASE_URL environment variable and by --baseUrl. '
-      + 'Not supported by the "google" provider, which rejects it rather than ignoring it.',
+      + 'Honoured by every provider: each one is called over plain HTTP against this base.',
     )
     .optional(),
   // Deprecated with the removal of MCP sampling: accepted so existing config

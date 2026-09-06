@@ -37,6 +37,20 @@ export type {
   CheckUndefinedKeysSummary,
 } from './core/operations.js'
 
+// The operation table both surfaces are built from. The MCP server registers
+// its tools from these; the CLI builds its commands from the same array.
+export { descriptors, descriptorsFor, visibleParams } from './surface/descriptors.js'
+export type {
+  AnyOperationDescriptor,
+  OperationContext,
+  OperationDescriptor,
+  ParamSpec,
+  ParamType,
+  Params,
+  Surface,
+  TranslationsRecord,
+} from './surface/types.js'
+
 // Core types
 export * from './core/types.js'
 

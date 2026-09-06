@@ -7,8 +7,27 @@ import { createTranslateFn, resolveProviderBaseUrl, BASE_URL_ENV } from '../llm/
 import type { LlmProvider } from '../llm/providers.js'
 import type { TranslateFn } from '../core/types.js'
 import { loadProjectConfig } from '../config/project-config.js'
+import type {
+  AnyOperationDescriptor,
+  FlaggedGateSpec,
+  GateSpec,
+  ParamSpec,
+  Params,
+} from '../surface/types.js'
 
-/** Factory for commands that call an operation and output its result. */
+// Declared with the descriptors, since a gate is something an operation
+// declares; re-exported here because this is where they are evaluated and
+// where the reference generator reads the exit codes from.
+export type { GateSpec, FlaggedGateSpec, AlwaysOnGateSpec } from '../surface/types.js'
+
+/**
+ * Factory for commands that call an operation and output its result.
+ *
+ * Reached through `commandFromDescriptor`, which is the only production caller:
+ * it stays a separate function because output handling, gate evaluation and
+ * exit codes are worth testing against a fixed result rather than against a
+ * project on disk.
+ */
 export function createCommand(opts: {
   name: string
   description: string
@@ -21,10 +40,11 @@ export function createCommand(opts: {
    */
   gates?: GateSpec[]
   /**
-   * Receives citty's parsed args. `any` is deliberate: each command declares
-   * its own `args` shape and citty does not thread that type through to the
-   * handler, so narrowing here only moves the cast into all nineteen command
-   * modules. The shape is validated by citty against the `args` above.
+   * Receives citty's parsed args. `any` is deliberate: the `args` above are
+   * built at runtime from a descriptor's parameters and citty does not thread
+   * that type through to the handler. The typed view of these arguments is the
+   * descriptor's own `run`, which `commandFromDescriptor` calls with values
+   * already coerced to the declared types.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
   run: (args: any) => Promise<unknown>
@@ -70,47 +90,6 @@ export const EXIT_SUCCESS = 0
 export const EXIT_RUN_FAILED = 1
 /** The run succeeded but a requested gate tripped — findings exist, the tool worked. */
 export const EXIT_GATE_TRIPPED = 2
-
-/**
- * A CI gate a command evaluates. `counter` is the field of `result.summary`
- * carrying the observed value.
- *
- * The two shapes are a union rather than one type with optional halves so the
- * invariants hold at compile time: a flagged gate always has a flag to read
- * its name and threshold from, and a flagless one always carries both itself.
- * Stated as options, `{ counter, threshold }` type-checks and then has no name
- * to report the gate under.
- */
-export type GateSpec = FlaggedGateSpec | AlwaysOnGateSpec
-
-interface GateSpecBase {
-  counter: string
-  /** 'above' trips when observed > threshold (default); 'below' when observed < threshold. */
-  direction?: 'above' | 'below'
-}
-
-/**
- * Requested by a flag, and evaluated only when that flag is passed. Omitting
- * `threshold` takes it from the flag's own value, so a boolean flag pairs with
- * `threshold: 0` and a numeric one (`--fail-under 90`) omits it.
- */
-export interface FlaggedGateSpec extends GateSpecBase {
-  flag: string
-  name?: never
-  threshold?: number
-}
-
-/**
- * Always evaluated, for findings that are a defect rather than a threshold — a
- * key that renders raw in production is not something you opt into caring
- * about. It still reports as a gate: the run succeeded, and what it found is
- * what you are being told about.
- */
-export interface AlwaysOnGateSpec extends GateSpecBase {
-  flag?: never
-  name: string
-  threshold: number
-}
 
 /** A gate the caller asked for, with its threshold already resolved. */
 export interface RequestedGate {
@@ -299,12 +278,145 @@ function errorCode(error: unknown): string {
   return 'UNKNOWN_ERROR'
 }
 
-/** Provider selection flags shared by the translate commands. */
-export const providerArgs = {
-  provider: { type: 'string' as const, description: 'LLM provider: "openai", "anthropic", or "google". Required for automatic translation.', valueHint: 'openai|anthropic|google' },
-  model: { type: 'string' as const, description: 'Model name (required when --provider is set)' },
-  apiKey: { type: 'string' as const, description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env).' },
-  baseUrl: { type: 'string' as const, description: `Provider base URL for gateways, self-hosted models and proxies speaking the provider's protocol. Falls back to ${BASE_URL_ENV}, then providerBaseUrl in .i18n-mcp.json. Not supported by "google".` },
+/**
+ * The citty command for one descriptor: its flags, its gates, and a run that
+ * hands the operation arguments of the types the descriptor declared.
+ *
+ * Everything a command needs is read off the descriptor, so a command is not a
+ * file anyone writes — which is what keeps it from drifting from the tool that
+ * runs the same operation.
+ */
+export function commandFromDescriptor(descriptor: AnyOperationDescriptor): CommandDef {
+  const cli = descriptor.cli
+  if (cli === null) {
+    throw new Error(`Operation "${descriptor.id}" declares no CLI command.`)
+  }
+
+  return createCommand({
+    name: cli.name,
+    description: descriptor.description,
+    args: cliArgs(descriptor.params),
+    gates: descriptor.gates,
+    run: async args => descriptor.run(operationArgs(descriptor.params, args), {
+      surface: 'cli',
+      // Resolved from the provider flags rather than passed through: which
+      // flags select a backend is the CLI's business, not the operation's.
+      translateFn: descriptor.usesTranslateFn === true
+        ? await resolveProviderTranslateFn(args)
+        : undefined,
+    }),
+  })
+}
+
+/** The citty `args` for a descriptor's parameters, skipping the CLI-hidden ones. */
+function cliArgs(params: Params): Record<string, unknown> {
+  const args: Record<string, unknown> = {}
+  for (const [name, spec] of Object.entries(params)) {
+    if (spec.cli?.hidden === true) continue
+    args[name] = {
+      // citty parses booleans and strings. A list, a number and a JSON object
+      // all arrive as one string and are converted in operationArgs.
+      type: spec.type === 'boolean' ? 'boolean' : 'string',
+      description: flagDescription(spec),
+      ...(spec.required === true ? { required: true } : {}),
+      ...(spec.default === undefined ? {} : { default: spec.default }),
+      ...(spec.cli?.alias === undefined ? {} : { alias: [...toArray(spec.cli.alias)] }),
+      ...(spec.enum === undefined ? {} : { valueHint: spec.enum.join('|') }),
+    }
+  }
+  return args
+}
+
+/**
+ * The description a flag prints. The declared one is written for a reader of
+ * either surface, so how to spell a list or an object at a shell prompt is
+ * added here rather than in every spec.
+ */
+function flagDescription(spec: ParamSpec): string {
+  if (spec.type === 'string[]') {
+    return `${spec.description} Comma-separated${spec.allowAll === true ? ', or "all"' : ''}.`
+  }
+  if (spec.type === 'record') return `${spec.description} Pass it as JSON.`
+  return spec.description
+}
+
+/**
+ * citty's parsed args as the operation takes them: lists split, numbers and
+ * JSON parsed, enums checked. `projectDir` comes along because every operation
+ * accepts it without declaring it.
+ */
+function operationArgs(params: Params, args: Record<string, unknown>): Record<string, unknown> {
+  const operation: Record<string, unknown> = { projectDir: args.projectDir }
+  for (const [name, spec] of Object.entries(params)) {
+    if (spec.cli?.hidden === true) continue
+    const value = coerce(name, spec, args[name])
+    if (value !== undefined) operation[name] = value
+  }
+  return operation
+}
+
+function coerce(name: string, spec: ParamSpec, raw: unknown): unknown {
+  if (spec.type === 'boolean') return typeof raw === 'boolean' ? raw : undefined
+
+  const value = typeof raw === 'string' ? raw : undefined
+
+  switch (spec.type) {
+    case 'number':
+      return value === undefined || value === '' ? undefined : toNumber(name, spec, value)
+    case 'string[]':
+      return toList(name, spec, value)
+    case 'record':
+      return value === undefined ? undefined : parseJsonArg(value, name)
+    default:
+      return toEnumChecked(name, spec, value)
+  }
+}
+
+function toEnumChecked(name: string, spec: ParamSpec, value: string | undefined): string | undefined {
+  if (spec.enum === undefined) return value
+  // An empty value is an unset flag, not a value to reject: a shell produces
+  // one routinely from an unset variable.
+  if (value === undefined || value === '') return undefined
+  if (!spec.enum.includes(value)) {
+    throw new Error(`Invalid --${name} value: "${value}". Must be one of: ${spec.enum.join(', ')}`)
+  }
+  return value
+}
+
+function toNumber(name: string, spec: ParamSpec, raw: string): number {
+  const value = Number(raw)
+  const wellFormed = Number.isFinite(value)
+    && (spec.integer !== true || (Number.isInteger(value) && String(value) === raw.trim()))
+    && (spec.min === undefined || value >= spec.min)
+  if (!wellFormed) {
+    throw new Error(`Invalid --${name}: "${raw}". Must be ${numberRequirement(spec)}`)
+  }
+  return value
+}
+
+function numberRequirement(spec: ParamSpec): string {
+  if (spec.integer !== true) {
+    return spec.min === undefined ? 'a number' : `a number of at least ${spec.min}`
+  }
+  if (spec.min === 1) return 'a positive integer'
+  return spec.min === undefined ? 'an integer' : `an integer of at least ${spec.min}`
+}
+
+function toList(name: string, spec: ParamSpec, raw: string | undefined): string[] | 'all' | undefined {
+  if (spec.allowAll === true && raw === 'all') return 'all'
+
+  const list = splitList(raw)
+  // A list flag that was passed and yielded nothing is a mistake, not a request
+  // for the default — and a required list with nothing in it has no meaning.
+  const empty = list === undefined || list.length === 0
+  if (empty && (spec.required === true || (raw !== undefined && raw !== ''))) {
+    throw new Error(`No ${name} provided. Pass a comma-separated list via --${name}.`)
+  }
+  return list
+}
+
+function toArray(value: string | readonly string[]): readonly string[] {
+  return typeof value === 'string' ? [value] : value
 }
 
 /**
@@ -358,13 +470,13 @@ export function redactBaseUrl(raw: string): string {
 }
 
 /** Split a comma-separated string into a trimmed array, or return undefined */
-export function splitList(val: string | undefined): string[] | undefined {
+function splitList(val: string | undefined): string[] | undefined {
   if (!val) return undefined
   return val.split(',').map(s => s.trim()).filter(Boolean)
 }
 
 /** Parse a JSON string with a user-friendly error */
-export function parseJsonArg<T = Record<string, Record<string, string>>>(
+function parseJsonArg<T = Record<string, Record<string, string>>>(
   value: string,
   argName: string,
 ): T {

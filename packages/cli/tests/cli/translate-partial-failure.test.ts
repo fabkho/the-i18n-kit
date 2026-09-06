@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { localesWithFailures } from '../../src/commands/translate.js'
+import { localesWithFailures } from '../../src/surface/guidance.js'
 import { resolveExitCode } from '../../src/commands/_shared.js'
 import type { TranslateMissingOutcome } from '../../src/core/types.js'
 

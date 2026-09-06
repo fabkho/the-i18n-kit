@@ -1,4 +1,6 @@
 import type { CommandDef } from 'citty'
+import { commandFromDescriptor } from './_shared.js'
+import { descriptors } from '../surface/descriptors.js'
 
 /**
  * A registered command: nothing but its lazy loader.
@@ -7,29 +9,30 @@ import type { CommandDef } from 'citty'
  * allowed it kept producing documented commands that printed "Unknown command"
  * when anyone tried them, and every operation an MCP tool covers has to be
  * reachable from a terminal or the two surfaces are not the same tool.
+ *
+ * The commands themselves are built from the operation descriptors, so the
+ * registry states no name, no flag and no description of its own. The loader
+ * stays because callers hold it: citty resolves subcommands through it, and the
+ * reference generator awaits it. It also keeps the definition's identity
+ * stable, which is how the generator recognises two names for one command.
  */
 export interface CommandEntry {
   load: () => Promise<CommandDef>
 }
 
-const command = (load: () => Promise<{ default: unknown }>): CommandEntry => ({
-  load: () => load().then(m => m.default as CommandDef),
-})
+function entry(build: () => CommandDef): CommandEntry {
+  let built: CommandDef | undefined
+  return { load: async () => (built ??= build()) }
+}
 
-export const commands = {
-  'init': command(() => import('./init.js')),
-  'discover': command(() => import('./discover.js')),
-  'get': command(() => import('./get.js')),
-  'write': command(() => import('./write.js')),
-  'missing': command(() => import('./missing.js')),
-  'status': command(() => import('./status.js')),
-  'search': command(() => import('./search.js')),
-  'remove': command(() => import('./remove.js')),
-  'move': command(() => import('./move.js')),
-  'translate': command(() => import('./translate.js')),
-  'translate-key': command(() => import('./translate-key.js')),
-  'check': command(() => import('./check.js')),
-  'orphans': command(() => import('./orphans.js')),
-  'find-duplicates': command(() => import('./find-duplicates.js')),
-  'scaffold': command(() => import('./scaffold.js')),
-} as const satisfies Record<string, CommandEntry>
+function registry(): Record<string, CommandEntry> {
+  const commands: Record<string, CommandEntry> = {}
+  for (const descriptor of descriptors) {
+    const cli = descriptor.cli
+    if (cli === null) continue
+    commands[cli.name] = entry(() => commandFromDescriptor(descriptor))
+  }
+  return commands
+}
+
+export const commands: Record<string, CommandEntry> = registry()

@@ -193,13 +193,18 @@ function argTable(args: ArgDoc[]): string {
 }
 
 /**
- * The flag, its accepted values where the definition hints at them, and its
- * short aliases — the same form `--help` prints.
+ * The flag, its accepted values where the definition hints at them, and the
+ * other spellings that reach it.
+ *
+ * A one-character alias is a short flag (`-d`); a longer one is a long flag
+ * (`--ref`), which is what a flag renamed to match its MCP parameter keeps
+ * working under. citty's own usage text prints every alias with a single dash,
+ * so following it here would document a form the parser never accepts.
  */
 function flagNames(arg: ArgDoc): string {
   const hint = arg.valueHint === undefined ? '' : `=<${arg.valueHint}>`
-  const short = arg.alias.map(alias => code(`-${alias}`))
-  return [code(cell(`--${arg.name}${hint}`)), ...short].join(', ')
+  const aliases = arg.alias.map(alias => code(alias.length === 1 ? `-${alias}` : `--${alias}`))
+  return [code(cell(`--${arg.name}${hint}`)), ...aliases].join(', ')
 }
 
 function formatDefault(arg: ArgDoc): string {

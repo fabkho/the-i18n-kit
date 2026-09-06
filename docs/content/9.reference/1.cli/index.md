@@ -17,21 +17,21 @@ The command pages are generated from the command definitions, so a flag that no 
 
 | Command | What it does |
 | --- | --- |
-| [`init`](/reference/cli/init) | Create a schema-valid .i18n-mcp.json from framework detection. Non-interactive; refuses to overwrite without --force |
-| [`discover`](/reference/cli/discover) | Describe the project: detected config, locale directories per layer, the layer graph, and the hand-maintained locales |
-| [`get`](/reference/cli/get) | Get translation values for specific keys |
-| [`write`](/reference/cli/write) | Write translation keys (add/update/upsert). Default mode: upsert. |
-| [`missing`](/reference/cli/missing) | Find translation keys missing in target locales |
-| [`status`](/reference/cli/status) | Translation coverage per locale and per layer, with an overall completion percentage |
-| [`search`](/reference/cli/search) | Search translation files by key or value |
-| [`remove`](/reference/cli/remove) | Remove translation keys from all locale files in a layer |
-| [`move`](/reference/cli/move) | Move a translation key to another layer, another key path, or both — carrying every locale that defines it |
-| [`translate`](/reference/cli/translate) | Find missing translations and translate them via LLM. Requires --provider and --model for auto-translation. |
-| [`translate-key`](/reference/cli/translate-key) | Translate a single key from a source locale into target locales. Supports LLM translation with --provider. |
-| [`check`](/reference/cli/check) | Find keys referenced in code but defined in no consumed locale layer (they render as raw keys); findings trip an always-on gate and exit 2, distinct from exit 1 for a run that failed |
-| [`orphans`](/reference/cli/orphans) | Report translation keys no source code references. Nothing is deleted without --remove |
-| [`find-duplicates`](/reference/cli/find-duplicates) | Find keys defined in both a shared layer and a consuming child layer (with divergence detection); --byValue also finds different keys carrying the same value |
-| [`scaffold`](/reference/cli/scaffold) | Create empty locale files for new languages |
+| [`init`](/reference/cli/init) | Create a schema-valid .i18n-mcp.json from framework detection. Non-interactive; refuses to overwrite without force. |
+| [`discover`](/reference/cli/discover) | Describe the project: detected config, locale directories per layer with file counts and top-level namespaces, the layer graph, and the hand-maintained locales. |
+| [`get`](/reference/cli/get) | Get translation values for given key paths from a specific locale and layer. Use "*" as the locale to read from all locales. |
+| [`write`](/reference/cli/write) | Write translation key-value pairs to a layer. Keys are inserted in alphabetical order. |
+| [`missing`](/reference/cli/missing) | Find translation keys that exist in the reference locale but are missing in other locales. Scans a specific layer or all layers. |
+| [`status`](/reference/cli/status) | Translation coverage in one call: per-locale and per-layer counts of total, translated, missing and empty keys, plus an overall completion percentage. |
+| [`search`](/reference/cli/search) | Search translation files by key path or value. A case-insensitive substring match — not fuzzy, not a regular expression. |
+| [`remove`](/reference/cli/remove) | Remove one or more translation keys from ALL locale files in the given layer. |
+| [`move`](/reference/cli/move) | Move a translation key to another layer, to another key path, or both, carrying every locale that defines it. |
+| [`translate`](/reference/cli/translate) | Find the keys missing in the target locales and translate them. Without a translation backend nothing is written: the result carries per-locale fallback contexts to translate by hand instead. |
+| [`translate-key`](/reference/cli/translate-key) | Add or update one source translation key and translate it into the target locales. |
+| [`check`](/reference/cli/check) | Find keys referenced in source code but defined in NO locale layer the using app consumes — the direction that ships raw keys to production. |
+| [`orphans`](/reference/cli/orphans) | Report translation keys that no source code references. Nothing is deleted unless remove is set. |
+| [`find-duplicates`](/reference/cli/find-duplicates) | Find translation keys defined in BOTH a shared layer and an app layer that consumes it. |
+| [`scaffold`](/reference/cli/scaffold) | Create empty locale files for new languages, copying the key structure of the default locale with every value set to an empty string. |
 
 ## Shared Flags
 
@@ -62,11 +62,11 @@ Gates are opt-in, with one exception. Without one of these flags a command repor
 
 | Command | Flag | Trips when |
 | --- | --- | --- |
-| [`missing`](/reference/cli/missing) | `--failOnMissing` | Exit 2 when any key is missing (CI gate) |
-| [`status`](/reference/cli/status) | `--failUnder` | Exit 2 when overall completion is below this percentage (CI gate) |
-| [`translate`](/reference/cli/translate) | `--failOnFailed` | Exit 2 when any key failed to translate (CI gate) |
+| [`missing`](/reference/cli/missing) | `--failOnMissing` | Exit 2 when any key is missing (CI gate). |
+| [`status`](/reference/cli/status) | `--failUnder` | Exit 2 when overall completion is below this percentage (CI gate). |
+| [`translate`](/reference/cli/translate) | `--failOnFailed` | Exit 2 when any key failed to translate (CI gate). |
 | [`check`](/reference/cli/check) | always on | `summary.undefinedCount` is above `0` |
-| [`orphans`](/reference/cli/orphans) | `--failOnOrphans` | Exit 2 when any orphan key is found (CI gate) |
+| [`orphans`](/reference/cli/orphans) | `--failOnOrphans` | Exit 2 when any orphan key is found (CI gate). |
 
 When a gate trips, the result gains a `gatesTripped` array naming each gate, the counter it read, the threshold it was held to and the value it observed. A run where nothing tripped is byte-for-byte what it was before gates existed, so a consumer parsing the result needs no change to tolerate them.
 

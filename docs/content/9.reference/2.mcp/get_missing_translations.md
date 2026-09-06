@@ -13,11 +13,11 @@ Find translation keys that exist in the reference locale but are missing in othe
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `layer` | `string` | no | Layer name to scan (e.g., "root", "app-admin"). If omitted, scans all layers. Call discover to discover available layers. |
+| `layer` | `string` | no | Layer name to scope this to (e.g., "root", "app-admin"). If omitted, every layer is included. Call discover to list the layers. |
 | `referenceLocale` | `string` | no | Locale code used as the source of truth (e.g., "en", "en-US"). Defaults to the project default locale. |
 | `targetLocales` | `string[]` | no | Locale codes to check for missing keys (e.g., ["de", "fr", "es"]). Defaults to all locales except the reference. |
-| `projectDir` | `string` | no | Absolute path to the Nuxt project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |
-| `outputFile` | `string` | no | Absolute path to write full JSON output. Returns only a compact summary to the caller — use this for large outputs to avoid flooding the conversation context. Example: "/tmp/missing-translations.json" |
+| `outputFile` | `string` | no | Absolute path to write the full JSON output to. Only a compact summary is returned to the caller, which is what you want for a result too large to read in one piece. Example: "/tmp/missing-translations.json" |
+| `projectDir` | `string` | no | Absolute path to the project root. Defaults to I18N_PROJECT_DIR, then server cwd. Example: "/home/user/my-app". |
 
 ## Paired CLI Command
 

@@ -14,8 +14,11 @@ vi.mock('../../src/utils/stdout-guard.js', () => ({
   writeResult: vi.fn(),
 }))
 
-const { default: checkCommand } = await import('../../src/commands/check.js')
+// Built from the operation descriptor through the registry, which is how the
+// binary gets it — there is no per-command module to import any more.
+const { commands } = await import('../../src/commands/index.js')
 const { createCommand } = await import('../../src/commands/_shared.js')
+const checkCommand = await commands.check.load()
 
 describe('the check command definition', () => {
   it('declares its gate on the definition, so the reference can state it', () => {
