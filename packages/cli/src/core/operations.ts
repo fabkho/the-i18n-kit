@@ -14,7 +14,6 @@ export { findLocaleImpl } from './shared.js'
 export { validateReportPath } from './report.js'
 
 export {
-  computeMaxTokens,
   computeProgressTotal,
   resolveProtectedLocales,
   validatePlaceholders,

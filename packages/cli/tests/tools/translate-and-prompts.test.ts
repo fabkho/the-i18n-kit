@@ -10,7 +10,7 @@ import {
 } from '../../src/io/key-operations.js'
 import { loadProjectConfig } from '../../src/config/project-config.js'
 import { playgroundDir } from '../fixtures/mock-detector.js'
-import { computeProgressTotal, buildTranslationSystemPrompt, buildTranslationUserMessage, extractJsonFromResponse, computeMaxTokens } from '../../src/core/operations.js'
+import { computeProgressTotal, buildTranslationSystemPrompt, buildTranslationUserMessage, extractJsonFromResponse } from '../../src/core/operations.js'
 
 // Temp copy of locale dirs for mutation tests
 const tmpDir = resolve(import.meta.dirname, '../../.tmp-translate')
@@ -377,13 +377,5 @@ describe('extractJsonFromResponse', () => {
   it('handles whitespace around JSON', () => {
     const result = extractJsonFromResponse('  \n  {"key":"value"}  \n  ')
     expect(result).toEqual({ key: 'value' })
-  })
-})
-
-describe('computeMaxTokens', () => {
-  it('returns the fixed budget regardless of batch size', () => {
-    expect(computeMaxTokens(1)).toBe(16384)
-    expect(computeMaxTokens(50)).toBe(16384)
-    expect(computeMaxTokens(1000)).toBe(16384)
   })
 })
