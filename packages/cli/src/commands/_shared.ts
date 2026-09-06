@@ -304,7 +304,7 @@ export const providerArgs = {
   provider: { type: 'string' as const, description: 'LLM provider: "openai", "anthropic", or "google". Required for automatic translation.', valueHint: 'openai|anthropic|google' },
   model: { type: 'string' as const, description: 'Model name (required when --provider is set)' },
   apiKey: { type: 'string' as const, description: 'API key (falls back to OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY env).' },
-  baseUrl: { type: 'string' as const, description: `Provider base URL for gateways, self-hosted models and proxies speaking the provider's protocol. Falls back to ${BASE_URL_ENV}, then providerBaseUrl in .i18n-mcp.json. Not supported by "google".` },
+  baseUrl: { type: 'string' as const, description: `Provider base URL for gateways, self-hosted models and proxies speaking the provider's protocol. Falls back to ${BASE_URL_ENV}, then providerBaseUrl in .i18n-mcp.json.` },
 }
 
 /**
